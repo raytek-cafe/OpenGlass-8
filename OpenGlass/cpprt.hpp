@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // C (C++ 11)
 #include <cfenv>

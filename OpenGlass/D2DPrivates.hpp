@@ -1,0 +1,55 @@
+#pragma once
+#include "framework.hpp"
+
+namespace OpenGlass
+{
+	const GUID CLSID_D2D1DirectionalBlurKernel{ 0x58EB6E2A, 0x0D779, 0x4B7D, { 0x0AD, 0x39, 0x6F, 0x5A, 0x9F, 0x0C9, 0x0D2, 0x88} };
+	enum D2D1_DIRECTIONALBLURKERNEL_PROP
+	{
+		D2D1_DIRECTIONALBLURKERNEL_PROP_STANDARD_DEVIATION,
+		D2D1_DIRECTIONALBLURKERNEL_PROP_DIRECTION,
+		D2D1_DIRECTIONALBLURKERNEL_PROP_KERNEL_RANGE_FACTOR,
+		D2D1_DIRECTIONALBLURKERNEL_PROP_OPTIMIZATION_TRANSFORM
+	};
+	enum D2D1_DIRECTIONALBLURKERNEL_DIRECTION
+	{
+		D2D1_DIRECTIONALBLURKERNEL_DIRECTION_X,
+		D2D1_DIRECTIONALBLURKERNEL_DIRECTION_Y
+	};
+	enum D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM
+	{
+		D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY,
+		D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE
+	};
+
+	struct ID2D1PrivateCompositorBuffer : IUnknown {};
+	struct ID2D1PrivateCompositorCommandList : IUnknown {};
+	struct ID2D1PrivateCompositorPrimitiveProperties : IUnknown {};
+	struct ID2D1PrivateDepthBuffer : IUnknown {};
+	struct IDXGISwapChainDWM1 : IUnknown {};
+	struct ID2D1PrivateCompositorRenderer : IUnknown {};
+	struct DXGI_PRESENT_MULTIPLANE_OVERLAY;
+	enum D2D1_DRAW_COMPOSITOR_COMMAND_LIST_OPTIONS : UINT {};
+	enum D2D1_DEVICE_CONTEXT_BATCHING_STATE : UINT {};
+	enum D2D1_INK_RENDERING_HINT : UINT {};
+	struct ID2D1PrivateCompositorDeviceContext : IUnknown
+	{
+		STDMETHODV(CreateCompositorCommandList)(ID2D1PrivateCompositorBuffer*, ID2D1PrivateCompositorBuffer*, ID2D1Bitmap**, UINT, ID2D1Bitmap**, UINT, ID2D1PrivateCompositorPrimitiveProperties**, UINT, ID2D1PrivateCompositorCommandList**) PURE;
+		STDMETHODV(DrawCompositorCommandList)(ID2D1PrivateCompositorCommandList*, float, D2D_MATRIX_4X4_F const*, D2D1_DRAW_COMPOSITOR_COMMAND_LIST_OPTIONS, UINT) PURE;
+		STDMETHODV(CreatePrimitiveProperties)(ID2D1PrivateCompositorPrimitiveProperties**)PURE;
+		STDMETHODV(SetPrimitiveColor)(ID2D1PrivateCompositorPrimitiveProperties*, D2D1_COLOR_F const*) PURE;
+		STDMETHODV(SetTargetAndDepthBuffer)(ID2D1Image*, ID2D1PrivateDepthBuffer*) PURE;
+		STDMETHODV(GetDepthBuffer)(ID2D1PrivateDepthBuffer**) PURE;
+		STDMETHODV(SetGuardRect)(ID2D1Bitmap*, RECT const*) PURE;
+		STDMETHODV(SetPrimitiveClip)(D2D1_RECT_F const*, D2D1_ANTIALIAS_MODE) PURE;
+		STDMETHODV(QueryBatchingState)(D2D1_DEVICE_CONTEXT_BATCHING_STATE*) PURE;
+		STDMETHODV(CreateSharedAtlasBitmap)(ID2D1Bitmap1*, D2D1_BITMAP_PROPERTIES1 const*, ID2D1Bitmap1**) PURE;
+		STDMETHODV(PresentDWM)(IDXGISwapChainDWM1*, UINT, UINT, RECT const*, UINT, DXGI_PRESENT_MULTIPLANE_OVERLAY const*, UINT, IDXGIResource*, UINT) PURE;
+		STDMETHODV(PresentMultiplaneOverlay)(IDXGISwapChainDWM1*, UINT, UINT, DXGI_HDR_METADATA_TYPE, void const*, DXGI_PRESENT_MULTIPLANE_OVERLAY const*, UINT) PURE;
+		STDMETHODV(DrawCompositorPrimitives)(ID2D1PrivateCompositorRenderer*) PURE;
+		STDMETHODV(CreateCompositorCommandListWithBounds)(ID2D1PrivateCompositorBuffer*, ID2D1PrivateCompositorBuffer*, ID2D1Bitmap**, UINT, ID2D1Bitmap**, UINT, ID2D1PrivateCompositorPrimitiveProperties**, UINT, D2D1_RECT_F const*, ID2D1PrivateCompositorCommandList**) PURE;
+		STDMETHODV(SetInkRenderingHint)(D2D1_INK_RENDERING_HINT) PURE;
+		STDMETHODV(GetInkRenderingHint)(void) PURE;
+		STDMETHODV(SignalFence)(ID3D11Fence*, UINT64) PURE;
+	};
+}

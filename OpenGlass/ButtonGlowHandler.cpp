@@ -19,7 +19,7 @@ namespace OpenGlass::ButtonGlowHandler
 	static int CLOSEBUTTONGLOW = 92; //11 in windows 7
 	static int TOOLCLOSEBUTTONGLOW = 94; //47 in windows 7
 
-	inline HRESULT(__fastcall* CTopLevelWindow__CreateBitmapFromAtlas)(HTHEME hTheme, int iPartId, MARGINS* outMargins, void** outBitmapSource);
+	HRESULT(WINAPI* CTopLevelWindow__CreateBitmapFromAtlas)(HTHEME hTheme, int iPartId, MARGINS* outMargins, void** outBitmapSource);
 	
 	//not 1 to 1 to the one in windows 7 udwm, however it achieves the same outcome whilst being simpler
 	HRESULT CTopLevelWindow__CreateButtonGlowsFromAtlas(HTHEME hTheme)
@@ -40,50 +40,59 @@ namespace OpenGlass::ButtonGlowHandler
 
 		for (int i = 0; i < 4; ++i)
 		{
-			auto frame = (*uDwm::CTopLevelWindow::s_rgpwfWindowFrames)[i];
+			auto frame = uDWM::CTopLevelWindow::GetWindowFrames()[i];
 			*(void**)(__int64(frame) + MINMAXBUTTONGLOWIMAGE) = OutBitmapSourceBlue;
 			*(void**)(__int64(frame) + CLOSEBUTTONGLOWIMAGE) = OutBitmapSourceRed;
 		}
 		for (int i = 4; i < 6; ++i)
 		{
-			auto frame = (*uDwm::CTopLevelWindow::s_rgpwfWindowFrames)[i];
+			auto frame = uDWM::CTopLevelWindow::GetWindowFrames()[i];
 			*(void**)(__int64(frame) + MINMAXBUTTONGLOWIMAGE) = OutBitmapSourceTool;
 			*(void**)(__int64(frame) + CLOSEBUTTONGLOWIMAGE) = OutBitmapSourceTool;
 		}
 		return S_OK;
 	}
 
-	HRESULT (__fastcall* CTopLevelWindow_CreateGlyphsFromAtlas)(HTHEME hTheme);
-	HRESULT __fastcall CTopLevelWindow_CreateGlyphsFromAtlas_Hook(HTHEME hTheme)
+	HRESULT (WINAPI* CTopLevelWindow_CreateGlyphsFromAtlas)(HTHEME hTheme);
+	HRESULT WINAPI CTopLevelWindow_CreateGlyphsFromAtlas_Hook(HTHEME hTheme)
 	{
 		CTopLevelWindow__CreateButtonGlowsFromAtlas(hTheme);
 		return CTopLevelWindow_CreateGlyphsFromAtlas(hTheme);
 	}
 
-	void UpdateConfiguration(ConfigurationFramework::UpdateType type)
+	void Update([[maybe_unused]] GlassEngine::UpdateType type)
 	{
-		MINMAXBUTTONGLOW = ConfigurationFramework::DwmGetDwordFromHKCUAndHKLM(L"MINMAXBUTTONGLOWid",93);
-		CLOSEBUTTONGLOW = ConfigurationFramework::DwmGetDwordFromHKCUAndHKLM(L"CLOSEBUTTONGLOWid",92);
-		TOOLCLOSEBUTTONGLOW = ConfigurationFramework::DwmGetDwordFromHKCUAndHKLM(L"TOOLCLOSEBUTTONGLOWid",94);
+		MINMAXBUTTONGLOW = GlassEngine::GetDwordFromRegistry(L"MINMAXBUTTONGLOWid", 93);
+		CLOSEBUTTONGLOW = GlassEngine::GetDwordFromRegistry(L"CLOSEBUTTONGLOWid", 92);
+		TOOLCLOSEBUTTONGLOW = GlassEngine::GetDwordFromRegistry(L"TOOLCLOSEBUTTONGLOWid", 94);
 	}
 
-	HRESULT Startup()
+	void Startup()
 	{
-		uDwm::GetAddressFromSymbolMap("CTopLevelWindow::CreateBitmapFromAtlas", CTopLevelWindow__CreateBitmapFromAtlas);
-		uDwm::GetAddressFromSymbolMap("CTopLevelWindow::CreateGlyphsFromAtlas", CTopLevelWindow_CreateGlyphsFromAtlas);
-		HookHelper::Detours::Write([]()
-			{
-				HookHelper::Detours::Attach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);
-			});
+		if (uDWM::g_buildNumber < os::build_w11_21h2)
+		{
+			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateBitmapFromAtlas", CTopLevelWindow__CreateBitmapFromAtlas);
+			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateGlyphsFromAtlas", CTopLevelWindow_CreateGlyphsFromAtlas);
 
-		return S_OK;
+			THROW_IF_FAILED(
+				HookHelper::Detours::Write([]()
+				{
+					HookHelper::Detours::Attach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);
+				})
+			);
+		}
 	}
 
 	void Shutdown()
 	{
-		HookHelper::Detours::Write([]()
-			{
-				HookHelper::Detours::Detach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);
-			});
+		if (uDWM::g_buildNumber < os::build_w11_21h2)
+		{
+			THROW_IF_FAILED(
+				HookHelper::Detours::Write([]()
+				{
+					HookHelper::Detours::Detach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);
+				})
+			);
+		}
 	}
 }

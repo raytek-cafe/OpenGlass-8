@@ -26,62 +26,74 @@ HRESULT CBlurEffect::Initialize(ID2D1DeviceContext* context)
 			D2D1_COMPOSITE_MODE_SOURCE_OVER
 		)
 	);
-
 	m_compositeEffect->SetInputEffect(1, m_colorEffect.get());
+
 	m_initialized = true;
 
 	return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CBlurEffect::SetInput(
+HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
 	ID2D1DeviceContext* context,
 	ID2D1Image* inputImage,
 	const D2D1_RECT_F& imageRectangle,
 	const D2D1_RECT_F& imageBounds,
-	float blurAmount,
-	const D2D1_COLOR_F& color,
-	float opacity
+	const void* additionalParams
 )
 {
 	if (!m_initialized)
 	{
 		RETURN_IF_FAILED(Initialize(context));
 	}
-	RETURN_IF_FAILED(
-		m_colorEffect->SetValue(
-			D2D1_FLOOD_PROP_COLOR,
-			D2D1::Vector4F(
-				color.r * opacity,
-				color.g * opacity,
-				color.b * opacity,
-				opacity
-			)
-		)
-	);
-	if (opacity == 1.f)
-	{
-		m_colorEffect->GetOutput(m_effectOutput.put());
-		return S_OK;
-	}
+	const auto params = static_cast<const BlurParams*>(additionalParams);
 
 	RETURN_IF_FAILED(
-		m_customBlurEffect->SetInput(
+		m_customBlurEffect->Build(
 			context,
 			inputImage,
 			imageRectangle,
 			imageBounds,
-			blurAmount
+			additionalParams
 		)
 	);
-	if (opacity == 0.f)
+	const auto fullyTransparent = params->colorBalance == 0.f;
+	if (!fullyTransparent)
 	{
-		winrt::copy_from_abi(m_effectOutput, m_customBlurEffect->GetOutput());
-		return S_OK;
+		RETURN_IF_FAILED(
+			m_colorEffect->SetValue(
+				D2D1_FLOOD_PROP_COLOR,
+				D2D1::Vector4F(
+					params->color.r * params->colorBalance,
+					params->color.g * params->colorBalance,
+					params->color.b * params->colorBalance,
+					params->colorBalance
+				)
+			)
+		);
+
+		winrt::com_ptr<ID2D1Image> image{};
+		m_customBlurEffect->GetOutput(image.put());
+		m_compositeEffect->SetInput(0, image.get());
+		m_outputEffect = m_compositeEffect;
 	}
-	m_compositeEffect->SetInput(0, m_customBlurEffect->GetOutput());
-	m_compositeEffect->GetOutput(m_effectOutput.put());
+	else
+	{
+		m_outputEffect = nullptr;
+	}
 
 	return S_OK;
+}
+
+void STDMETHODCALLTYPE CBlurEffect::GetOutput(ID2D1Image** output) const
+{
+	if (m_outputEffect)
+	{
+		m_outputEffect->GetOutput(output);
+	}
+	else
+	{
+		m_customBlurEffect->GetOutput(output);
+	}
 }
 
 void STDMETHODCALLTYPE CBlurEffect::Reset()
@@ -94,5 +106,4 @@ void STDMETHODCALLTYPE CBlurEffect::Reset()
 	{
 		m_compositeEffect->SetInput(0, nullptr);
 	}
-	m_effectOutput = nullptr;
 }

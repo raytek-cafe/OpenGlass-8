@@ -33,9 +33,8 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
-    <WindowsTargetPlatformMinVersion>10.0.10240.0</WindowsTargetPlatformMinVersion>
+    <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <SupportLTL>true</SupportLTL>
-    <CleanImport>true</CleanImport>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -43,18 +42,16 @@
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <WindowsTargetPlatformMinVersion>10.0.10240.0</WindowsTargetPlatformMinVersion>
+    <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <SupportLTL>true</SupportLTL>
-    <CleanImport>true</CleanImport>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
-    <WindowsTargetPlatformMinVersion>10.0.10240.0</WindowsTargetPlatformMinVersion>
+    <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <SupportLTL>true</SupportLTL>
-    <CleanImport>true</CleanImport>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -62,9 +59,8 @@
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <WindowsTargetPlatformMinVersion>10.0.10240.0</WindowsTargetPlatformMinVersion>
+    <WindowsTargetPlatformMinVersion>10.0.19041.0</WindowsTargetPlatformMinVersion>
     <SupportLTL>true</SupportLTL>
-    <CleanImport>true</CleanImport>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -87,18 +83,26 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <OutDir>$(SolutionDir)Build\$(PlatformShortName)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)Cache\$(ProjectName)\$(PlatformShortName)\$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <OutDir>$(SolutionDir)Build\$(PlatformShortName)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)Cache\$(ProjectName)\$(PlatformShortName)\$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)Build\$(PlatformShortName)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)Cache\$(ProjectName)\$(PlatformShortName)\$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)Build\$(PlatformShortName)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)Cache\$(ProjectName)\$(PlatformShortName)\$(Configuration)\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -111,19 +115,30 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <UseFullPaths>false</UseFullPaths>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/pdbaltpath:%_PDB% %(AdditionalOptions)</AdditionalOptions>
+      <ModuleDefinitionFile>Module.def</ModuleDefinitionFile>
     </Link>
+    <ResourceCompile>
+      <NullTerminateStrings>true</NullTerminateStrings>
+    </ResourceCompile>
+    <FxCompile>
+      <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;OPENGLASS_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -131,18 +146,30 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <Optimization>Full</Optimization>
-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
+      <Optimization>MaxSpeed</Optimization>
       <StringPooling>true</StringPooling>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <UseFullPaths>false</UseFullPaths>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <OmitFramePointers>true</OmitFramePointers>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/pdbaltpath:%_PDB% %(AdditionalOptions)</AdditionalOptions>
+      <ModuleDefinitionFile>Module.def</ModuleDefinitionFile>
     </Link>
+    <ResourceCompile>
+      <NullTerminateStrings>true</NullTerminateStrings>
+    </ResourceCompile>
+    <FxCompile>
+      <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -155,19 +182,30 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <UseFullPaths>false</UseFullPaths>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/pdbaltpath:%_PDB% %(AdditionalOptions)</AdditionalOptions>
+      <ModuleDefinitionFile>Module.def</ModuleDefinitionFile>
     </Link>
+    <ResourceCompile>
+      <NullTerminateStrings>true</NullTerminateStrings>
+    </ResourceCompile>
+    <FxCompile>
+      <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <WarningLevel>Level4</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;OPENGLASS_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
@@ -175,63 +213,95 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <Optimization>Full</Optimization>
-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
-      <FavorSizeOrSpeed>Size</FavorSizeOrSpeed>
+      <Optimization>MaxSpeed</Optimization>
       <StringPooling>true</StringPooling>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <UseFullPaths>false</UseFullPaths>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <OmitFramePointers>true</OmitFramePointers>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
+      <AdditionalOptions>/pdbaltpath:%_PDB% %(AdditionalOptions)</AdditionalOptions>
+      <ModuleDefinitionFile>Module.def</ModuleDefinitionFile>
     </Link>
+    <ResourceCompile>
+      <NullTerminateStrings>true</NullTerminateStrings>
+    </ResourceCompile>
+    <FxCompile>
+      <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+    </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="AccentOverrider.hpp" />
     <ClInclude Include="AeroEffect.hpp" />
     <ClInclude Include="BlurEffect.hpp" />
     <ClInclude Include="ButtonGlowHandler.hpp" />
+    <ClInclude Include="AeroColorizationEffect.hpp" />
     <ClInclude Include="CustomBlurEffect.hpp" />
-    <ClInclude Include="CustomMsstyleLoader.hpp" />
+    <ClInclude Include="CustomThemeAtlasLoader.hpp" />
+    <ClInclude Include="D2DBuffer.hpp" />
+    <ClInclude Include="D2DPrivates.hpp" />
+    <ClInclude Include="dcompPrivates.hpp" />
+    <ClInclude Include="Dwm.hpp" />
     <ClInclude Include="dwmcoreProjection.hpp" />
-    <ClInclude Include="GlassEffect.hpp" />
-    <ClInclude Include="ReflectionEffect.hpp" />
+    <ClInclude Include="GlassRealizer.hpp" />
+    <ClInclude Include="GlassCoverageSet.hpp" />
+    <ClInclude Include="GlassFrameHandler.hpp" />
+    <ClInclude Include="GlassKernel.hpp" />
+    <ClInclude Include="GlassSafetyZone.hpp" />
+    <ClInclude Include="GlassSafetyZoneLayer.hpp" />
+    <ClInclude Include="GlassVisuals.hpp" />
+    <ClInclude Include="module.hpp" />
+    <ClInclude Include="ProjectionHelper.hpp" />
+    <ClInclude Include="ReflectionRealizer.hpp" />
     <ClInclude Include="GlassRenderer.hpp" />
+    <ClInclude Include="RenderingEffect.hpp" />
     <ClInclude Include="Shared.hpp" />
-    <ClInclude Include="ServiceApi.hpp" />
-    <ClInclude Include="VisualManager.hpp" />
+    <ClInclude Include="GlassService.hpp" />
     <ClInclude Include="CaptionTextHandler.hpp" />
-    <ClInclude Include="ConfigurationFramework.hpp" />
+    <ClInclude Include="GlassEngine.hpp" />
     <ClInclude Include="cpprt.hpp" />
     <ClInclude Include="framework.hpp" />
-    <ClInclude Include="GeometryRecorder.hpp" />
-    <ClInclude Include="GlassFramework.hpp" />
+    <ClInclude Include="GlassReflectionHandler.hpp" />
     <ClInclude Include="HookHelper.hpp" />
     <ClInclude Include="OpenGlass.hpp" />
     <ClInclude Include="OSHelper.hpp" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="SymbolParser.hpp" />
-    <ClInclude Include="uDwmProjection.hpp" />
-    <ClInclude Include="Utils.hpp" />
+    <ClInclude Include="TaskHandler.hpp" />
+    <ClInclude Include="uDWMProjection.hpp" />
+    <ClInclude Include="Util.hpp" />
     <ClInclude Include="wil.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AccentOverrider.cpp" />
+    <ClCompile Include="AeroColorizationEffect.cpp" />
     <ClCompile Include="AeroEffect.cpp" />
     <ClCompile Include="BlurEffect.cpp" />
     <ClCompile Include="ButtonGlowHandler.cpp" />
     <ClCompile Include="CustomBlurEffect.cpp" />
-    <ClCompile Include="GlassEffect.cpp" />
-    <ClCompile Include="VisualManager.cpp" />
-    <ClCompile Include="CustomMsstyleLoader.cpp" />
+    <ClCompile Include="CustomThemeAtlasLoader.cpp" />
+    <ClCompile Include="GlassCoverageSet.cpp" />
+    <ClCompile Include="GlassRealizer.cpp" />
+    <ClCompile Include="GlassFrameHandler.cpp" />
+    <ClCompile Include="GlassKernel.cpp" />
+    <ClCompile Include="GlassSafetyZone.cpp" />
     <ClCompile Include="GlassRenderer.cpp" />
-    <ClCompile Include="ServiceApi.cpp" />
+    <ClCompile Include="GlassSafetyZoneLayer.cpp" />
+    <ClCompile Include="module.cpp" />
+    <ClCompile Include="GlassService.cpp" />
     <ClCompile Include="CaptionTextHandler.cpp" />
-    <ClCompile Include="ConfigurationFramework.cpp" />
+    <ClCompile Include="GlassEngine.cpp" />
     <ClCompile Include="dllmain.cpp" />
-    <ClCompile Include="GeometryRecorder.cpp" />
-    <ClCompile Include="GlassFramework.cpp" />
+    <ClCompile Include="GlassReflectionHandler.cpp" />
     <ClCompile Include="HookHelper.cpp" />
     <ClCompile Include="OpenGlass.cpp" />
     <ClCompile Include="pch.cpp">
@@ -240,9 +310,14 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="ReflectionRealizer.cpp" />
     <ClCompile Include="SymbolParser.cpp" />
+    <ClCompile Include="TaskHandler.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="AeroColorizationEffect.cso" />
+    <None Include="Common.hlsli" />
+    <None Include="module.def" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
@@ -250,6 +325,22 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="reflection.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="AeroColorizationEffect.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</CompileD2DCustomEffect>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</CompileD2DCustomEffect>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</CompileD2DCustomEffect>
+      <CompileD2DCustomEffect Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</CompileD2DCustomEffect>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">AeroColorizationEffect</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">AeroColorizationEffect</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AeroColorizationEffect</EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AeroColorizationEffect</EntryPointName>
+    </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

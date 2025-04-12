@@ -1,4 +1,4 @@
-﻿#include "pch.h"
+#include "pch.h"
 #include "HookHelper.hpp"
 #include "detours.h"
 
@@ -11,78 +11,22 @@ namespace OpenGlass::HookHelper::Detours
 	HRESULT End(bool commit = true);
 }
 
-HookHelper::ThreadSnapshot::ThreadSnapshot()
+void HookHelper::PatchInstructions(void* memory, const UCHAR* data, size_t length)
 {
-	if (PssCaptureSnapshot(GetCurrentProcess(), PSS_CAPTURE_THREADS, 0, &m_snapshot))
-	{
-		return;
-	}
-}
-
-HookHelper::ThreadSnapshot::~ThreadSnapshot()
-{
-	if (m_snapshot)
-	{
-		PssFreeSnapshot(GetCurrentProcess(), m_snapshot);
-		m_snapshot = nullptr;
-	}
-}
-
-void HookHelper::ThreadSnapshot::Walk(const std::function<bool(const PSS_THREAD_ENTRY&)>&& callback)
-{
-	HPSSWALK walk{ nullptr };
-	if (PssWalkMarkerCreate(nullptr, &walk))
-	{
-		return;
-	}
-	auto cleanUp = [&]
-	{
-		if (walk)
-		{
-			PssWalkMarkerFree(walk);
-			walk = nullptr;
-		}
-	};
-
-	PSS_THREAD_ENTRY threadEntry{};
-	while (!PssWalkSnapshot(m_snapshot, PSS_WALK_THREADS, walk, &threadEntry, sizeof(threadEntry)))
-	{
-		if (threadEntry.ThreadId != GetCurrentThreadId())
-		{
-			if (!callback(threadEntry))
-			{
-				return;
-			}
-		}
-	}
-}
-
-PVOID HookHelper::WritePointerInternal(PVOID* memoryAddress, PVOID value) try
-{
-	THROW_HR_IF_NULL(E_INVALIDARG, memoryAddress);
-
-	DWORD oldProtect{0};
-	THROW_IF_WIN32_BOOL_FALSE(
-		VirtualProtect(
-			memoryAddress,
-			sizeof(value),
-			PAGE_EXECUTE_READWRITE,
-			&oldProtect
-		)
+	auto unprotectedScope = HookHelper::unprotect(memory, length);
+	memcpy_s(
+		memory,
+		length,
+		data,
+		length
 	);
-	PVOID oldValue{ InterlockedExchangePointer(memoryAddress, value) };
-	THROW_IF_WIN32_BOOL_FALSE(
-		VirtualProtect(
-			memoryAddress,
-			sizeof(value),
-			oldProtect,
-			&oldProtect
-		)
-	);
-
-	return oldValue;
+	THROW_IF_WIN32_BOOL_FALSE(FlushInstructionCache(GetCurrentProcess(), memory, length));
 }
-catch (...) { return nullptr; }
+PVOID HookHelper::WritePointerInternal(PVOID* pointerAddress, PVOID value)
+{
+	auto unprotectedScope = HookHelper::unprotect(pointerAddress, sizeof(value));
+	return InterlockedExchangePointer(pointerAddress, value);
+}
 
 HMODULE HookHelper::GetProcessModule(HANDLE processHandle, std::wstring_view dllPath)
 {
@@ -93,7 +37,7 @@ HMODULE HookHelper::GetProcessModule(HANDLE processHandle, std::wstring_view dll
 		return targetModule;
 	}
 	DWORD moduleCount{ bytesNeeded / sizeof(HMODULE) };
-	auto moduleList = std::make_unique<HMODULE[]>(moduleCount);
+	auto moduleList = std::make_unique_for_overwrite<HMODULE[]>(moduleCount);
 	if (!EnumProcessModules(processHandle, moduleList.get(), bytesNeeded, &bytesNeeded))
 	{
 		return targetModule;
@@ -102,10 +46,13 @@ HMODULE HookHelper::GetProcessModule(HANDLE processHandle, std::wstring_view dll
 	for (DWORD i = 0; i < moduleCount; i++)
 	{
 		HMODULE moduleHandle{ moduleList[i] };
-		WCHAR modulePath[MAX_PATH + 1];
-		GetModuleFileNameExW(processHandle, moduleHandle, modulePath, MAX_PATH);
+		std::wstring modulePath{};
+		if (FAILED((wil::GetModuleFileNameExW<std::wstring, MAX_PATH>(processHandle, moduleHandle, modulePath))))
+		{
+			continue;
+		}
 
-		if (!_wcsicmp(modulePath, dllPath.data()))
+		if (!_wcsicmp(modulePath.data(), dllPath.data()))
 		{
 			targetModule = moduleHandle;
 			break;
@@ -369,6 +316,7 @@ HRESULT HookHelper::Detours::Begin()
 	DetourSetIgnoreTooSmall(TRUE);
 	RETURN_IF_WIN32_ERROR(DetourTransactionBegin());
 	RETURN_IF_WIN32_ERROR(DetourUpdateThread(GetCurrentThread()));
+
 	return S_OK;
 }
 
@@ -377,49 +325,27 @@ HRESULT HookHelper::Detours::End(bool commit)
 	return (commit ? HRESULT_FROM_WIN32(DetourTransactionCommit()) : HRESULT_FROM_WIN32(DetourTransactionAbort()));
 }
 
-HRESULT HookHelper::Detours::Write(const std::function<void()>&& callback) try
+HRESULT HookHelper::Detours::Write(const std::function<void()>&& callback)
 {
-	HRESULT hr{ HookHelper::Detours::Begin() };
-	if (FAILED(hr))
+	try
 	{
-		return hr;
+		THROW_IF_FAILED(Begin());
+
+		callback();
+
+		THROW_IF_FAILED(End(true));
 	}
+	CATCH_RETURN()
 
-	callback();
-
-	return HookHelper::Detours::End(true);
-}
-catch (...)
-{
-	LOG_CAUGHT_EXCEPTION();
-	LOG_IF_FAILED(HookHelper::Detours::End(false));
-	return wil::ResultFromCaughtException();
-}
-
-void HookHelper::Detours::Attach(std::string_view dllName, std::string_view funcName, PVOID* realFuncAddr, PVOID hookFuncAddr)
-{
-	THROW_HR_IF_NULL(E_INVALIDARG, realFuncAddr);
-	THROW_HR_IF_NULL(E_INVALIDARG, *realFuncAddr);
-	*realFuncAddr = DetourFindFunction(dllName.data(), funcName.data());
-	THROW_LAST_ERROR_IF_NULL(*realFuncAddr);
-
-	Attach(realFuncAddr, hookFuncAddr);
+	return S_OK;
 }
 
 void HookHelper::Detours::Attach(PVOID* realFuncAddr, PVOID hookFuncAddr)
 {
-	THROW_HR_IF_NULL(E_INVALIDARG, realFuncAddr);
-	THROW_HR_IF_NULL(E_INVALIDARG, *realFuncAddr);
-	THROW_HR_IF_NULL(E_INVALIDARG, hookFuncAddr);
-
 	THROW_IF_WIN32_ERROR(DetourAttach(realFuncAddr, hookFuncAddr));
 }
 
 void HookHelper::Detours::Detach(PVOID* realFuncAddr, PVOID hookFuncAddr)
 {
-	THROW_HR_IF_NULL(E_INVALIDARG, realFuncAddr);
-	THROW_HR_IF_NULL(E_INVALIDARG, *realFuncAddr);
-	THROW_HR_IF_NULL(E_INVALIDARG, hookFuncAddr);
-
 	THROW_IF_WIN32_ERROR(DetourDetach(realFuncAddr, hookFuncAddr));
 }

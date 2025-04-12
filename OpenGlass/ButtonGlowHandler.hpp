@@ -1,11 +1,10 @@
 #pragma once
 #include "framework.hpp"
-#include "ConfigurationFramework.hpp"
+#include "GlassEngine.hpp"
 
 namespace OpenGlass::ButtonGlowHandler
 {
-	void UpdateConfiguration(ConfigurationFramework::UpdateType type);
-
-	HRESULT Startup();
+	void Update(GlassEngine::UpdateType type);
+	void Startup();
 	void Shutdown();
 }

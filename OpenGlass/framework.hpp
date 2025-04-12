@@ -1,7 +1,9 @@
-﻿#pragma once
+#pragma once
 
 #define WIN32_LEAN_AND_MEAN
-
+#ifndef NOMINMAX                      
+	#define NOMINMAX
+#endif
 #include <windows.h>
 #include <windowsx.h>
 #include <winternl.h>
@@ -14,11 +16,16 @@
 #include <Imagehlp.h>
 #include <TlHelp32.h>
 #include <delayimp.h>
+#include <powrprof.h>
 
-#include <appmodel.h>
+#include <combaseapi.h>
 #include <oleacc.h>
-#include <taskschd.h>
+#include <ObjIdl.h>
+#include <comdef.h>
 #include <comutil.h>
+#include <initguid.h>
+#include <appmodel.h>
+#include <taskschd.h>
 #include <shellapi.h>
 #include <ShlObj.h>
 #include <Shlwapi.h>
@@ -32,12 +39,15 @@
 #include <vsstyle.h>
 #include <vssym32.h>
 
-#include <dxgi.h>
+#include <dxgi1_6.h>
 #include <d2d1_3.h>
-#include <d3d11.h>
+#include <d2d1effectauthor_1.h>
+#include <d2d1effecthelpers.h>
+#include <d3d11_4.h>
 #include <dcomp.h>
-#include <dwrite.h>
+#include <dwrite_3.h>
 
+#pragma comment(lib, "powrprof.lib")
 #pragma comment(lib, "version.lib")
 
 #pragma comment(lib, "delayimp.lib")

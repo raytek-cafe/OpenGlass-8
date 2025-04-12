@@ -1,12 +1,13 @@
-﻿#pragma once
+#pragma once
 #include "framework.hpp"
 #include "cpprt.hpp"
-#include "ConfigurationFramework.hpp"
+#include "GlassEngine.hpp"
 
 namespace OpenGlass::GlassRenderer
-{
-	void UpdateConfiguration(ConfigurationFramework::UpdateType type);
+{	
+	bool ControlBlurRendering(bool disable);
 
-	HRESULT Startup();
+	void Update(GlassEngine::UpdateType type);
+	void Startup();
 	void Shutdown();
 }

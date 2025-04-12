@@ -1,48 +1,49 @@
-﻿#pragma once
+#pragma once
 #include "framework.hpp"
 #include "cpprt.hpp"
 #include "wil.hpp"
 
 namespace OpenGlass::HookHelper
 {
-	class ThreadSnapshot
+	struct pss_snapshot
 	{
-		HPSS m_snapshot{ nullptr };
-	public:
-		ThreadSnapshot(ThreadSnapshot&&) = delete;
-		ThreadSnapshot(const ThreadSnapshot&) = delete;
-		ThreadSnapshot();
-		~ThreadSnapshot();
-		void Walk(const std::function<bool(const PSS_THREAD_ENTRY&)>&& callback);
-	};
-	struct ThreadSafeScope : ThreadSnapshot
-	{
-		ThreadSafeScope(ThreadSafeScope&&) = delete;
-		ThreadSafeScope(const ThreadSafeScope&) = delete;
-		ThreadSafeScope()
+		static void close(HPSS snapshot) WI_NOEXCEPT
 		{
-			Walk([](const PSS_THREAD_ENTRY& threadEntry)
-			{ 
-				LOG_LAST_ERROR_IF(
-					SuspendThread(wil::unique_handle{ OpenThread(THREAD_SUSPEND_RESUME, FALSE, threadEntry.ThreadId) }.get()) == -1
-				);
-				return true;
-			});
-		}
-		~ThreadSafeScope()
-		{
-			Walk([](const PSS_THREAD_ENTRY& threadEntry)
-			{
-				LOG_LAST_ERROR_IF(
-					ResumeThread(wil::unique_handle{ OpenThread(THREAD_SUSPEND_RESUME, FALSE, threadEntry.ThreadId) }.get()) == -1
-				);
-				return true;
-			});
+			::PssFreeSnapshot(GetCurrentProcess(), snapshot);
 		}
 	};
+	typedef wil::unique_any<HPSS, decltype(&pss_snapshot::close), pss_snapshot::close, wil::details::pointer_access_all> unique_pss_snapshot_local;
+	typedef wil::unique_any<HPSSWALK, decltype(&::PssWalkMarkerFree), ::PssWalkMarkerFree, wil::details::pointer_access_all> unique_pss_walk_marker;
 
-	PVOID WritePointerInternal(PVOID* memoryAddress, PVOID value);
+	FORCEINLINE auto unprotect(PVOID address, SIZE_T size)
+	{
+		THROW_HR_IF_NULL(E_INVALIDARG, address);
+		DWORD oldProtect{ 0 };
+		THROW_IF_WIN32_BOOL_FALSE(
+			VirtualProtect(
+				address,
+				size,
+				PAGE_EXECUTE_READWRITE,
+				&oldProtect
+			)
+		);
+		return wil::scope_exit([=]
+		{
+			auto unused = 0ul;
+			THROW_IF_WIN32_BOOL_FALSE(
+				VirtualProtect(
+					address,
+					size,
+					oldProtect,
+					&unused
+				)
+			);
+		});
+	}
+	void PatchInstructions(void* memory, const UCHAR* data, size_t length);
+	PVOID WritePointerInternal(PVOID* pointerAddress, PVOID value);
 	template <typename T1, typename T2> FORCEINLINE T2 WritePointer(T1 address, T2 value) { return reinterpret_cast<T2>(WritePointerInternal(reinterpret_cast<PVOID*>(address), reinterpret_cast<PVOID>(value))); }
+	
 	HMODULE GetProcessModule(HANDLE processHandle, std::wstring_view dllPath);
 
 	void WalkIAT(PVOID baseAddress, std::string_view dllName, std::function<bool(PVOID* functionAddress, LPCSTR functionNameOrOrdinal, bool importedByName)> callback);
@@ -55,9 +56,9 @@ namespace OpenGlass::HookHelper
 	void ResolveDelayloadIAT(const std::pair<HMODULE*, PVOID*>& info, PVOID baseAddress, std::string_view dllName, LPCSTR targetFunctionNameOrOrdinal);
 
 	template <typename T=PVOID>
-	FORCEINLINE T* vtbl_of(void* This)
+	FORCEINLINE T* vftbl_of(const void* This)
 	{
-		return reinterpret_cast<T*>(*reinterpret_cast<PVOID*>(This));
+		return reinterpret_cast<T*>(*reinterpret_cast<PVOID*>(const_cast<void*>(This)));
 	}
 
 	struct OffsetStorage
@@ -79,7 +80,6 @@ namespace OpenGlass::HookHelper
 		// Call single or multiple Attach/Detach in the callback
 		HRESULT Write(const std::function<void()>&& callback);
 		// Install an inline hook using Detours
-		void Attach(std::string_view dllName, std::string_view funcName, PVOID* realFuncAddr, PVOID hookFuncAddr) noexcept(false);
 		void Attach(PVOID* realFuncAddr, PVOID hookFuncAddr) noexcept(false);
 		// Uninstall an inline hook using Detours
 		void Detach(PVOID* realFuncAddr, PVOID hookFuncAddr) noexcept(false);

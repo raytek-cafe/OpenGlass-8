@@ -2,6 +2,10 @@
 # OpenGlass
 A replica of the dead software glass8, also known as the upstream project of [DWMBlurGlass](https://github.com/Maplespe/DWMBlurGlass).  
 
+> [!IMPORTANT]  
+> The information on this page is partially outdated
+
+
 This branch does not rely on `dcomp` and `Windows.UI.Composition` and instead uses raw Direct2D to leverage better performance than the master branch, however due to it's early nature you may encounter more bugs and crashes. Currently this branch ONLY supports Windows 10 2004-22H2.
 > [!IMPORTANT]  
 > This software is intended for advanced users only. If you are a beginner and you do not have deeper knowledge of Windows (such as registry editing etc.) you should not install this software.  

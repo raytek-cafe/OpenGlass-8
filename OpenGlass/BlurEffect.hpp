@@ -3,44 +3,32 @@
 
 namespace OpenGlass
 {
-	// [Guid("78E29503-85D2-4250-87BD-95572A988899")]
-	DECLARE_INTERFACE_IID_(IBlurEffect, IUnknown, "78E29503-85D2-4250-87BD-95572A988899")
+	struct BlurParams : CustomBlurParams
 	{
-		virtual HRESULT STDMETHODCALLTYPE SetInput(
-			ID2D1DeviceContext* context,
-			ID2D1Image* inputImage,
-			const D2D1_RECT_F& imageRectangle,
-			const D2D1_RECT_F& imageBounds,
-			float blurAmount,
-			const D2D1_COLOR_F& color,
-			float opacity
-		) = 0;
-		virtual ID2D1Image* STDMETHODCALLTYPE GetOutput() const = 0;
-		virtual void STDMETHODCALLTYPE Reset() = 0;
+		D2D1_COLOR_F color;
+		float colorBalance;
 	};
 
-	class CBlurEffect : public winrt::implements<CBlurEffect, IBlurEffect>
+	class CBlurEffect : public winrt::implements<CBlurEffect, IRenderingEffect, winrt::non_agile, winrt::no_weak_ref>
 	{
 		bool m_initialized{ false };
 
-		winrt::com_ptr<ICustomBlurEffect> m_customBlurEffect{ nullptr };
+		winrt::com_ptr<IRenderingEffect> m_customBlurEffect{};
 
-		winrt::com_ptr<ID2D1Effect> m_compositeEffect{ nullptr };
-		winrt::com_ptr<ID2D1Effect> m_colorEffect{ nullptr };
-		winrt::com_ptr<ID2D1Image> m_effectOutput{ nullptr };
+		winrt::com_ptr<ID2D1Effect> m_compositeEffect{};
+		winrt::com_ptr<ID2D1Effect> m_colorEffect{};
+		winrt::com_ptr<ID2D1Effect> m_outputEffect{};
 
 		HRESULT Initialize(ID2D1DeviceContext* context);
 	public:
-		HRESULT STDMETHODCALLTYPE SetInput(
+		HRESULT STDMETHODCALLTYPE Build(
 			ID2D1DeviceContext* context,
 			ID2D1Image* inputImage,
 			const D2D1_RECT_F& imageRectangle,
 			const D2D1_RECT_F& imageBounds,
-			float blurAmount,
-			const D2D1_COLOR_F& color,
-			float opacity
+			const void* additionalParams
 		) override;
-		ID2D1Image* STDMETHODCALLTYPE GetOutput() const override { return m_effectOutput.get(); }
+		void STDMETHODCALLTYPE GetOutput(ID2D1Image** output) const override;
 		void STDMETHODCALLTYPE Reset() override;
 	};
 }

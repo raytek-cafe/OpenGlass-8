@@ -1,20 +1,13 @@
-﻿#pragma once
+#pragma once
 #include "pch.h"
 #include "HookHelper.hpp"
 
 namespace OpenGlass
 {
-	enum class SymbolDownloaderStatus : UCHAR
-	{
-		None,
-		Start,
-		Downloading,
-		OK
-	};
-	using SymbolDownloaderCallback = std::function<void(SymbolDownloaderStatus status, std::wstring_view text)>;
-	using SymbolParserCallback = std::function<bool(std::string_view functionName, std::string_view fullyUnDecoratedFunctionName, const HookHelper::OffsetStorage& offset, const PSYMBOL_INFO originalSymInfo)>;
+	using SymbolEventCallback = bool(PIMAGEHLP_CBA_EVENTW event);
+	using SymbolParserCallback = bool(PSYMBOL_INFO info, ULONG size);
 
-	class SymbolParser
+	class CSymbolParser
 	{
 		static HMODULE WINAPI MyLoadLibraryExW(
 			LPCWSTR lpLibFileName,
@@ -33,20 +26,12 @@ namespace OpenGlass
 			ULONG64 UserContext
 		);
 
-		bool m_downloading{ false };
-		HRESULT m_lastErr{ S_OK };
 		PVOID m_LoadLibraryExW_Org{ nullptr };
-		SymbolDownloaderCallback m_downloadNotifyCallback{ nullptr };
-		std::wstring m_currentModule{};
+		SymbolEventCallback* m_eventCallback{ nullptr };
 	public:
-		SymbolParser();
-		~SymbolParser() noexcept;
+		CSymbolParser(SymbolEventCallback* callback);
+		~CSymbolParser() noexcept;
 
-		operator HRESULT() const { return m_lastErr; }
-		HRESULT Walk(
-			std::wstring_view dllName, 
-			const SymbolDownloaderCallback& downloadNotifyCallback,
-			const SymbolParserCallback& enumCallback
-		);
+		HRESULT LoadAndParse(PCWSTR moduleName, SymbolParserCallback* callback);
 	};
 }

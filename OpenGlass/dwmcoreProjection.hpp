@@ -1,169 +1,187 @@
-﻿#pragma once
+#pragma once
 #include "framework.hpp"
 #include "cpprt.hpp"
-#include "Utils.hpp"
-#include "HookHelper.hpp"
-#include "OSHelper.hpp"
+#include "ProjectionHelper.hpp"
+#include "D2DPrivates.hpp"
+#include "DWM.hpp"
 
 namespace OpenGlass::dwmcore
 {
-	inline HMODULE g_moduleHandle{ GetModuleHandleW(L"dwmcore.dll") };
-	inline std::unordered_map<std::string, PVOID> g_symbolMap{};
-	template <typename T>
-	FORCEINLINE T GetAddressFromSymbolMap(std::string_view functionName)
-	{
-		auto it = g_symbolMap.find(std::string{ functionName });
-		return it != g_symbolMap.end() ? Utils::cast_pointer<T>(it->second) : nullptr;
-	}
-	template <typename T>
-	FORCEINLINE void GetAddressFromSymbolMap(std::string_view functionName, T& target)
-	{
-		auto it = g_symbolMap.find(std::string{ functionName });
-		if (it != g_symbolMap.end()) [[likely]]
-		{
-			target = Utils::cast_pointer<T>(it->second);
-		}
-#ifdef _DEBUG
-		else
-		{
-			OutputDebugStringA(std::format("{} - symbol missing for {}\n", __FUNCTION__, functionName.data()).c_str());
-		}
-#endif // _DEBUG
-	}
+	using namespace DWM; 
+	inline const auto g_moduleHandle{ GetModuleHandleW(L"dwmcore.dll") };
+	inline const auto g_buildNumber{ Util::GetModuleBuildNumber(g_moduleHandle) };
 
-	struct CResource : IUnknown
+	struct CResource : IUnknown {};
+	struct IMILResource
 	{
-		UINT STDMETHODCALLTYPE GetOwningProcessId()
+		virtual ULONG STDMETHODCALLTYPE AddRef(void) = 0;
+		virtual ULONG STDMETHODCALLTYPE Release(void) = 0;
+	};
+	struct CResourceTable : IMILResource {};
+	struct CChannelContext : IMILResource
+	{
+		CResourceTable* GetResourceTable() const
 		{
-			DEFINE_INVOKER(CResource::GetOwningProcessId);
-			return INVOKE_MEMBERFUNCTION();
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				return reinterpret_cast<CResourceTable* const*>(this)[3];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				return reinterpret_cast<CResourceTable* const*>(this)[4];
+			}
+
+			return reinterpret_cast<CResourceTable* const*>(this)[6];
 		}
 	};
-	struct CChannel
+	struct CComposition : IMILResource {};
+	struct CGlobalComposition : CComposition {};
+	struct CChannel : IDwmChannel
 	{
-		HRESULT STDMETHODCALLTYPE MatrixTransformUpdate(UINT handleIndex, MilMatrix3x2D* matrix)
+		IDwmChannelProvider* GetProvider() const
 		{
-			DEFINE_INVOKER(CChannel::MatrixTransformUpdate);
-			return INVOKE_MEMBERFUNCTION(handleIndex, matrix);
+			return reinterpret_cast<IDwmChannelProvider* const*>(this)[8];
 		}
-		HRESULT STDMETHODCALLTYPE CombinedGeometryUpdate(UINT combinedGeometryHandleIndex, UINT combineMode, UINT geometryHandleIndex1, UINT geometryHandleIndex2)
+
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE MatrixTransformUpdate(
+			UINT handleId,
+			MilMatrix3x2D* matrix
+		)
 		{
-			DEFINE_INVOKER(CChannel::CombinedGeometryUpdate);
-			return INVOKE_MEMBERFUNCTION(combinedGeometryHandleIndex, combineMode, geometryHandleIndex1, geometryHandleIndex2);
+			return HANDLE_PROJECTION_FUNCTION(CChannel::MatrixTransformUpdate, handleId, matrix);
+		}
+	};
+
+	struct CMILMatrix;
+	struct COcclusionContext;
+	struct CRegion;
+	struct CVisual;
+	struct CDirtyRegion;
+	struct CVisualTree : CResource {};
+	struct CDirtyRegion;
+	struct CDesktopTree : CVisualTree 
+	{
+		inline static PVOID* vftable{ nullptr };
+	};
+	struct CVisual : CResource 
+	{
+		DECLSPEC_PROJECTION CDesktopTree* STDMETHODCALLTYPE GetDesktopTree() const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CVisual::GetDesktopTree);
+		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE GetWorldTransform(
+			const CVisualTree* tree,
+			UINT walkReason,
+			CMILMatrix* matrix,
+			bool* unknown1,
+			CMILMatrix* unknown2
+		) const
+		{
+			return HANDLE_PROJECTION_FUNCTION(
+				CVisual::GetWorldTransform,
+				tree,
+				walkReason,
+				matrix,
+				unknown1,
+				unknown2
+			);
+		}
+	};
+	struct CFloatResource : CResource {};
+
+	struct CMILMatrix : D2D1_MATRIX_4X4_F
+	{
+		int reserved;
+		inline static const CMILMatrix* Identity{ nullptr };
+
+		DECLSPEC_PROJECTION void STDMETHODCALLTYPE Multiply(const CMILMatrix& matrix) const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CMILMatrix::Multiply, matrix);
+		}
+		D2D1_MATRIX_3X2_F GetD2DMatrix() const
+		{
+			return D2D1::Matrix3x2F(
+				_11, _12,
+				_21, _22,
+				_41, _42
+			);
+		}
+		D2D1_MATRIX_4X4_F GetD3DMatrix() const
+		{
+			return D2D1::Matrix4x4F(
+				_11, _12, _13, _14,
+				_21, _22, _23, _24,
+				_31, _32, _33, _34,
+				_41, _42, _43, _44
+			);
+		}
+	};
+	struct CMatrixStack
+	{
+		DECLSPEC_PROJECTION const CMILMatrix* STDMETHODCALLTYPE GetTopByReference() const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CMatrixStack::GetTopByReference);
+		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE Top(CMILMatrix* matrix) const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CMatrixStack::Top, matrix);
 		}
 	};
 
 	struct CZOrderedRect
 	{
-		D2D1_RECT_F transformedRect;
-		int depth;
-		D2D1_RECT_F originalRect;
+		D2D1_RECT_F m_transformedRect;
+		int m_depth;
+		D2D1_RECT_F m_originalRect;
 
-		HRESULT STDMETHODCALLTYPE UpdateDeviceRect(const MilMatrix3x2D* matrix)
+		void STDMETHODCALLTYPE UpdateDeviceRect(const CMILMatrix* matrix)
 		{
-			DEFINE_INVOKER(CZOrderedRect::UpdateDeviceRect);
-			return INVOKE_MEMBERFUNCTION(matrix);
-		}
-	};
-
-	template <typename T>
-	struct DynArray
-	{
-		T* data;
-		T* buffer;
-		UINT bufferCapacity;
-		UINT capacity;
-		UINT size;
-	};
-	template <typename T>
-	struct MyDynArrayImpl : DynArray<T>
-	{
-		[[nodiscard]] void* operator new[](
-			size_t size
-		)
-		{
-			auto memory = HeapAlloc(OpenGlass::Utils::g_processHeap, 0, size);
-			THROW_LAST_ERROR_IF_NULL(memory);
-			return memory;
-		}
-		void operator delete[](
-			void* ptr
-		) noexcept
-		{
-			FAIL_FAST_IF_NULL(ptr);
-			HeapFree(OpenGlass::Utils::g_processHeap, 0, ptr);
-			ptr = nullptr;
-		}
-
-		MyDynArrayImpl()
-		{
-			this->capacity = 8;
-			this->data = new T[this->capacity];
-			this->size = 0;
-		}
-		~MyDynArrayImpl()
-		{
-			delete[] this->data;
-			this->data = nullptr;
-			this->capacity = this->size = 0;
-		}
-
-		void Clear()
-		{
-			if (this->size != 0)
+			if (matrix)
 			{
-				this->capacity = 8;
-				delete[] this->data;
-				this->data = new T[this->capacity];
-				this->size = 0;
-			}
-		}
-		void Add(const T& object)
-		{
-			auto newSize = this->size + 1u;
-			if (newSize < this->size)
-			{
-				FAIL_FAST_HR(static_cast<HRESULT>(0x80070216ul));
+				m_transformedRect = RectF::TransformRect(m_originalRect, matrix->GetD2DMatrix());
 			}
 			else
 			{
-				auto bufferSize = this->size * sizeof(T);
-				if (newSize > this->capacity)
-				{
-					auto tmp = std::unique_ptr<T[]>(this->data);
-
-					this->capacity *= 2;
-					this->data = new T[this->capacity];
-					memcpy_s(this->data, bufferSize, tmp.get(), bufferSize);
-				}
-
-				*reinterpret_cast<T*>(reinterpret_cast<ULONG_PTR>(this->data) + bufferSize) = object;
-				this->size = newSize;
+				m_transformedRect = m_originalRect;
 			}
+
+			m_transformedRect.left = std::ceil(m_transformedRect.left);
+			if (std::fabs(m_transformedRect.top) < 8388608.f)
+			{
+				m_transformedRect.top = std::ceil(m_transformedRect.top);
+			}
+			if (std::fabs(m_transformedRect.right) < 8388608.f)
+			{
+				m_transformedRect.right = std::floor(m_transformedRect.right);
+			}
+			if (std::fabs(m_transformedRect.bottom) < 8388608.f)
+			{
+				m_transformedRect.bottom = std::floor(m_transformedRect.bottom);
+			}
+		}
+		CZOrderedRect() = default;
+		CZOrderedRect(const D2D1_RECT_F& rect, int depth, const CMILMatrix* matrix) : m_depth{ depth }, m_originalRect{ rect }
+		{
+			UpdateDeviceRect(matrix);
 		}
 	};
 	struct CArrayBasedCoverageSet : CResource
 	{
-		HRESULT STDMETHODCALLTYPE Add(
-			const D2D1_RECT_F& lprc,
-			int depth,
-			const MilMatrix3x2D* matrix
-		)
-		{
-			DEFINE_INVOKER(CArrayBasedCoverageSet::Add);
-			return INVOKE_MEMBERFUNCTION(lprc, depth, matrix);
-		}
-
 		DynArray<CZOrderedRect>* GetAntiOccluderArray() const
 		{
 			DynArray<CZOrderedRect>* array{ nullptr };
-			if (os::buildNumber < os::build_w10_2004)
+
+			if (g_buildNumber < os::build_w10_2004)
 			{
 				array = reinterpret_cast<DynArray<CZOrderedRect>*>(const_cast<CArrayBasedCoverageSet*>(this + 52));
 			}
-			else
+			else if (g_buildNumber < os::build_w11_21h2)
 			{
 				array = reinterpret_cast<DynArray<CZOrderedRect>*>(const_cast<CArrayBasedCoverageSet*>(this + 49));
+			}
+			else
+			{
+				array = nullptr;
 			}
 
 			return array;
@@ -172,47 +190,201 @@ namespace OpenGlass::dwmcore
 		{
 			return reinterpret_cast<DynArray<CZOrderedRect>*>(const_cast<CArrayBasedCoverageSet*>(this));
 		}
-	};
-	struct CVisual;
-	struct CVisualTree : CResource 
-	{
-		CVisual* GetVisual() const
+
+		COcclusionContext* GetOcclusionContext() const
 		{
-			return reinterpret_cast<CVisual* const*>(this)[7];
+			COcclusionContext* context{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				context = reinterpret_cast<COcclusionContext* const>(reinterpret_cast<ULONG_PTR>(this) - 408);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				context = reinterpret_cast<COcclusionContext* const>(reinterpret_cast<ULONG_PTR>(this) - 448);
+			}
+			else
+			{
+				context = reinterpret_cast<COcclusionContext* const>(reinterpret_cast<ULONG_PTR>(this) - 568);
+			}
+
+			return context;
 		}
-	};
-	struct CVisual : CResource
-	{
-		HRESULT STDMETHODCALLTYPE GetVisualTree(CVisualTree** visualTree, bool value) const
+
+		bool STDMETHODCALLTYPE IsCovered(
+			const D2D1_RECT_F& coverage,
+			int depth
+		) const
 		{
-			DEFINE_INVOKER(CVisual::GetVisualTree);
-			return INVOKE_MEMBERFUNCTION(visualTree, value);
-		}
-		const D2D1_RECT_F& STDMETHODCALLTYPE GetBounds(CVisualTree* visualTree) const
-		{
-			DEFINE_INVOKER(CVisual::GetBounds);
-			return INVOKE_MEMBERFUNCTION(visualTree);
-		}
-		HWND STDMETHODCALLTYPE GetHwnd() const
-		{
-			DEFINE_INVOKER(CVisual::GetHwnd);
-			return INVOKE_MEMBERFUNCTION();
-		}
-		HWND STDMETHODCALLTYPE GetTopLevelWindow() const
-		{
-			DEFINE_INVOKER(CVisual::GetTopLevelWindow);
-			return INVOKE_MEMBERFUNCTION();
+			bool antiOccluderExisted{ false };
+			int antiOccluderDepth{};
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				for (const auto& zorderedRect : GetAntiOccluderArray()->views())
+				{
+					if (zorderedRect.m_depth >= depth)
+					{
+						break;
+					}
+
+					if (
+						!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
+						std::fabs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
+
+						RectF::DoesIntersectUnsafe(zorderedRect.m_transformedRect, coverage)
+					)
+					{
+						antiOccluderDepth = zorderedRect.m_depth;
+						antiOccluderExisted = true;
+						break;
+					}
+				}
+			}
+
+			auto actualCoverage = coverage;
+			for (const auto& zorderedRect : GetOccluderArray()->views())
+			{
+				if (zorderedRect.m_depth >= depth)
+				{
+					break;
+				}
+
+				if (
+					!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
+					(!antiOccluderExisted || zorderedRect.m_depth > antiOccluderDepth)
+				)
+				{
+					if (
+						zorderedRect.m_transformedRect.left <= actualCoverage.left &&
+						zorderedRect.m_transformedRect.right >= actualCoverage.right
+					)
+					{
+						if (actualCoverage.top >= zorderedRect.m_transformedRect.top)
+						{
+							if (zorderedRect.m_transformedRect.bottom >= actualCoverage.bottom)
+							{
+								return true;
+							}
+							if (zorderedRect.m_transformedRect.bottom > actualCoverage.top)
+							{
+								actualCoverage.top = zorderedRect.m_transformedRect.bottom;
+							}
+						}
+						else if (zorderedRect.m_transformedRect.bottom >= coverage.bottom && coverage.bottom > zorderedRect.m_transformedRect.top)
+						{
+							actualCoverage.bottom = zorderedRect.m_transformedRect.top;
+						}
+					}
+				}
+			}
+
+			return false;
 		}
 	};
 
-	typedef D2D1_MATRIX_5X4_F CMILMatrix;
-	struct CLegacyMilBrush : CResource {};
+	struct CRenderCommand
+	{
+		UINT type;
+	};
+	struct CDrawGeometryCommand : CRenderCommand
+	{
+		UINT brushIndex;
+		UINT geometryIndex;
+	};
+	struct CRenderDataBuilder : CResource {};
+	struct CRenderData : CResource
+	{
+		using CRenderDataResourceArray = DynArray<CResource*>;
+		CRenderDataResourceArray* GetResources() const
+		{
+			CRenderDataResourceArray* array{ nullptr };
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				array = reinterpret_cast<CRenderDataResourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 128);
+			}
+			else
+			{
+				array = reinterpret_cast<CRenderDataResourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 136);
+			}
+
+			return array;
+		}
+	};
+	struct CLegacyMilBrush : CResource 
+	{
+		CFloatResource* GetFloatResource() const
+		{
+			CFloatResource* resource{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[8];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[9];
+			}
+			else
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[10];
+			}
+
+			return resource;
+		}
+		float GetOpacityValue() const
+		{
+			float opacity{};
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				opacity = reinterpret_cast<float const*>(this)[14];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				opacity = reinterpret_cast<float const*>(this)[16];
+			}
+			else
+			{
+				opacity = reinterpret_cast<float const*>(this)[18];
+			}
+
+			return opacity;
+		}
+		DECLSPEC_PROJECTION static float STDMETHODCALLTYPE GetOpacity(float opacity, const CFloatResource* resource)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CLegacyMilBrush::GetOpacity, opacity, resource);
+		}
+	};
 	struct CSolidColorLegacyMilBrush : CLegacyMilBrush
 	{
+		DECLSPEC_PROJECTION bool STDMETHODCALLTYPE IsConstantOpaque() const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CSolidColorLegacyMilBrush::IsConstantOpaque);
+		}
+		float GetRealizedOpacity() const
+		{
+			return GetOpacity(GetOpacityValue(), GetFloatResource());
+		}
 		const D2D1_COLOR_F& GetRealizedColor() const
 		{
-			return *reinterpret_cast<D2D1_COLOR_F*>(reinterpret_cast<ULONG_PTR>(this) + 88);
+			D2D1_COLOR_F* color{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				color = reinterpret_cast<D2D1_COLOR_F*>(reinterpret_cast<ULONG_PTR>(this) + 88);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				color = reinterpret_cast<D2D1_COLOR_F*>(reinterpret_cast<ULONG_PTR>(this) + 96);
+			}
+			else
+			{
+				color = reinterpret_cast<D2D1_COLOR_F*>(reinterpret_cast<ULONG_PTR>(this) + 104);
+			}
+
+			return *color;
 		}
+		inline static PVOID* vftable{ nullptr };
 	};
 
 	struct CTransform : CResource {};
@@ -222,19 +394,137 @@ namespace OpenGlass::dwmcore
 		virtual UINT STDMETHODCALLTYPE GetType() const = 0;
 		virtual bool STDMETHODCALLTYPE IsEmpty() const = 0;
 		virtual HRESULT STDMETHODCALLTYPE GetD2DGeometry(const CMILMatrix* matrix, ID2D1Geometry** geometry) const = 0;
-		virtual HRESULT STDMETHODCALLTYPE GetTightBounds(D2D1_RECT_F* lprc, const CMILMatrix* matrix) const = 0;
-		virtual bool STDMETHODCALLTYPE IsRectangles(UINT* count) const = 0;
-		virtual bool STDMETHODCALLTYPE GetRectangles(D2D1_RECT_F* buffer, UINT count) const = 0;
-		virtual HRESULT STDMETHODCALLTYPE GetUnOccludedWorldShape(const D2D1_RECT_F* bounds, const CMILMatrix& matrix, CShape** shape) const = 0;
+
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CopyShape(
+			const CMILMatrix* matrix,
+			CShape** shape
+		) const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CShape::CopyShape, matrix, shape);
+		}
+
+		HRESULT STDMETHODCALLTYPE GetTightBounds(D2D1_RECT_F* lprc, const CMILMatrix* matrix) const
+		{
+			decltype(&CShape::GetTightBounds) vfptr{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[4]);
+			}
+			else
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[6]);
+			}
+
+			return std::invoke(
+				vfptr,
+				this, 
+				lprc, 
+				matrix
+			);
+		}
+		bool STDMETHODCALLTYPE IsRectangles(UINT* count) const
+		{
+			decltype(&CShape::IsRectangles) vfptr{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[5]);
+			}
+			else
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[8]);
+			}
+
+			return std::invoke(
+				vfptr,
+				this,
+				count
+			);
+		}
+		bool STDMETHODCALLTYPE GetRectangles(D2D1_RECT_F* buffer, UINT count) const
+		{
+			decltype(&CShape::GetRectangles) vfptr{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[6]);
+			}
+			else
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[10]);
+			}
+
+			return std::invoke(
+				vfptr,
+				this,
+				buffer,
+				count
+			);
+		}
+
+		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE Combine(
+			const CShape* shape1,
+			const CMILMatrix* matrix1,
+			const CShape* shape2,
+			const CMILMatrix* matrix2,
+			D2D1_COMBINE_MODE mode,
+			CShape** shape
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CShape::Combine, shape1, matrix1, shape2, matrix2, mode, shape);
+		}
+		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE BuildFromRectFs(
+			const D2D1_RECT_F& rect,
+			UINT unused,
+			CShape** shape
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CShape::BuildFromRectFs, rect, unused, shape);
+		}
 	};
+	struct CRegionShape : CShape {};
+	struct CRectanglesShape : CShape {};
 	struct CShapePtr
 	{
-		CShape* ptr;
-		bool notRef;
+		CShape* ptr{ nullptr };
+		bool notRef{ true };
 
+		CShapePtr() = default;
+		CShapePtr(const CShape* src) noexcept
+		{
+			Release();
+			ptr = const_cast<CShape*>(src);
+			notRef = false;
+		}
+		CShapePtr(CShapePtr&& src) noexcept
+		{
+			Release();
+			ptr = src.ptr;
+			notRef = src.notRef;
+			src.ptr = nullptr;
+		}
+
+		CShape* operator=(const CShape* src)
+		{
+			Release();
+			ptr = const_cast<CShape*>(src);
+			notRef = false;
+
+			return ptr;
+		}
 		CShape* operator->()
 		{
 			return ptr;
+		}
+		CShape* get() const
+		{
+			return ptr;
+		}
+		CShape** put()
+		{
+			Release();
+			return &ptr;
 		}
 		operator bool()
 		{
@@ -244,11 +534,14 @@ namespace OpenGlass::dwmcore
 		{
 			if (notRef && ptr)
 			{
-				(**reinterpret_cast<void(***)(CShape*, bool)>(ptr))(ptr, true);
+				std::invoke(
+					**reinterpret_cast<void(CShape::***)(BYTE)>(ptr),
+					ptr,
+					true
+				);
 			}
 
 			ptr = nullptr;
-			notRef = false;
 		}
 		~CShapePtr()
 		{
@@ -257,15 +550,18 @@ namespace OpenGlass::dwmcore
 	};
 	struct CGeometry : CResource 
 	{
-		HRESULT STDMETHODCALLTYPE GetShapeData(const D2D1_SIZE_F* size, CShapePtr* shape)
+		DECLSPEC_PROJECTION	HRESULT STDMETHODCALLTYPE GetShapeData(
+			const D2D1_SIZE_F* size,
+			CShapePtr* shape
+		)
 		{
-			DEFINE_INVOKER(CGeometry::GetShapeData);
-			return INVOKE_MEMBERFUNCTION(size, shape);
+			return HANDLE_PROJECTION_FUNCTION(CGeometry::GetShapeData, size, shape);
 		}
 	};
 	struct CGeometry2D : CGeometry {};
 	struct CImageSource : CResource {};
 	struct CDrawingContext;
+	struct COcclusionContext;
 	struct IDrawingContext
 	{
 		virtual HRESULT STDMETHODCALLTYPE Clear(const D2D1_COLOR_F& color) = 0;
@@ -288,7 +584,7 @@ namespace OpenGlass::dwmcore
 		{
 			CDrawingContext* value{ nullptr };
 
-			if (os::buildNumber < os::build_w10_2004)
+			if (g_buildNumber < os::build_w10_2004)
 			{
 				value = reinterpret_cast<CDrawingContext*>(reinterpret_cast<ULONG_PTR>(this));
 			}
@@ -299,103 +595,126 @@ namespace OpenGlass::dwmcore
 
 			return value;
 		}
+		COcclusionContext* GetOcclusionContext() const
+		{
+			return reinterpret_cast<COcclusionContext*>(reinterpret_cast<ULONG_PTR>(this));
+		}
 	};
 
-	typedef DWORD DisplayId;
-	typedef UINT StereoContext;
-	struct IImageSource;
 	struct RenderTargetInfo;
-	// 1809 limited
-	/*struct ID2DContextOwner
-	{
-		virtual HRESULT STDMETHODCALLTYPE ImageSourceToD2DBitmap(IImageSource* imageSource, ID2D1Bitmap1** bitmap) = 0;
-		virtual bool STDMETHODCALLTYPE IsIn3DMode() = 0;
-		virtual void STDMETHODCALLTYPE GetWorldTransform3x2(D2D_MATRIX_3X2_F* transform) = 0;
-		virtual void STDMETHODCALLTYPE GetWorldTransform4x4(D2D_MATRIX_4X4_F* transform) = 0;
-		virtual UINT STDMETHODCALLTYPE GetCurrentZ() = 0;
-		virtual CVisual* STDMETHODCALLTYPE GetCurrentVisual() = 0;
-		virtual LUID STDMETHODCALLTYPE GetCurrentAdapterLuid() = 0;
-		virtual DisplayId STDMETHODCALLTYPE GetCurrentDisplayId() = 0;
-		virtual StereoContext STDMETHODCALLTYPE GetCurrentStereoContext() = 0;
-		virtual bool STDMETHODCALLTYPE GetCurrentHardwareProtection() = 0;
-		virtual RenderTargetInfo STDMETHODCALLTYPE GetCurrentRenderTargetInfo() = 0;
-	};*/
 	struct ID2DContextOwner
 	{
-		virtual bool STDMETHODCALLTYPE IsIn3DMode() = 0;
-		virtual void STDMETHODCALLTYPE GetWorldTransform3x2(D2D_MATRIX_3X2_F* transform) = 0;
-		virtual void STDMETHODCALLTYPE GetWorldTransform4x4(D2D_MATRIX_4X4_F* transform) = 0;
-		virtual UINT STDMETHODCALLTYPE GetCurrentZ() = 0;
-		virtual CVisual* STDMETHODCALLTYPE GetCurrentVisual() = 0;
-		virtual RenderTargetInfo STDMETHODCALLTYPE GetCurrentRenderTargetInfo() = 0;
+		UINT STDMETHODCALLTYPE GetCurrentZ() const
+		{
+			decltype(&ID2DContextOwner::GetCurrentZ) vfptr{ nullptr };
+
+			if (g_buildNumber < os::build_w11_24h2)
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[3]);
+			}
+			else
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[1]);
+			}
+
+			return std::invoke(
+				vfptr,
+				this
+			);
+		}
 	};
+	
 
 	struct CD2DContext : CResource
 	{
+		DECLSPEC_PROJECTION void STDMETHODCALLTYPE EnsureBeginDraw()
+		{
+			return HANDLE_PROJECTION_FUNCTION(CD2DContext::EnsureBeginDraw);
+		}
 		ID2D1DeviceContext* GetDeviceContext() const
 		{
-			return reinterpret_cast<ID2D1DeviceContext* const*>(this)[30];
+			ID2D1DeviceContext* context{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				context = reinterpret_cast<ID2D1DeviceContext* const*>(this)[30];
+			}
+			else
+			{
+				context = reinterpret_cast<ID2D1DeviceContext* const*>(this)[25];
+			}
+			return context;
 		}
-		void STDMETHODCALLTYPE GetClip(ID2DContextOwner* owner, D2D1_RECT_F* clipRect, D2D1_ANTIALIAS_MODE* mode) const
+		ID2D1PrivateCompositorDeviceContext* GetPrivateCompositorDeviceContext() const
 		{
-			DEFINE_INVOKER(CD2DContext::GetClip);
-			return INVOKE_MEMBERFUNCTION(owner, clipRect, mode);
+			ID2D1PrivateCompositorDeviceContext* context{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				context = reinterpret_cast<ID2D1PrivateCompositorDeviceContext* const*>(this)[31];
+			}
+			else
+			{
+				context = reinterpret_cast<ID2D1PrivateCompositorDeviceContext* const*>(this)[26];
+			}
+			return context;
 		}
-	};
-	struct IDeviceTarget;
-	struct IDeviceSurface
-	{
-		virtual D2D1_SIZE_U STDMETHODCALLTYPE GetSize() const = 0;
-		virtual DisplayId STDMETHODCALLTYPE GetDisplayId() const = 0;
-		virtual HRESULT STDMETHODCALLTYPE GetD2DBitmap(ID2D1Bitmap1** bitmap, bool ignoreAlpha) = 0;
+		const D2D1_RECT_F* GetWorldClip() const
+		{
+			const D2D1_RECT_F* clip{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				clip = reinterpret_cast<D2D1_RECT_F const*>(this) + 28;
+			}
+			else
+			{
+				clip = reinterpret_cast<D2D1_RECT_F const*>(this) + 25;
+			}
+
+			return clip;
+		}
+		D2D1_ANTIALIAS_MODE GetAntialiasMode() const
+		{
+			D2D1_ANTIALIAS_MODE mode{ D2D1_ANTIALIAS_MODE_ALIASED };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				mode = reinterpret_cast<D2D1_ANTIALIAS_MODE const*>(this)[116];
+			}
+			else
+			{
+				mode = reinterpret_cast<D2D1_ANTIALIAS_MODE const*>(this)[104];
+			}
+
+			return mode;
+		}
 	};
 	struct IBitmapResource;
+	struct IDeviceTarget;
 	struct CDrawingContext
 	{
-		struct CDisableCPUClipScope
-		{
-			CDrawingContext* m_drawingContext;
-
-			HRESULT STDMETHODCALLTYPE Enter(CDrawingContext* drawingContext)
-			{
-				DEFINE_INVOKER(CDrawingContext::CDisableCPUClipScope::Enter);
-				return INVOKE_MEMBERFUNCTION(drawingContext);
-			}
-			~CDisableCPUClipScope()
-			{
-				DEFINE_CUSTOM_INVOKER(void(STDMETHODCALLTYPE CDisableCPUClipScope::*)(), "CDrawingContext::CDisableCPUClipScope::~CDisableCPUClipScope");
-				INVOKE_MEMBERFUNCTION();
-			}
-		};
-
-		IDeviceTarget* GetDeviceTarget() const
-		{
-			return reinterpret_cast<IDeviceTarget* const*>(this)[4];
-		}
-		HRESULT GetD2DBitmap(ID2D1Bitmap1** bitmap) const
-		{
-			auto deviceTarget = GetDeviceTarget();
-			auto deviceSurface = reinterpret_cast<IDeviceSurface*>(
-				reinterpret_cast<ULONG_PTR>(deviceTarget) +
-				*reinterpret_cast<int*>(reinterpret_cast<ULONG_PTR*>(deviceTarget)[1] + 16) +
-				8ull
-			);
-
-			return deviceSurface->GetD2DBitmap(bitmap, false);
-		}
 		CD2DContext* GetD2DContext() const
 		{
-			if (os::buildNumber < os::build_w10_2004)
+			CD2DContext* context{ nullptr };
+
+			if (g_buildNumber < os::build_w10_2004)
 			{
-				return reinterpret_cast<CD2DContext* const*>(this)[48];
+				context = reinterpret_cast<CD2DContext* const*>(this)[48];
 			}
-			return reinterpret_cast<CD2DContext*>(reinterpret_cast<ULONG_PTR const*>(this)[5] + 16);
+			else
+			{
+				context = reinterpret_cast<CD2DContext*>(reinterpret_cast<ULONG_PTR const*>(this)[5] + 16);
+			}
+
+			// CDrawingContext -> CD3DDevice -> CD2DContext
+			return context;
 		}
 		IDrawingContext* GetInterface() const
 		{
 			IDrawingContext* value{ nullptr };
 
-			if (os::buildNumber < os::build_w10_2004)
+			if (g_buildNumber < os::build_w10_2004)
 			{
 				value = reinterpret_cast<IDrawingContext*>(reinterpret_cast<ULONG_PTR>(this));
 			}
@@ -410,7 +729,7 @@ namespace OpenGlass::dwmcore
 		{
 			ID2DContextOwner* value{ nullptr };
 
-			if (os::buildNumber < os::build_w10_2004)
+			if (g_buildNumber < os::build_w10_2004)
 			{
 				value = reinterpret_cast<ID2DContextOwner*>(reinterpret_cast<ULONG_PTR>(this) + 8);
 			}
@@ -421,191 +740,439 @@ namespace OpenGlass::dwmcore
 
 			return value;
 		}
-		IUnknown* GetUnknown() const
+		COcclusionContext* GetOcclusionContext() const
 		{
-			IUnknown* value{ nullptr };
-
-			if (os::buildNumber < os::build_w10_2004)
+			if (g_buildNumber < os::build_w11_21h2)
 			{
-				value = reinterpret_cast<IUnknown*>(reinterpret_cast<ULONG_PTR>(this) + 16);
+				return reinterpret_cast<COcclusionContext* const*>(this)[742];
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				return reinterpret_cast<COcclusionContext* const*>(this)[993];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				return reinterpret_cast<COcclusionContext* const*>(this)[1009];
+			}
+
+			return reinterpret_cast<COcclusionContext* const*>(this)[995];
+		}
+		CVisualTree* GetCurrentVisualTree() const
+		{
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				return reinterpret_cast<CVisualTree* const*>(this)[741];
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				return reinterpret_cast<CVisualTree* const*>(this)[991];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				return reinterpret_cast<CVisualTree* const*>(this)[1007];
+			}
+
+			return reinterpret_cast<CVisualTree* const*>(this)[993];
+		}
+		
+		HRESULT GetWorldTransform(CMILMatrix* matrix) const
+		{
+			CMatrixStack* stack{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 408);
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 368);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 400);
+			}
+			else 
+			{
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 288);
+			}
+
+			return stack->Top(matrix);
+		}
+		const CMILMatrix* GetWorldTransform() const
+		{
+			CMatrixStack* stack{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 408);
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 368);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 400);
 			}
 			else
 			{
-				value = reinterpret_cast<IUnknown*>(reinterpret_cast<ULONG_PTR>(this));
+				stack = reinterpret_cast<CMatrixStack*>(reinterpret_cast<ULONG_PTR>(this) + 288);
 			}
 
-			return value;
+			return stack->GetTopByReference();
+		}
+		CMILMatrix* GetDeviceTransform() const
+		{
+			CMILMatrix* deviceTransform{ nullptr };
+
+			deviceTransform = reinterpret_cast<CMILMatrix*>(reinterpret_cast<ULONG_PTR>(this) + 96);
+
+			return deviceTransform;
 		}
 
-		bool STDMETHODCALLTYPE IsOccluded(const D2D1_RECT_F& lprc, int depth) const
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE PushTransformInternal(CVisual* visual, const CMILMatrix* matrix, bool unknown1, bool unknown2)
 		{
-			DEFINE_INVOKER(CDrawingContext::IsOccluded);
-			return INVOKE_MEMBERFUNCTION(lprc, depth);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::PushTransformInternal, visual, matrix, unknown1, unknown2);
 		}
-		HRESULT STDMETHODCALLTYPE GetWorldTransform(CMILMatrix* matrix) const
+		DECLSPEC_PROJECTION void STDMETHODCALLTYPE PopTransformInternal(bool popStack)
 		{
-			DEFINE_INVOKER(CDrawingContext::GetWorldTransform);
-			return INVOKE_MEMBERFUNCTION(matrix);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::PopTransformInternal, popStack);
 		}
-		HRESULT STDMETHODCALLTYPE GetWorldTransform3x2(D2D1_MATRIX_3X2_F* matrix) const
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE GetUnOccludedWorldShape(const CShape* shape, int depth, CShape** worldShape) const
 		{
-			DEFINE_INVOKER(CDrawingContext::GetWorldTransform3x2);
-			return INVOKE_MEMBERFUNCTION(matrix);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::GetUnOccludedWorldShape, shape, depth, worldShape);
 		}
-		ULONG_PTR STDMETHODCALLTYPE CalcWorldSpaceClippedBounds(const D2D1_RECT_F& sourceRect, const D2D1_RECT_F* targetRect) const
+		DECLSPEC_PROJECTION ULONG_PTR STDMETHODCALLTYPE GetClipBoundsWorld(D2D1_RECT_F* lprc) const
 		{
-			DEFINE_INVOKER(CDrawingContext::CalcWorldSpaceClippedBounds);
-			return INVOKE_MEMBERFUNCTION(sourceRect, targetRect);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::GetClipBoundsWorld, lprc);
 		}
-		ULONG_PTR STDMETHODCALLTYPE CalcLocalSpaceClippedBounds(const D2D1_RECT_F& sourceRect, const D2D1_RECT_F* targetRect) const
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE FillShapeWithBrush(const CShape* shape, const ID2D1Brush* brush)
 		{
-			DEFINE_INVOKER(CDrawingContext::CalcLocalSpaceClippedBounds);
-			return INVOKE_MEMBERFUNCTION(sourceRect, targetRect);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::FillShapeWithBrush, shape, brush);
 		}
-		HRESULT STDMETHODCALLTYPE GetUnOccludedWorldShape(const CShape* shape, int depth, CShapePtr* worldShape) const
+		// this function cannot render the shape that is not consisted of rectangles
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE FillShapeWithSolidColor(const CShape* shape, const D2D1_COLOR_F& color)
 		{
-			DEFINE_INVOKER(CDrawingContext::GetUnOccludedWorldShape);
-			return INVOKE_MEMBERFUNCTION(shape, depth, worldShape);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::FillShapeWithSolidColor, shape, color);
 		}
-		ULONG_PTR STDMETHODCALLTYPE GetClipBoundsWorld(D2D1_RECT_F* lprc) const
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE FlushD2D()
 		{
-			DEFINE_INVOKER(CDrawingContext::GetClipBoundsWorld);
-			return INVOKE_MEMBERFUNCTION(lprc);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::FlushD2D);
 		}
-		HRESULT STDMETHODCALLTYPE FillShapeWithColor(const CShape* shape, const D2D1_COLOR_F* color)
+		DECLSPEC_PROJECTION CVisual* STDMETHODCALLTYPE GetCurrentVisual() const
 		{
-			DEFINE_INVOKER(CDrawingContext::FillShapeWithColor);
-			return INVOKE_MEMBERFUNCTION(shape, color);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::GetCurrentVisual);
 		}
-		HRESULT STDMETHODCALLTYPE FlushD2D()
+
+		winrt::com_ptr<ID2D1Bitmap1> AcquireRenderTargetBitmap(bool flush)
 		{
-			DEFINE_INVOKER(CDrawingContext::FlushD2D);
-			return INVOKE_MEMBERFUNCTION();
+			winrt::com_ptr<ID2D1Bitmap1> renderTargetBitmap{ nullptr };
+			const auto d2dContext = GetD2DContext();
+			// ensure deferred target bitmap in position
+			d2dContext->EnsureBeginDraw();
+			const auto context = d2dContext->GetDeviceContext();
+			if (!context)
+			{
+				return renderTargetBitmap;
+			}
+			{
+				winrt::com_ptr<ID2D1Image> targetImage{ nullptr };
+				context->GetTarget(targetImage.put());
+				if (!targetImage)
+				{
+					return renderTargetBitmap;
+				}
+				if (FAILED(targetImage->QueryInterface(renderTargetBitmap.put())))
+				{
+					return renderTargetBitmap;
+				}
+			}
+			if (flush)
+			{
+				FlushD2D();
+			}
+
+			return renderTargetBitmap;
 		}
-		CVisual* STDMETHODCALLTYPE GetCurrentVisual() const
+		CVisual* GetCurrentVisualHelper() const
 		{
-			DEFINE_INVOKER(CDrawingContext::GetCurrentVisual);
-			return INVOKE_MEMBERFUNCTION();
-		}
-		bool  STDMETHODCALLTYPE IsInLayer() const
-		{
-			DEFINE_INVOKER(CDrawingContext::IsInLayer);
-			return INVOKE_MEMBERFUNCTION();
-		}
-		bool  STDMETHODCALLTYPE IsNormalDesktopRender() const
-		{
-			DEFINE_INVOKER(CDrawingContext::IsNormalDesktopRender);
-			return INVOKE_MEMBERFUNCTION();
+			return (os::buildNumber >= os::build_w11_24h2 ? this : reinterpret_cast<dwmcore::CDrawingContext*>(GetD2DContextOwner()))->GetCurrentVisual();
 		}
 	};
-	struct COcclusionContext : CResource
+	struct COcclusionContext : IDrawingContext
 	{
-		CVisual* GetVisual() const
+		ULONGLONG GetFrameId() const
 		{
-			CVisual* visual{ nullptr };
+			ULONGLONG frameId{};
 
-			if (os::buildNumber < os::build_w10_2004)
+			if (g_buildNumber < os::build_w11_21h2)
 			{
-				visual = reinterpret_cast<CVisual* const*>(this)[6];
+				frameId = reinterpret_cast<ULONGLONG const*>(this)[2];
 			}
 			else
 			{
-				visual = reinterpret_cast<CVisual* const*>(this)[1];
+				frameId = reinterpret_cast<ULONGLONG const*>(this)[3];
 			}
 
-			return visual;
+			return frameId;
 		}
-	};
-	struct CDirtyRegion : COcclusionContext
-	{
-		void STDMETHODCALLTYPE SetFullDirty()
+		UINT GetCurrentZ() const
 		{
-			DEFINE_INVOKER(CDirtyRegion::SetFullDirty);
-			return INVOKE_MEMBERFUNCTION();
+			UINT z{};
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				z = reinterpret_cast<UINT const*>(this)[364];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				z = reinterpret_cast<UINT const*>(this)[357];
+			}
+			else
+			{
+				z = reinterpret_cast<UINT const*>(this)[329];
+			}
+
+			return z;
+		}
+		const CMILMatrix* GetWorldTransform() const
+		{
+			const CMILMatrix* worldTransform{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				worldTransform = reinterpret_cast<CMatrixStack const*>(reinterpret_cast<ULONG_PTR>(this) + 24)->GetTopByReference();
+			}
+			else
+			{
+				worldTransform = reinterpret_cast<CMatrixStack const*>(reinterpret_cast<ULONG_PTR>(this) + 32)->GetTopByReference();
+			}
+
+			return worldTransform;
+		}
+		const CMILMatrix* GetDeviceTransform() const
+		{
+			const CMILMatrix* deviceTransform{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				deviceTransform = reinterpret_cast<CMILMatrix const*>(reinterpret_cast<ULONG_PTR>(this) + 1248);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				deviceTransform = reinterpret_cast<CMILMatrix const*>(reinterpret_cast<ULONG_PTR>(this) + 1208);
+			}
+			else
+			{
+				deviceTransform = reinterpret_cast<CMILMatrix const*>(reinterpret_cast<ULONG_PTR>(this) + 1180);
+			}
+
+			return deviceTransform;
+		}
+		UINT* GetDeviceTransformFlag()
+		{
+			UINT* flag{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				flag = reinterpret_cast<UINT*>(&reinterpret_cast<bool*>(this)[1244]);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				flag = reinterpret_cast<UINT*>(&reinterpret_cast<bool*>(this)[1204]);
+			}
+			else
+			{
+				flag = reinterpret_cast<UINT*>(&reinterpret_cast<bool*>(this)[1172]);
+			}
+
+			return flag;
+		}
+		D2D1_RECT_F PageInPixelsRectToDeviceRect(const D2D1_RECT_F& pixelsRect)
+		{
+			auto result = pixelsRect;
+
+			if (GetDeviceTransformFlag())
+			{
+				result = RectF::TransformRect(pixelsRect, GetDeviceTransform()->GetD2DMatrix());
+			}
+
+			return result;
+		}
+		CArrayBasedCoverageSet* GetArrayBasedCoverageSet() const
+		{
+			CArrayBasedCoverageSet* coverageSet{ nullptr };
+			
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				coverageSet = reinterpret_cast<CArrayBasedCoverageSet* const>(reinterpret_cast<ULONG_PTR>(this) + 408);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				coverageSet = reinterpret_cast<CArrayBasedCoverageSet* const>(reinterpret_cast<ULONG_PTR>(this) + 448);
+			}
+			else
+			{
+				coverageSet = reinterpret_cast<CArrayBasedCoverageSet* const>(reinterpret_cast<ULONG_PTR>(this) + 568);
+			}
+
+			return coverageSet;
+		}
+		D2D1_RECT_F STDMETHODCALLTYPE GetDestinationRect(const D2D1_RECT_F& inputRect) const
+		{
+			D2D1_RECT_F outputRect{};
+			outputRect = RectF::TransformRect(inputRect, GetWorldTransform()->GetD2DMatrix());
+			return outputRect;
+		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetDeviceTransform(
+			const dwmcore::CMILMatrix* matrix
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(COcclusionContext::SetDeviceTransform, matrix);
 		}
 	};
+	struct CDirtyRegion
+	{
+		COcclusionContext* GetOcclusionContext() const
+		{
+			if (g_buildNumber < os::build_w11_24h2)
+			{
+				return reinterpret_cast<COcclusionContext* const>(reinterpret_cast<ULONG_PTR>(this) + 16);
+			}
+
+			return nullptr;
+		}
+	};
+	struct CTreeDirty {};
+	struct COverlayContext : CResource {};
 	struct CWindowOcclusionInfo : CResource {};
 	struct CWindowNode : CResource
 	{
-		HWND STDMETHODCALLTYPE GetHwnd() const
+		DECLSPEC_PROJECTION HWND STDMETHODCALLTYPE GetHwnd() const
 		{
-			DEFINE_INVOKER(CWindowNode::GetHwnd);
-			return INVOKE_MEMBERFUNCTION();
+			return HANDLE_PROJECTION_FUNCTION(CWindowNode::GetHwnd);
 		}
+	};
+	struct RenderTargetInfo;
+	struct CCachedVisualImage : CResource
+	{
+		struct CCachedTarget : CResource
+		{
+
+		};
 	};
 	struct CDrawListCache : CResource {};
 
+	DECLSPEC_PROJECTION ULONGLONG STDMETHODCALLTYPE GetCurrentFrameId()
+	{
+		return HANDLE_PROJECTION_FUNCTION(GetCurrentFrameId);
+	}
 
-	FORCEINLINE ULONGLONG STDMETHODCALLTYPE GetCurrentFrameId()
-	{
-		DEFINE_INVOKER(GetCurrentFrameId);
-		return INVOKE_FUNCTION();
-	}
-	FORCEINLINE float STDMETHODCALLTYPE scRGBTosRGB(float channel)
-	{
-		DEFINE_INVOKER(scRGBTosRGB);
-		return INVOKE_FUNCTION(channel);
-	}
-	FORCEINLINE D2D1_COLOR_F STDMETHODCALLTYPE Convert_D2D1_COLOR_F_sRGB_To_D2D1_COLOR_F_scRGB(const D2D1_COLOR_F& color)
-	{
-		DEFINE_INVOKER(Convert_D2D1_COLOR_F_sRGB_To_D2D1_COLOR_F_scRGB);
-		return INVOKE_FUNCTION(color);
-	}
-	FORCEINLINE D2D1_COLOR_F STDMETHODCALLTYPE Convert_D2D1_COLOR_F_scRGB_To_D2D1_COLOR_F_sRGB(const D2D1_COLOR_F& color)
-	{
-		DEFINE_INVOKER(Convert_D2D1_COLOR_F_scRGB_To_D2D1_COLOR_F_sRGB);
-		return INVOKE_FUNCTION(color);
-	}
-	FORCEINLINE UINT32 STDMETHODCALLTYPE PixelAlign(float value, UINT mode = 0)
-	{
-		DEFINE_INVOKER(PixelAlign);
-		return INVOKE_FUNCTION(value, mode);
-	}
+	inline ID2D1Factory8** g_DeviceManager{ nullptr };
 
 	namespace CCommonRegistryData
 	{
 		inline PULONG m_dwOverlayTestMode{ nullptr };
+		inline PULONGLONG m_backdropBlurCachingThrottleQPCTimeDelta{ nullptr };
 	}
 
-	inline bool OnSymbolParsing(std::string_view functionName, std::string_view fullyUnDecoratedFunctionName, const HookHelper::OffsetStorage& offset, const PSYMBOL_INFO /*originalSymInfo*/)
+	inline CGlobalComposition** g_pComposition{ nullptr };
+	inline CGlobalComposition* GetGlobalCompositionInstance()
 	{
-		if (fullyUnDecoratedFunctionName == "CCommonRegistryData::m_dwOverlayTestMode")
-		{
-			offset.To(g_moduleHandle, CCommonRegistryData::m_dwOverlayTestMode);
-		}
+		return *g_pComposition;
+	}
+
+	inline auto g_projectionArray = make_projection_array(
+		g_buildNumber,
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(CChannel::MatrixTransformUpdate, 0, os::build_w11_22h2),
+
+		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CDesktopTree::vftable, "CDesktopTree::`vftable'", 0, 0),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetDesktopTree, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetWorldTransform, 0, 0),
+
+		MAKE_VARIABLE_PROJECTION_TUPLE(CMILMatrix::Identity, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CMILMatrix::Multiply, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CMatrixStack::GetTopByReference, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CMatrixStack::Top, 0, 0),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::CopyShape, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::Combine, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::BuildFromRectFs, 0, 0),
+
+		MAKE_EMPTY_PROJECTION_TUPLE("CRenderDataBuilder::DrawGeometry", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CRenderData::TryDrawCommandAsDrawList", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CGeometry::~CGeometry", 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CGeometry::GetShapeData, 0, 0),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(CLegacyMilBrush::GetOpacity, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CSolidColorLegacyMilBrush::IsConstantOpaque, 0, 0),
+		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CSolidColorLegacyMilBrush::vftable, "CSolidColorLegacyMilBrush::`vftable'", 0, 0),
+
+		MAKE_EMPTY_PROJECTION_TUPLE("CArrayBasedCoverageSet::IsCovered", 0, os::build_w11_24h2),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(CD2DContext::EnsureBeginDraw, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PushTransformInternal, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PopTransformInternal, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetUnOccludedWorldShape, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetClipBoundsWorld, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::FillShapeWithBrush, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::FillShapeWithSolidColor, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::FlushD2D, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetCurrentVisual, 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CDrawingContext::DrawVisualTree", 0, 0),
+		
+		MAKE_FUNCTION_PROJECTION_TUPLE(COcclusionContext::SetDeviceTransform, 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("COcclusionContext::IsOccluded", os::build_w11_24h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("COcclusionContext::Compute", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("COcclusionContext::PageInPixelsRectToDeviceRect", 0, os::build_w11_24h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("COcclusionContext::~COcclusionContext", 0, 0),
+
+		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetUnOccludedDirtyRect", os::build_min, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetOptimizedRect", os::build_w11_21h2, os::build_w11_24h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTreeDirty::GetOptimizedRect", os::build_w11_24h2, 0),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowNode::GetHwnd, 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CWindowNode::RenderImage", 0, 0),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(GetCurrentFrameId, 0, 0),
+		
+		MAKE_VARIABLE_PROJECTION_TUPLE(CCommonRegistryData::m_dwOverlayTestMode, 0, 0),
+		MAKE_VARIABLE_PROJECTION_TUPLE(CCommonRegistryData::m_backdropBlurCachingThrottleQPCTimeDelta, 0, 0),
+
+		MAKE_VARIABLE_PROJECTION_TUPLE(g_DeviceManager, 0, 0),
+		MAKE_VARIABLE_PROJECTION_TUPLE(g_pComposition, 0, 0)
+	);
+	
+	inline bool ParserCallback(PSYMBOL_INFO info, [[maybe_unused]] ULONG size)
+	{
+		CHAR symbolName[128]{};
+		UnDecorateSymbolName(info->Name, symbolName, std::size(symbolName), UNDNAME_NAME_ONLY);
+
 		if (
-			fullyUnDecoratedFunctionName.starts_with("CArrayBasedCoverageSet::") ||
-			fullyUnDecoratedFunctionName.starts_with("CZOrderedRect::") ||
-			fullyUnDecoratedFunctionName == "GetCurrentFrameId" ||
-			fullyUnDecoratedFunctionName == "scRGBTosRGB" ||
-			fullyUnDecoratedFunctionName == "PixelAlign" ||
-			fullyUnDecoratedFunctionName == "Convert_D2D1_COLOR_F_sRGB_To_D2D1_COLOR_F_scRGB" ||
-			fullyUnDecoratedFunctionName == "Convert_D2D1_COLOR_F_scRGB_To_D2D1_COLOR_F_sRGB" ||
-			fullyUnDecoratedFunctionName == "CChannel::MatrixTransformUpdate" ||
-			fullyUnDecoratedFunctionName == "CChannel::CombinedGeometryUpdate" ||
-			fullyUnDecoratedFunctionName == "CResource::GetOwningProcessId" ||
-			fullyUnDecoratedFunctionName == "CRenderData::TryDrawCommandAsDrawList" ||
-			fullyUnDecoratedFunctionName == "CGeometry::GetShapeData" ||
-			fullyUnDecoratedFunctionName == "CGeometry::~CGeometry" ||
-			fullyUnDecoratedFunctionName == "CDirtyRegion::SetFullDirty" ||
-			fullyUnDecoratedFunctionName == "CDirtyRegion::_Add" ||
-			fullyUnDecoratedFunctionName == "CVisual::GetHwnd" ||
-			fullyUnDecoratedFunctionName == "CD2DContext::GetClip" ||
-			fullyUnDecoratedFunctionName == "CSolidColorLegacyMilBrush::IsOfType" ||
-			(
-				fullyUnDecoratedFunctionName.starts_with("CDrawingContext::") &&
-				fullyUnDecoratedFunctionName != "CDrawingContext::IsOccluded"
-			) ||
-			functionName == "?IsOccluded@CDrawingContext@@QEBA_NAEBV?$TMilRect_@MUMilRectF@@UMil3DRectF@@UMilPointAndSizeF@@UNotNeeded@RectUniqueness@@@@H@Z" ||
-			functionName == "??_7CSolidColorLegacyMilBrush@@6B@"
+			!strcmp(symbolName, "CVisual::GetWorldTransform") &&
+			!strstr(info->Name, "W4WalkReason@@PEAVCMILMatrix@@PEA_N2@Z")
 		)
 		{
-			g_symbolMap.insert_or_assign(
-				std::string{ fullyUnDecoratedFunctionName },
-				offset.To(g_moduleHandle)
-			);
+			return true;
+		}
+		if (
+			!strcmp(symbolName, "CMILMatrix::Multiply") &&
+			strcmp(info->Name, "?Multiply@CMILMatrix@@QEAAXAEBV1@@Z") != 0
+		)
+		{
+			return true;
 		}
 
-		return true;
+		g_projectionArray.Apply(
+			symbolName,
+			HookHelper::OffsetStorage::From(
+				info->ModBase, 
+				info->Address
+			).To(g_moduleHandle)
+		);
+
+		return !g_projectionArray.IsAllReady();
 	}
 }
