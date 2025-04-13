@@ -182,7 +182,9 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams()
 	RETURN_IF_FAILED(
 		m_scaleDownEffect->SetValue(
 			D2D1_SCALE_PROP_INTERPOLATION_MODE,
-			static_cast<UINT32>(k_optimizations[5 * m_optimization + 4])
+			m_optimization == D2D1_GAUSSIANBLUR_OPTIMIZATION_QUALITY ? 
+			D2D1_SCALE_INTERPOLATION_MODE_LINEAR : 
+			D2D1_SCALE_INTERPOLATION_MODE_NEAREST_NEIGHBOR
 		)
 	);
 	RETURN_IF_FAILED(
