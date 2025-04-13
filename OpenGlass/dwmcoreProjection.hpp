@@ -1046,13 +1046,7 @@ namespace OpenGlass::dwmcore
 	struct CTreeDirty {};
 	struct COverlayContext : CResource {};
 	struct CWindowOcclusionInfo : CResource {};
-	struct CWindowNode : CResource
-	{
-		DECLSPEC_PROJECTION HWND STDMETHODCALLTYPE GetHwnd() const
-		{
-			return HANDLE_PROJECTION_FUNCTION(CWindowNode::GetHwnd);
-		}
-	};
+	struct CWindowNode : CResource {};
 	struct RenderTargetInfo;
 	struct CCachedVisualImage : CResource
 	{
@@ -1132,9 +1126,6 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetUnOccludedDirtyRect", os::build_min, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetOptimizedRect", os::build_w11_21h2, os::build_w11_24h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTreeDirty::GetOptimizedRect", os::build_w11_24h2, 0),
-
-		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowNode::GetHwnd, 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CWindowNode::RenderImage", 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(GetCurrentFrameId, 0, 0),
 		

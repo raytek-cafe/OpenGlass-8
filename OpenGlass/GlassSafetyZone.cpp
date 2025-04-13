@@ -105,16 +105,6 @@ namespace OpenGlass::GlassSafetyZone
 		dwmcore::CVisual* visualOverride
 	);
 
-	HRESULT STDMETHODCALLTYPE MyCWindowNode_RenderImage(
-		dwmcore::CWindowNode* This,
-		dwmcore::CDrawingContext* drawingContext,
-		dwmcore::CWindowOcclusionInfo* occlusionInfo,
-		dwmcore::IBitmapResource* bitmapSource,
-		const dwmcore::CShape* shape,
-		MARGINS* margins,
-		UINT depth
-	);
-
 	decltype(&MyCOcclusionContext_Compute) g_COcclusionContext_Compute_Org{ nullptr };
 	decltype(&MyCOcclusionContext_DrawGeometry) g_COcclusionContext_DrawGeometry_Org{ nullptr };
 	decltype(&MyCOcclusionContext_DrawGeometry)* g_COcclusionContext_DrawGeometry_Org_Address{ nullptr };
@@ -128,8 +118,6 @@ namespace OpenGlass::GlassSafetyZone
 	decltype(&MyCDirtyRegion_GetOptimizedRect) g_CDirtyRegion_GetOptimizedRect_Org{ nullptr };
 	decltype(&MyCTreeDirty_GetOptimizedRect) g_CTreeDirty_GetOptimizedRect_Org{ nullptr };
 	PVOID g_CDrawingContext_DrawVisualTree_Org{ nullptr };
-
-	decltype(&MyCWindowNode_RenderImage) g_CWindowNode_RenderImage_Org{ nullptr };
 
 	IGlassCoverageSet* g_glassCoverageSetNoRef{ nullptr };
 	dwmcore::CDrawingContext* g_drawingContextNoRef{ nullptr };
@@ -880,39 +868,6 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 	);
 }
 
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCWindowNode_RenderImage(
-	dwmcore::CWindowNode* This,
-	dwmcore::CDrawingContext* drawingContext,
-	dwmcore::CWindowOcclusionInfo* occlusionInfo,
-	dwmcore::IBitmapResource* bitmapSource,
-	const dwmcore::CShape* shape,
-	MARGINS* margins,
-	UINT depth
-)
-{
-	static HWND g_cloak{ FindWindowW(L"PPTFrameClass", nullptr) };
-	if (GetAsyncKeyState(VK_SHIFT))
-	{
-		g_cloak = This->GetHwnd();
-	}
-	if (GetAsyncKeyState(VK_CAPITAL) && This->GetHwnd() == g_cloak)
-	{
-		return S_OK;
-	}
-	/*WCHAR className[64]{};
-	GetClassNameW(This->GetHwnd(), className, std::size(className));
-	OutputDebugStringW(std::format(L"{}\n", className).c_str());*/
-	return g_CWindowNode_RenderImage_Org(
-		This,
-		drawingContext,
-		occlusionInfo,
-		bitmapSource,
-		shape,
-		margins,
-		depth
-	);
-}
-
 void GlassSafetyZone::Update([[maybe_unused]] GlassEngine::UpdateType type)
 {
 	if (Shared::IsGlassFullyOpaque())
@@ -937,8 +892,6 @@ void GlassSafetyZone::Startup()
 	dwmcore::g_projectionArray.ApplyToVariable("CTreeDirty::GetOptimizedRect", g_CTreeDirty_GetOptimizedRect_Org);
 	
 	dwmcore::g_projectionArray.ApplyToVariable("CDrawingContext::DrawVisualTree", g_CDrawingContext_DrawVisualTree_Org);
-	
-	dwmcore::g_projectionArray.ApplyToVariable("CWindowNode::RenderImage", g_CWindowNode_RenderImage_Org);
 	
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
@@ -974,8 +927,6 @@ void GlassSafetyZone::Startup()
 			{
 				HookHelper::Detours::Attach(&g_CDrawingContext_DrawVisualTree_Org, MyCDrawingContext_DrawVisualTree_Win11);
 			}
-			
-			HookHelper::Detours::Attach(&g_CWindowNode_RenderImage_Org, MyCWindowNode_RenderImage);
 		})
 	);
 }
@@ -1016,8 +967,6 @@ void GlassSafetyZone::Shutdown()
 			{
 				HookHelper::Detours::Detach(&g_CDrawingContext_DrawVisualTree_Org, MyCDrawingContext_DrawVisualTree_Win11);
 			}
-			
-			HookHelper::Detours::Detach(&g_CWindowNode_RenderImage_Org, MyCWindowNode_RenderImage);
 		})
 	);
 
