@@ -55,6 +55,12 @@ namespace OpenGlass::GlassRenderer
 		ID2D1Brush* brush,
 		ID2D1Brush* opacityBrush
 	);
+	HRESULT STDMETHODCALLTYPE MyCCachedVisualImage_CCachedTarget_Update(
+		dwmcore::CCachedVisualImage::CCachedTarget* This,
+		const D2D1_RECT_F& rect,
+		DWM::MilStretch mode,
+		const dwmcore::RenderTargetInfo& info
+	);
 	
 	PVOID g_CRenderData_TryDrawCommandAsDrawList_Org{ nullptr };
 	decltype(&MyCGeometry_Destructor) g_CGeometry_Destructor_Org{ nullptr };
@@ -62,6 +68,7 @@ namespace OpenGlass::GlassRenderer
 	decltype(&MyCDrawingContext_DrawGeometry)* g_CDrawingContext_DrawGeometry_Org_Address{ nullptr };
 	decltype(&MyID2D1DeviceContext_FillGeometry) g_ID2D1DeviceContext_FillGeometry_Org{ nullptr };
 	decltype(&MyID2D1DeviceContext_FillGeometry)* g_ID2D1DeviceContext_FillGeometry_Org_Address{ nullptr };
+	decltype(&MyCCachedVisualImage_CCachedTarget_Update) g_CCachedVisualImage_CCachedTarget_Update_Org{ nullptr };
 
 	enum RenderFlag
 	{
@@ -74,6 +81,7 @@ namespace OpenGlass::GlassRenderer
 	std::bitset<2> g_renderFlag{};
 	ID2D1Device* g_deviceNoRef{};
 	winrt::com_ptr<ID2D1SolidColorBrush> g_brush{};
+	size_t g_CVIHierarchy{};
 
 	int g_drawGeometryCommandType{ 0 };
 	winrt::com_ptr<CGlassRealizer> g_glassRealizer{ nullptr };
@@ -372,11 +380,24 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					afterglowBalance
 				);
 				!opaque && 
-				extendedAmount
+				extendedAmount &&
+				!(
+					(
+						!desktopTree ||
+						HookHelper::vftbl_of(currentVisualTree) != dwmcore::CDesktopTree::vftable
+					) &&
+					g_CVIHierarchy &&
+					(
+						renderTargetBitmap = drawingContext->AcquireRenderTargetBitmap(true),
+						renderTargetBitmap->GetPixelFormat().alphaMode == D2D1_ALPHA_MODE_PREMULTIPLIED
+					)
+				)
 			)
 			{
-				renderTargetBitmap = drawingContext->AcquireRenderTargetBitmap(true);
-
+				if (!renderTargetBitmap)
+				{
+					renderTargetBitmap = drawingContext->AcquireRenderTargetBitmap(true);
+				}
 				g_glassInput.d2dContext = d2dContext;
 				g_glassInput.drawingWorldBounds = &drawingWorldBounds;
 				g_glassInput.renderTargetBitmap = renderTargetBitmap.get();
@@ -548,6 +569,24 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	g_renderFlag.reset();
 }
 
+HRESULT STDMETHODCALLTYPE GlassRenderer::MyCCachedVisualImage_CCachedTarget_Update(
+	dwmcore::CCachedVisualImage::CCachedTarget* This,
+	const D2D1_RECT_F& rect,
+	DWM::MilStretch mode,
+	const dwmcore::RenderTargetInfo& info
+)
+{
+	g_CVIHierarchy += 1;
+	const auto hr = g_CCachedVisualImage_CCachedTarget_Update_Org(
+		This,
+		rect,
+		mode,
+		info
+	);
+	g_CVIHierarchy -= 1;
+	return hr;
+}
+
 void GlassRenderer::Update(GlassEngine::UpdateType type)
 {
 	if (type & GlassEngine::UpdateType::Backdrop)
@@ -585,7 +624,8 @@ void GlassRenderer::Startup()
 
 	dwmcore::g_projectionArray.ApplyToVariable("CGeometry::~CGeometry", g_CGeometry_Destructor_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CRenderData::TryDrawCommandAsDrawList", g_CRenderData_TryDrawCommandAsDrawList_Org);
-	
+	dwmcore::g_projectionArray.ApplyToVariable("CCachedVisualImage::CCachedTarget::Update", g_CCachedVisualImage_CCachedTarget_Update_Org);
+
 	if (!g_drawGeometryCommandType)
 	{
 		switch (dwmcore::g_buildNumber)
@@ -659,6 +699,7 @@ void GlassRenderer::Startup()
 			{
 				HookHelper::Detours::Attach(&g_CRenderData_TryDrawCommandAsDrawList_Org, MyCRenderData_TryDrawCommandAsDrawList_Win11);
 			}
+			HookHelper::Detours::Attach(&g_CCachedVisualImage_CCachedTarget_Update_Org, MyCCachedVisualImage_CCachedTarget_Update);
 		})
 	);
 }
@@ -677,6 +718,7 @@ void GlassRenderer::Shutdown()
 			{
 				HookHelper::Detours::Detach(&g_CRenderData_TryDrawCommandAsDrawList_Org, MyCRenderData_TryDrawCommandAsDrawList_Win11);
 			}
+			HookHelper::Detours::Detach(&g_CCachedVisualImage_CCachedTarget_Update_Org, MyCCachedVisualImage_CCachedTarget_Update);
 		})
 	);
 

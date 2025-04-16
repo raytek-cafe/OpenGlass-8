@@ -1127,6 +1127,8 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetOptimizedRect", os::build_w11_21h2, os::build_w11_24h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTreeDirty::GetOptimizedRect", os::build_w11_24h2, 0),
 
+		MAKE_EMPTY_PROJECTION_TUPLE("CCachedVisualImage::CCachedTarget::Update", 0, 0),
+
 		MAKE_FUNCTION_PROJECTION_TUPLE(GetCurrentFrameId, 0, 0),
 		
 		MAKE_VARIABLE_PROJECTION_TUPLE(CCommonRegistryData::m_dwOverlayTestMode, 0, 0),
