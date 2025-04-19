@@ -6,7 +6,6 @@ namespace OpenGlass
 {
 	struct AeroParams : BlurParams
 	{
-		bool opaqueBlend;
 		D2D1_COLOR_F afterglow;
 		float afterglowBalance;
 		float blurBalance;
@@ -29,6 +28,7 @@ namespace OpenGlass
 			const D2D1_RECT_F& imageBounds,
 			const void* additionalParams
 		) override;
+		D2D1_MATRIX_3X2_F STDMETHODCALLTYPE GetOutputMatrix() const override;
 		void STDMETHODCALLTYPE GetOutput(ID2D1Image** output) const override;
 		void STDMETHODCALLTYPE Reset() override;
 	};

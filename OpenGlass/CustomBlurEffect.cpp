@@ -69,12 +69,6 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 			m_directionalBlurYEffect.put()
 		)
 	);
-	RETURN_IF_FAILED(
-		context->CreateEffect(
-			CLSID_D2D1Scale,
-			m_scaleUpEffect.put()
-		)
-	);
 
 	RETURN_IF_FAILED(
 		m_scaleDownEffect->SetValue(
@@ -121,14 +115,6 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 		)
 	);
 
-	RETURN_IF_FAILED(
-		m_scaleUpEffect->SetValue(
-			D2D1_SCALE_PROP_BORDER_MODE,
-			D2D1_BORDER_MODE_SOFT
-		)
-	);
-	m_scaleUpEffect->SetInputEffect(0, m_directionalBlurYEffect.get());
-
 	m_initialized = true;
 
 	return S_OK;
@@ -136,48 +122,32 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 
 HRESULT CCustomBlurEffect::CalculateAndSetEffectParams()
 {
-	D2D1_VECTOR_2F prescaleAmount
+	m_prescaleAmount = 
 	{
 		DetermineOutputScale(wil::rect_width(m_imageBounds)),
 		DetermineOutputScale(wil::rect_height(m_imageBounds))
 	};
 	D2D1_VECTOR_2F finalBlurAmount{ m_blurAmount, m_blurAmount };
-	auto finalPrescaleAmount = prescaleAmount;
+	auto finalPrescaleAmount = m_prescaleAmount;
 
 	#pragma warning(suppress:33011)
-	if (prescaleAmount.x != 1.f && finalBlurAmount.x > k_optimizations[5 * m_optimization + 2])
+	if (m_prescaleAmount.x != 1.f && finalBlurAmount.x > k_optimizations[5 * m_optimization + 2])
 	{
-		if (prescaleAmount.x <= 0.5f)
+		if (m_prescaleAmount.x <= 0.5f)
 		{
 			finalPrescaleAmount.x *= 2.f;
 		}
 	}
 	#pragma warning(suppress:33011)
-	if (prescaleAmount.y != 1.f && finalBlurAmount.y > k_optimizations[5 * m_optimization + 2])
+	if (m_prescaleAmount.y != 1.f && finalBlurAmount.y > k_optimizations[5 * m_optimization + 2])
 	{
-		if (prescaleAmount.y <= 0.5f)
+		if (m_prescaleAmount.y <= 0.5f)
 		{
 			finalPrescaleAmount.y *= 2.f;
 		}
 	}
 
-	if (prescaleAmount.x == 1.f && prescaleAmount.y == 1.f)
-	{
-		m_outputEffect = m_directionalBlurYEffect;
-	}
-	else
-	{
-		m_outputEffect = m_scaleUpEffect;
-		RETURN_IF_FAILED(
-			m_scaleUpEffect->SetValue(
-				D2D1_SCALE_PROP_SCALE,
-				D2D1::Point2F(
-					1.f / prescaleAmount.x,
-					1.f / prescaleAmount.y
-				)
-			)
-		);
-	}
+	m_outputEffect = m_directionalBlurYEffect;
 
 	RETURN_IF_FAILED(
 		m_scaleDownEffect->SetValue(
@@ -223,7 +193,7 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams()
 	RETURN_IF_FAILED(
 		m_directionalBlurXEffect->SetValue(
 			D2D1_DIRECTIONALBLURKERNEL_PROP_OPTIMIZATION_TRANSFORM,
-			(prescaleAmount.x != finalPrescaleAmount.x) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
+			(m_prescaleAmount.x != finalPrescaleAmount.x) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
 		)
 	);
 	RETURN_IF_FAILED(
@@ -241,13 +211,7 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams()
 	RETURN_IF_FAILED(
 		m_directionalBlurYEffect->SetValue(
 			D2D1_DIRECTIONALBLURKERNEL_PROP_OPTIMIZATION_TRANSFORM,
-			(prescaleAmount.y != finalPrescaleAmount.y) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
-		)
-	);
-	RETURN_IF_FAILED(
-		m_scaleUpEffect->SetValue(
-			D2D1_SCALE_PROP_INTERPOLATION_MODE,
-			static_cast<UINT32>(k_optimizations[5 * m_optimization + 4])
+			(m_prescaleAmount.y != finalPrescaleAmount.y) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
 		)
 	);
 
@@ -324,6 +288,16 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 	);
 
 	return S_OK;
+}
+
+D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CCustomBlurEffect::GetOutputMatrix() const
+{
+	return D2D1::Matrix3x2F::Scale(
+		D2D1::SizeF(
+			1.f / m_prescaleAmount.x,
+			1.f / m_prescaleAmount.y
+		)
+	);
 }
 
 void STDMETHODCALLTYPE CCustomBlurEffect::GetOutput(ID2D1Image** output) const

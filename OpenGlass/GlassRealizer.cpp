@@ -83,14 +83,12 @@ HRESULT CGlassRealizer::Render(
 		targetSize.height
 	};
 
-	
 	input.buffer->Reserve(input.renderTargetBitmap->GetPixelSize());
-	const auto buffer = input.buffer->GetBitmapForEffectInputNoRef(context, input.renderTargetBitmap->GetPixelFormat());
-	/*RETURN_IF_FAILED(
+	RETURN_IF_FAILED(
 		input.buffer->CopyFrom(
 			context,
 			D2D1::Point2U(
-				static_cast<UINT32>(drawingWorldBounds.left), 
+				static_cast<UINT32>(drawingWorldBounds.left),
 				static_cast<UINT32>(drawingWorldBounds.top)
 			),
 			input.renderTargetBitmap,
@@ -101,85 +99,59 @@ HRESULT CGlassRealizer::Render(
 				static_cast<UINT32>(drawingWorldBounds.bottom)
 			)
 		)
-	);*/
+	);
 
+	const auto buffer = input.buffer->GetBitmapForEffectInputNoRef(context, input.renderTargetBitmap->GetPixelFormat());
+	const auto cleanupCustomEffect = wil::scope_exit([this]
 	{
-		const auto compositorContext = input.d2dContext->GetPrivateCompositorDeviceContext();
+		m_glassEffect->Reset();
+	});
+	RETURN_IF_FAILED(
+		m_glassEffect->Build(
+			context,
+			buffer,
+			drawingWorldBounds,
+			imageBounds,
+			static_cast<const void*>(&input.params)
+		)
+	);
 
-		winrt::com_ptr<ID2D1PrivateDepthBuffer> depthBuffer{};
-		RETURN_IF_FAILED(compositorContext->GetDepthBuffer(depthBuffer.put()));
-		RETURN_IF_FAILED(
-			compositorContext->SetTargetAndDepthBuffer(
-				buffer,
-				depthBuffer.get()
-			)
-		);
-		const auto targetScope = wil::scope_exit([&]
-		{
-			compositorContext->SetTargetAndDepthBuffer(
-				input.renderTargetBitmap,
-				depthBuffer.get()
-			);
-		});
+	winrt::com_ptr<ID2D1Image> outputImage{};
+	m_glassEffect->GetOutput(outputImage.put());
+	RETURN_HR_IF_NULL(D2DERR_INVALID_CALL, outputImage);
 
-		{
-			const auto cleanupCustomEffect = wil::scope_exit([this]
-			{
-				m_glassEffect->Reset();
-			});
-			winrt::com_ptr<ID2D1Image> outputImage{};
-			RETURN_IF_FAILED(
-				m_glassEffect->Build(
-					context,
-					input.renderTargetBitmap,
-					drawingWorldBounds,
-					imageBounds,
-					static_cast<const void*>(&input.params)
+	D2D1_MATRIX_3X2_F originalMatrix, outputMatrix = m_glassEffect->GetOutputMatrix();
+	context->GetTransform(&originalMatrix);
+	context->SetTransform(m_glassEffect->GetOutputMatrix());
+
+	D2D1InvertMatrix(&outputMatrix);
+	const auto transformedImageRect = RectF::TransformRect(drawingWorldBounds, outputMatrix);
+	for (const auto rectangle : input.rectangles)
+	{
+		auto transformedSubRectangle = RectF::TransformRect(rectangle, outputMatrix);
+		RectF::IntersectUnsafe(transformedSubRectangle, transformedImageRect);
+
+		context->DrawImage(
+			outputImage.get(),
+			D2D1::Point2F(
+				transformedSubRectangle.left,
+				transformedSubRectangle.top
+			),
+			transformedSubRectangle,
+			(
+				input.params.optimization == D2D1_GAUSSIANBLUR_OPTIMIZATION_SPEED ?
+				D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR :
+				(
+					input.params.optimization == D2D1_GAUSSIANBLUR_OPTIMIZATION_QUALITY ?
+					D2D1_INTERPOLATION_MODE_MULTI_SAMPLE_LINEAR :
+					D2D1_INTERPOLATION_MODE_LINEAR
 				)
-			);
-
-			m_glassEffect->GetOutput(outputImage.put());
-			if (outputImage)
-			{
-				context->DrawImage(
-					outputImage.get(),
-					D2D1::Point2F(
-						drawingWorldBounds.left,
-						drawingWorldBounds.top
-					),
-					drawingWorldBounds,
-					D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-					D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
-				);
-			}
-		}
+			),
+			D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
+		);
 	}
 
-	context->DrawImage(
-		buffer,
-		D2D1::Point2F(
-			drawingWorldBounds.left,
-			drawingWorldBounds.top
-		),
-		drawingWorldBounds,
-		D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
-		D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
-	);
-	/*RETURN_IF_FAILED(
-		input.buffer->CopyTo(
-			D2D1::Point2U(
-				static_cast<UINT32>(drawingWorldBounds.left),
-				static_cast<UINT32>(drawingWorldBounds.top)
-			),
-			input.renderTargetBitmap,
-			D2D1::RectU(
-				static_cast<UINT32>(drawingWorldBounds.left),
-				static_cast<UINT32>(drawingWorldBounds.top),
-				static_cast<UINT32>(drawingWorldBounds.right),
-				static_cast<UINT32>(drawingWorldBounds.bottom)
-			)
-		)
-	);*/
+	context->SetTransform(originalMatrix);
 
 	return S_OK;
 }

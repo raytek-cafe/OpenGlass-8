@@ -1,76 +1,112 @@
 ![header](banner.png)
-# OpenGlass
-A replica of the dead software glass8, also known as the upstream project of [DWMBlurGlass](https://github.com/Maplespe/DWMBlurGlass).  
+# Experience native look of Aero Glass interface on Windows 10+
+This utility returns the full glass effect to the window frame, just like [glass8](http://www.msfn.org/board/forum/180-aero-glass-for-windows-8/) did.
 
-> [!IMPORTANT]  
-> The information on this page is partially outdated
+> [!NOTE]  
+> The current branch only supports the following official versions of Windows.
+> - Windows 10 20H2
+> - Windows 10 21H2
+> - Windows 10 22H2
+> - Windows 11 21H2
+> - Windows 11 22H2
+> - Windows 11 23H2
+> - Windows 11 24H2
 
-
-This branch does not rely on `dcomp` and `Windows.UI.Composition` and instead uses raw Direct2D to leverage better performance than the master branch, however due to it's early nature you may encounter more bugs and crashes. Currently this branch ONLY supports Windows 10 2004-22H2.
 > [!IMPORTANT]  
 > This software is intended for advanced users only. If you are a beginner and you do not have deeper knowledge of Windows (such as registry editing etc.) you should not install this software.  
 > For the average users, you should consider using [DWMBlurGlass](https://github.com/Maplespe/DWMBlurGlass).
 
-> [!WARNING]   
-> OpenGlass does NOT support and is NOT intended to support Windows Insider Preview, so if you want to use it in these Windows versions please do it at your own risk.
-
-## Demonstration
-![Screenshot_1](https://github.com/user-attachments/assets/87bd340e-f60f-427b-83dd-d5470af3628a)
-![Dj2ZNvKO1f](https://github.com/user-attachments/assets/69cb8c6e-1232-4d6a-8661-a8291c1eb40b)
-![BBNq9TdJNM](https://github.com/user-attachments/assets/f2bf46cc-0229-4952-a385-3cfca0df0c35)
-![XzSxjpAIWr](https://github.com/user-attachments/assets/4be75ef3-0862-494a-a4c7-e6679ec2f790)
-![paintdotnet_lRyttWoEq4](https://github.com/user-attachments/assets/9d52fb58-e6b8-438e-8801-28afc19ecdbc)
-> *.msstyles theme used for screenshots: [Aero10 by vaporvance](https://www.deviantart.com/vaporvance/art/Aero10-for-Windows-10-1903-22H2-909711949)*
-
-> *additional software used: [Windhawk](https://windhawk.net/), [Aero Window Manager](https://github.com/Dulappy/aero-window-manager) by @Dulappy*
 ## How to use this software
-1. Extract the files from the Release page to `C:\`, but please don't put them in `C:\Users\*`, otherwise OpenGlass won't work properly.
-2. Run `install.bat` as administrator, this will create a scheduled task for you to run the OpenGlass helper process on boot, which will monitor and automatically inject its component into Dwm.
-3. Run `startup.bat` as administrator, this will run the helper process manually.
-4. When you use it for the first time or just after updating your system, OpenGlass will try to download the symbol files and you will see its download progress bar in the taskbar, but please don't close it and be patient for about 15s. When the symbol files are ready, enjoy!
-5. When you want to stop using OpenGlass or update the version of OpenGlass, running `shutdown.bat` will remove the effects of OpenGlass for you and exit the helper process. At this time, you can either replace the OpenGlass files or continue to run `uninstall.bat` and manually delete the remaining files to complete the uninstallation.
+1. Extract the files from the Release page to `C:\`, better not put it in any other location. Important thing is that you must place all files in writable location (i.e. not in `Program Files`), because DWM process does not run under user's credential. If you don't do this, OpenGlass will not be able to download symbols or create debug logs! If you worry about the security, you can change the permission of OpenGlass.dll files to be writable by Administrators group only and leave it read-only to others.
+2. Run `install.cmd` as administrator, this will create a scheduled task for you to run the OpenGlass host process which will inject DLL into DWM for you and also maintains that user settings are correctly loaded. 
+3. Run `startup.cmd` as administrator, this will run the host process manually.
+4. When you use it for the first time or just after updating your system, OpenGlass will try to download the symbol files and you will see its symbol downloading dialog, just be patient for about 15s. When the symbol files are ready, enjoy!
+5. When you want to stop using OpenGlass or update the version of OpenGlass, running `shutdown.cmd` will remove the effects of OpenGlass for you and exit the host process. At this time, you can either replace the OpenGlass files or continue to run `uninstall.cmd` and manually delete the remaining files to complete the uninstallation.
 6. When you experience a crash, OpenGlass is supposed to generate a large memory dump file in the `dumps` directory of the folder where it is located, please submit it to the developer if possible, this can help fix known or potential issues.
 
-## Documentation
-The legacy branch can use some of the features of the master branch. Options which are not listed below are not supported in the Legacy branch, vice versa. 
-> [!NOTE]  
-> Starting from 1.2, if the GlassType is 0x1, then it will use the value of `ColorizationColor`, `ColorizationAfterglow`, `ColorizationBlurBalance`, `ColorizationColorBalance`, `ColorizationAfterglowBalance`, unless an override key is made as shown below.
+## What are the DWM symbols and where to get them? <br>I see "Your DWM is incompatible" message. What to do?
 
+OpenGlass works by injecting re-implemented code into several DWM functions. This can be achieved only when the absolute location of each function is known. These locations are described in special files called "program database" and you can recognize them by their .PDB extension. They contain set of all public DWM variables and functions (which are called symbols) together with their memory offsets (relative locations) and other information. OpenGlass is able to load these files from "symbols" directory stored in your OpenGlass installation directory, find appropriate symbol and compute absolute memory location.
+
+Since the DWM functions are in different locations for each version of Windows, OpenGlass has to load their location from the external program databases. The best practice to know more and to get symbol files is reading [Microsoft's documentation](http://msdn.microsoft.com/en-us/library/windows/desktop/ee416588(v=vs.85).aspx#getting_the_symbols_you_need) (you will need symbol files for dwmcore.dll and udwm.dll). The most important thing is that the version of the program database must correspond to the used DWM library version.
+
+## How to change color of inactive windows border?
+This can be easily done using the Windows Registry Editor in the branch `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\DWM`. You can find there already existing values with name `ColorizationXXX` (where XXX represents an individual settable component) intended for active windows. If you create same values with suffix Inactive (i.e. `ColorizationXXXInactive`), such settings will be applied to inactive windows.
+
+But remember that colorization of the frame is also influenced by used theme. Majority of the themes have set opacity of inactive frames to 20%.
+
+## How can I change OpenGlass settings?
+You can change the settings of OpenGlass via editing the Windows registry.
 > [!IMPORTANT]  
-> Unless specified, the options below are stored in `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\DWM` and `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\DWM`. OpenGlass prefers to read the settings in the HKCU.
+> Unless specified, the options below are stored in `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\DWM` (per-user) and `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\DWM` (global). OpenGlass prefers to read the settings in the HKCU.
 
 
-**Colorization settings**
+### Colorization settings
 
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
-| ColorizationColorOverride | DWORD | Overrides the default Windows `ColorizationColor`. The color is in ARGB (i.e 0x6B74B8FC). If this is not set, it'll use the equivalent original registry key. |
-| ColorizationAfterglowOveride | DWORD | Overrides the default Windows `ColorizationAfterglow`. The color is in ARGB (i.e 0x6B74B8FC). If this is not set, it'll use the equivalent original registry key.  |
-| ColorizationColorBalanceOverride | DWORD | Overrides the default Windows `ColorizationColorBalance`. This key is typically controlled by the intensity slider in Control panel. If you were using the old shader fork previously, this is the equivalent to `og_ColorizationColorBalance`. If this is not set, it'll use the equivalent original registry key. |
-| ColorizationAfterglowBalanceOverride | DWORD | Overrides the default Windows `ColorizationAfterglowBalance`. This key is typically controlled by the intensity slider in Control panel. If you were using the old shader fork previously, this is the equivalent to `og_ColorizationColorBalance`. If this is not set, it'll use the equivalent original registry key. |
-| ColorizationBlurBalanceOverride | DWORD | Overrides the default Windows `ColorizationBlurBalance`. This key is typically controlled by the intensity slider in Control panel. If you were using the old shader fork previously, this is the equivalent to `og_ColorizationBlurBalance`. If this is not set, it'll use the equivalent original registry key. |
+| ColorizationColor<br>ColorizationColorInactive | DWORD | ARGB color used for the glass effect, alpha value is ignored.<br><br>ℹ️ `ColorizationColorInactive` is only used when `GlassType`=0x0 |
+| ColorizationColorOverride | DWORD | Same as `ColorizationColor`, but OpenGlass prefers to use this item. |
+| ColorizationAfterglow<br>ColorizationColorBalance<br>ColorizationAfterglowBalance<br>ColorizationBlurBalance | DWORD | Composition parameters for aero shader effect.<br><br>ℹ️ Only used when `GlassType`=0x1 |
+| ColorizationAfterglowOverride<br>ColorizationColorBalanceOverride<br>ColorizationAfterglowBalanceOverride<br>ColorizationBlurBalanceOverride | DWORD | Same as above, but OpenGlass prefers to use these. |
+| GlassOpacity<br>GlassOpacityInactive | DWORD | The intensity of the color (0-100%).<br><br>ℹ️ Only used when `GlassType`=0x0 |
+| ColorizationColorCaption<br>ColorizationColorCaptionInactive | DWORD | Color used for drawing window titles. Format is 0xBBGGRR.<br><br>ℹ️ Only valid in Win10 |
+| ColorizationOpaqueBlend | DWORD | Controls the transparency of glass effect. |
+| ColorizationOpaqueBlendColor | DWORD | ARGB base color used for opaque blending, alpha value is ignored. |
 
-**Glass settings**
+### Glass settings
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
-| GlassType | DWORD | The type of backdrop effect. Currently, only 2 options are supported: 0x0=Basic blur and 0x01=Aero |
-| GlassOverrideAccent | DWORD | Overrides surfaces with accent policies with OpenGlass effects, I.E: the taskbar. Set to 1 to enable. |
-| EnableGeometryMerging | DWORD | Merges multiple  blur surfaces to render as one. Most notably, this will eliminate the "artifact" near the titlebar edges. <br><br>**!! THIS OPTION MAY HAVE A SEVERE IMPACT ON PERFORMANCE. USE AT YOUR OWN RISK. !!** |
-| ColorizationGlassReflectionIntensity | DWORD | Controls the opacity of the glass streaks effect in the window. |
-| ColorizationGlassReflectionParallaxIntensity | DWORD | Controls intensity of the parallax effect (I.E when moving the windows side to side) of the glass streaks. | 
-| BlurDeviation | DWORD | Controls the radius (intensity) of the gaussian blur effect. |
-| TextGlowSize | DWORD | Controls the size of the titlebar text glow effect. |
-| RoundRectRadius | DWORD | Controls radius of the blur behind, like a rounded rectangle. Win8 = 0, Win7 = 12 | 
-| CustomThemeMsstyle | String | path to msstyle file. | 
-| CustomThemeMsstyleUseDefaults | DWORD | Color scheme uses the result from GetThemeDefaults | 
-| EnableFullDirty | DWORD | Make the dirty region extend to the entire desktop by using a hack. This will eliminate the "flickering" caused by redrawing due to missing glass safety zones, thus useful for those using a high blur radius. As a price, your entire desktop is rendered instead of just the necessary regions, but the occlusion optimization still works fine. <br><br>**!! THIS OPTION DEFINITELY HAVE A IMPACT ON PERFORMANCE. USE AT YOUR OWN RISK. !!** |
+| GlassType | DWORD | The type of glass effect. <ul><li>0x0=Vista style blur.</li><li>0x1=Aero style blur.</li><ul> |
+| GlassOverrideAccent | DWORD | Overrides surfaces with accent blur with OpenGlass effects, I.E: the taskbar. <br><br> **⚠️ This option is deprecated and may be removed in a future release. It may cause serious compatibility issues, you should NOT use this!** |
+| CustomThemeReflection | String | path to PNG file which will be used as overlay image to simulate reflection (Aero stripes) effect |
+| ColorizationGlassReflectionIntensity<br>ColorizationGlassReflectionIntensityInactive | DWORD | The intensity of reflection effect (0-100%). Default value is 0%. |
+| ColorizationGlassReflectionParallaxIntensity | DWORD | The parallax intensity of the reflection effect (I.E when moving the windows side to side). Default value is 13%. | 
+| ColorizationGlassReflectionPolicy | DWORD | Controls where reflections should be rendered. <ul><li>Titlebar=1<<0</li><li>Aero Peek=1<<2</li><li>Aero Snap=1<<3 (ℹ️ Only valid in Win10)</li></ul> |
+| BlurDeviation | DWORD | Standard deviation for gaussian blur, default=30 (which means σ=3.0) <br>Value 0 results in non-blurred transparency. |
+| BlurOptimization | DWORD | Quality of gaussian blur<ul><li>0x0=Speed first</li><li>0x1=Balance (default)</li><li>0x2=Quality first</li></ul>  |
+| RoundRectRadius | DWORD | The radius of glass geometry, Win8=0, Win7=12 | 
 
+### Theme settings
+| Key Name | Type | Description | 
+| -------- | ---- | ----------- |
+| CenterCaption | DWORD | Controls how title bar text is aligned.<ul><li>0x0=Keeps it on the left (default)</li><li>0x1=Centers it between the titlebar icon and the titlebar buttons</li><li>0x2=Centers the Win8 way</li></ul><br>ℹ️ Only valid in Win10 |
+| TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <ul><li>0x0=No glow effect</li><li>0x1=Glow effect loaded from atlas (default)</li><li>0x2=Glow effect loaded from atlas and theme opacity is respected</li><li>0x3=Composited glow effect using your theme settings HIWORD of the value specifies glow size (0=theme default)</li></ul><br>ℹ️ Only valid in Win10 |
+| CustomThemeAtlas | String | path to PNG file with theme resource (bitmap must have exactly the same layout as msstyle theme you are using!) |
+| DisableModernBorders | DWORD | Disable modern rounded window borders. <ul><li>0x0=Enable modern borders</li><li>0x1=Disable modern borders</li></ul><br>ℹ️ Only valid in Win11 |
 
-> [!TIP]  
-> Check out the code to discover more details!
+### Advanced settings
 
+The following registry items are located only in `HKLM\Software\Microsoft\Windows\DWM`, you should NOT change the settings in this section unless you know what you are doing.
+| Key Name | Type | Description | 
+| -------- | ---- | ----------- |
+| DisableGlassOnBattery  | DWORD | <ul><li>0x1=When energy saver is on then the glass effect will be opaque to decrease energy consumption (default)</li><li>0x0=glass effect won't be opaque on energy saver</li></ul> |
+| DisableMemoryDump  | DWORD | <ul><li>0x0=Generates a memory dump file when DWM crashes (default)</li><li>0x1=No memory dump files</li></ul> |
+| DisabledHooks  | DWORD | Controls which module's hooks are disabled, which will also control the availability of features. <ul><li>0x0=No hooks are disabled (default)</li><li>0x1=Disables hooks for `CaptionTextHandler.cpp`</li></ul> |
 
-## How to reload the configuration
+## What are the custom theme atlas files?
+When Desktop Windows Manager wants to draw frame controls (such as minimize/maximize/close buttons, frame shadow etc.), it uses images which are stored in your current theme. Normally, you would need to edit your theme and install UxTheme patch to be able to change the appearance of windows frames. OpenGlass comes with a feature that you can change these images directly without editing the theme. Just provide custom *.png image, point to it with CustomThemeAtlas registry settings and restart DWM.EXE process. The windows frames will be drawn using your custom image now. Just beware that the layout of theme resource depends on the current system theme. If you do not keep this layout, your frames will be rendered incorrectly.
+
+Starting with the version 2.0, you can provide additional layout data by supplying a *.png.layout file in the folder where *.png atlas image is stored. OpenGlass will then ignore current theme layout and use data in this file. The description of the file format is:
+- each line has format "x;y;z=a,b,c,d"
+- x, y, z specify the part, its state and the property respectively
+- a, b, c, d specify position rectangle in atlas image (for z = 8002) or the part sizing/content margins (for z = 3601/3602)
+- see example layout file for description of individual part identifiers
+- see MSDN documentation of GetThemeRect and GetThemeMargins function for further information
+- line "CaptionHeight=n" allows you to change the size of caption buttons to "n" pixels
+- everything after # is considered to be the comment and is ignored
+
+## Why is there no blur effect in the region/window/etc.? <br>Is it possible to enable the blur effect on the taskbar (Alt-Tab window, any other window etc.) ?
+
+Remember that DWM is the rendering engine only and OpenGlass is the extension for it. It will apply glass effect only on the regions which are marked to have blur behind. It does not alter any region behavior on its own. If some application wants to have glass effect somewhere, it must enable it explicitly. The taskbar belongs to Windows Explorer shell, thus you must enable blur behind on your own by calling DWM API function `DwmEnableBlurBehindWindow`. Blur effect will also apply tint of glass color.
+
+Windows 8+ Desktop Window Manager contains new feature called accent. It is a kind of effect which makes whole window fully transparent with tint of glass color. This effect is enabled on the taskbar by default. If you enable blur behind the taskbar but don't disable accent effect (using `SetWindowCompositionAttribute` API function), you may notice that it will be much more colorized, because the color of both effects will be simply added together.
+
+If you are not familiar with DWM programming API, you can use any of the existing tools that have option to call the `DwmEnableBlurBehindWindow` function, such as OpenShell, StartIsBack or StartAllBack. 
+
+Also remember that taskbar appearance is influenced by used theme where texture used for the taskbar is different from the atlas texture used for windows frames rendering.
+
+## How to refresh the configuration
 OpenGlass does not provide any GUI nor commands to explicitly reload the configuration, you may consider using glass8's heritage `AeroGlassGUI.exe` to refresh some of the settings.   
 However, it's actually quite easy to do so in C/C++.
 ```c++
@@ -78,29 +114,9 @@ PostMessage(FindWindow(TEXT("Dwm"), nullptr), WM_THEMECHANGED, 0, 0);           
 PostMessage(FindWindow(TEXT("Dwm"), nullptr), WM_DWMCOLORIZATIONCHANGED, 0, 0);  // refresh part of the settings related to color/backdrop
 ```
 
-## About compatibility
-- OpenGlass cannot be used with DWMBlurGlass as they belong to the same type of software.
-- OpenGlass does not support rendering borders that are included in accents, so some softwares that turn on borders for accents such as TranslucentFlyouts will not be able to display borders.
-- OpenGlass can be used with [AWM](https://github.com/Dulappy/aero-window-manager), but `CustomThemeMsstyle` will not be available and you need to be careful about the order in which you execute and stop.
-    - **Good Example😘**:  
+> [!TIP]  
+> It is better to refresh only the corresponding part of the registry items, otherwise it will slow down the system. 
 
-        execute OpenGlass  
-        execute AWM  
-        ...  
-        stop AWM  
-        stop OpenGlass  
-
-        (The first to execute should be stopped at last.)
-    - **Bad Example😭**:  
-        execute OpenGlass  
-        execute AWM  
-        ...  
-        stop OpenGlass  
-        stop AWM  
-
-        In this case you are likely to get a crash of DWM or the other software working abnormally.
-- OpenGlass can be used with most Windhawk mods, but some may have compatibility issues, especially community or personally written mods that can't be found in the windhawk marketplace.
-- This branch cannot be used with the master branch.
 
 ## Dependencies and References
 ### [Banner for OpenGlass](https://github.com/ALTaleX531/OpenGlass/discussions/11)
@@ -114,9 +130,3 @@ VC-LTL is an open source CRT library based on the MS VCRT that reduce program bi
 The Windows Implementation Libraries (WIL) is a header-only C++ library created to make life easier for developers on Windows through readable type-safe C++ interfaces for common Windows coding patterns.  
 ### [Interop Compositor](https://blog.adeltax.com/interopcompositor-and-coredispatcher/)
 Saved me some decompiling and reverse engineering time thanks to ADeltaX's blog!
-### [Win32Acrylic](https://github.com/ALTaleX531/Win32Acrylic)
-Win2D sucks!
-### [AcrylicEverywhere](https://github.com/ALTaleX531/AcrylicEverywhere)
-The predecessor of this project.
-### [Loading Visual Styles Per-Application](https://winclassic.net/thread/2178/loading-visual-styles-application)
-It is possible for an application to load a style on a per-application basis using an undocumented API.

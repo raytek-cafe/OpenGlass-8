@@ -81,6 +81,7 @@ namespace OpenGlass::GlassRenderer
 	std::bitset<2> g_renderFlag{};
 	ID2D1Device* g_deviceNoRef{};
 	winrt::com_ptr<ID2D1SolidColorBrush> g_brush{};
+	D2D1_RECT_F g_drawingWorldBounds{};
 	size_t g_CVIHierarchy{};
 
 	int g_drawGeometryCommandType{ 0 };
@@ -95,6 +96,70 @@ namespace OpenGlass::GlassRenderer
 		bool previousState = g_disableBlurRendering;
 		g_disableBlurRendering = disable;
 		return previousState;
+	}
+
+	dwmcore::CShapePtr GetShapeRenderingData(
+		const dwmcore::CDrawingContext* drawingContext,
+		const dwmcore::CShape* shape, 
+		const dwmcore::CMILMatrix* matrix,
+		float extendedAmount,
+		D2D1_RECT_F& drawingWorldBounds,
+		std::unique_ptr<D2D1_RECT_F[]>& rectangles,
+		UINT& rectanglesCount
+	)
+	{
+		dwmcore::CShapePtr renderingShape{};
+		if (
+			FAILED(
+				drawingContext->GetUnOccludedWorldShape(
+					shape,
+					drawingContext->GetD2DContextOwner()->GetCurrentZ(),
+					renderingShape.put()
+				)
+			) ||
+			!renderingShape
+		)
+		{
+			shape->CopyShape(matrix, renderingShape.put());
+		}
+
+		if (renderingShape && !renderingShape->IsEmpty())
+		{
+			bool succeeded{ false };
+
+			D2D1_RECT_F clippedWorldBounds{}, shapeWorldBounds{};
+			drawingContext->GetClipBoundsWorld(&clippedWorldBounds);
+			renderingShape->GetTightBounds(&shapeWorldBounds, nullptr);
+			shapeWorldBounds.left = std::max(shapeWorldBounds.left - extendedAmount, clippedWorldBounds.left);
+			shapeWorldBounds.top = std::max(shapeWorldBounds.top - extendedAmount, clippedWorldBounds.top);
+			shapeWorldBounds.right = std::min(shapeWorldBounds.right + extendedAmount, clippedWorldBounds.right);
+			shapeWorldBounds.bottom = std::min(shapeWorldBounds.bottom + extendedAmount, clippedWorldBounds.bottom);
+			drawingWorldBounds = shapeWorldBounds;
+
+			if (renderingShape->IsRectangles(&rectanglesCount))
+			{
+				rectangles = std::make_unique_for_overwrite<D2D1_RECT_F[]>(rectanglesCount);
+				if (renderingShape->GetRectangles(rectangles.get(), rectanglesCount))
+				{
+					succeeded = true;
+				}
+			}
+
+			if (!succeeded)
+			{
+				rectanglesCount = 1;
+				rectangles = std::make_unique_for_overwrite<D2D1_RECT_F[]>(rectanglesCount);
+				renderingShape->GetTightBounds(rectangles.get(), nullptr);
+			}
+		}
+		else
+		{
+			drawingWorldBounds = {};
+			rectangles.reset();
+			rectanglesCount = 0;
+		}
+
+		return renderingShape;
 	}
 }
 
@@ -230,27 +295,19 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	const auto desktopTree = HookHelper::vftbl_of(currentVisualTree) != dwmcore::CDesktopTree::vftable ? currentVisual->GetDesktopTree() : currentVisualTree;
 	auto desktopTreeInvalid = !desktopTree;
 	const auto extendedAmount = (g_disableBlurRendering || desktopTreeInvalid) ? 0.f : GlassKernel::GetBlurExtendedAmount();
-	
-	D2D1_RECT_F drawingWorldBounds{};
-	drawingContext->GetClipBoundsWorld(&drawingWorldBounds);
-	D2D1_RECT_F glassWorldBounds{};
-	geometryShape->GetTightBounds(&glassWorldBounds, matrix);
-	RectF::IntersectUnsafe(drawingWorldBounds, glassWorldBounds);
 
-	dwmcore::CShapePtr renderingShape{};
-	if (
-		FAILED(
-			drawingContext->GetUnOccludedWorldShape(
-				geometryShape.get(),
-				drawingContext->GetD2DContextOwner()->GetCurrentZ(),
-				renderingShape.put()
-			)
-		) ||
-		!renderingShape
-	)
-	{
-		geometryShape->CopyShape(matrix, renderingShape.put());
-	}
+	UINT rectanglesCount;
+	std::unique_ptr<D2D1_RECT_F[]> rectangles;
+
+	const auto renderingShape = GetShapeRenderingData(
+		drawingContext,
+		geometryShape.get(),
+		matrix,
+		extendedAmount,
+		g_drawingWorldBounds,
+		rectangles,
+		rectanglesCount
+	);
 
 	RETURN_IF_FAILED(
 		drawingContext->PushTransformInternal(
@@ -280,17 +337,12 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	{
 		context->CreateSolidColorBrush({}, g_brush.put());
 	}
-
 	auto blurBuffer = g_blurBuffer;
 	if (!blurBuffer)
 	{
 		blurBuffer = winrt::make_self<CD2DBuffer>();
 		g_blurBuffer = blurBuffer;
 	}
-
-	// check if the shape is consisted of rectangles
-	UINT rectanglesCount;
-	renderingShape->IsRectangles(&rectanglesCount);
 
 	winrt::com_ptr<ID2D1Bitmap1> renderTargetBitmap;
 	std::unique_ptr<dwmcore::CMILMatrix> visualWorldTransform;
@@ -398,10 +450,9 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				{
 					renderTargetBitmap = drawingContext->AcquireRenderTargetBitmap(true);
 				}
-				g_glassInput.d2dContext = d2dContext;
-				g_glassInput.drawingWorldBounds = &drawingWorldBounds;
+				g_glassInput.drawingWorldBounds = &g_drawingWorldBounds;
 				g_glassInput.renderTargetBitmap = renderTargetBitmap.get();
-				g_glassInput.extendedAmount = extendedAmount;
+				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
 				// effect settings
 				g_glassInput.params.blurAmount = Shared::g_blurAmount;
 				g_glassInput.params.optimization = Shared::g_blurOptimization;
@@ -447,11 +498,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					}
 				}
 
-				if (rectanglesCount)
-				{
-					drawingContext->FillShapeWithSolidColor(renderingShape.get(), finalColor);
-				}
-				else
+				if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), finalColor)))
 				{
 					g_brush->SetColor(finalColor);
 					drawingContext->FillShapeWithBrush(renderingShape.get(), g_brush.get());
@@ -475,11 +522,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	}
 	else
 	{
-		if (rectanglesCount)
-		{
-			drawingContext->FillShapeWithSolidColor(renderingShape.get(), finalColor);
-		}
-		else
+		if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), finalColor)))
 		{
 			g_brush->SetColor(finalColor);
 			drawingContext->FillShapeWithBrush(renderingShape.get(), g_brush.get());
@@ -521,7 +564,7 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	This->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
 	This->PushLayer(
 		D2D1::LayerParameters1(
-			D2D1::InfiniteRect(),
+			g_drawingWorldBounds,
 			geometry,
 			D2D1_ANTIALIAS_MODE_ALIASED,
 			D2D1::IdentityMatrix(),

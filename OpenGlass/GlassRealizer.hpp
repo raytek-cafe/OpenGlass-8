@@ -18,11 +18,10 @@ namespace OpenGlass
 		GlassParams params;
 
 		ID2D1Bitmap1* renderTargetBitmap;
-		dwmcore::CD2DContext* d2dContext;
 		const D2D1_RECT_F* drawingWorldBounds;
+		std::span<D2D1_RECT_F> rectangles;
 
 		CD2DBuffer* buffer;
-		float extendedAmount;
 	};
 
 	class CGlassRealizer : public winrt::implements<CGlassRealizer, IUnknown, winrt::non_agile, winrt::no_weak_ref>

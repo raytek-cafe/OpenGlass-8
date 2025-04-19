@@ -84,6 +84,11 @@ HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
 	return S_OK;
 }
 
+D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CBlurEffect::GetOutputMatrix() const
+{
+	return m_customBlurEffect->GetOutputMatrix();
+}
+
 void STDMETHODCALLTYPE CBlurEffect::GetOutput(ID2D1Image** output) const
 {
 	if (m_outputEffect)
