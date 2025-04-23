@@ -37,7 +37,6 @@ HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
 	ID2D1DeviceContext* context,
 	ID2D1Image* inputImage,
 	const D2D1_RECT_F& imageRectangle,
-	const D2D1_RECT_F& imageBounds,
 	const void* additionalParams
 )
 {
@@ -52,7 +51,6 @@ HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
 			context,
 			inputImage,
 			imageRectangle,
-			imageBounds,
 			additionalParams
 		)
 	);

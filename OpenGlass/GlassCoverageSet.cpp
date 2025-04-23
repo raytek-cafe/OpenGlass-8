@@ -18,6 +18,10 @@ namespace OpenGlass::GlassCoverageSetFactory
 		) override;
 		void STDMETHODCALLTYPE Clear() override { m_array.Clear(); }
 		std::span<dwmcore::CZOrderedRect> STDMETHODCALLTYPE GetViews() const override { return m_array.views(); }
+		bool STDMETHODCALLTYPE IsFullyCovered(
+			const D2D1_RECT_F& coverage,
+			int depth
+		) const override;
 		bool STDMETHODCALLTYPE IsPartiallyCovered(
 			const D2D1_RECT_F& coverage,
 			int depth
@@ -44,6 +48,36 @@ HRESULT STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::
 	m_array.AddInPlace(coverage, depth, matrix);
 	return S_OK;
 }
+
+bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsFullyCovered(
+	const D2D1_RECT_F& coverage,
+	int depth
+) const
+{
+	for (const auto& zorderedRect : m_array.views())
+	{
+		if (zorderedRect.m_depth >= depth)
+		{
+			break;
+		}
+
+		if (
+			!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
+			std::fabs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
+
+			coverage.left >= zorderedRect.m_transformedRect.left &&
+			coverage.top >= zorderedRect.m_transformedRect.top &&
+			coverage.right <= zorderedRect.m_transformedRect.right &&
+			coverage.bottom <= zorderedRect.m_transformedRect.bottom
+		)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsPartiallyCovered(
 	const D2D1_RECT_F& coverage,
 	int depth

@@ -122,7 +122,7 @@ namespace OpenGlass::GlassSafetyZone
 	IGlassCoverageSet* g_glassCoverageSetNoRef{ nullptr };
 	dwmcore::CDrawingContext* g_drawingContextNoRef{ nullptr };
 	ID2D1Device* g_deviceNoRef{ nullptr };
-	winrt::com_ptr<CGlassSafetyZoneLayer> g_glassSafetyZoneLayer{ nullptr };
+	CGlassSafetyZoneLayer g_glassSafetyZoneLayer{};
 
 	std::unordered_map<dwmcore::COcclusionContext*, ULONGLONG> g_shrunkCoverageSetMap{};
 	void ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occlusionContext);
@@ -712,6 +712,11 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 
 	do
 	{
+		if (GlassKernel::IsInCVIHierarchy())
+		{
+			break;
+		}
+
 		if (
 			!occlusionContext ||
 			occlusionContext->GetFrameId() != dwmcore::GetCurrentFrameId() ||
@@ -754,21 +759,12 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 		if (g_deviceNoRef != device.get())
 		{
 			g_deviceNoRef = device.get();
-			g_glassSafetyZoneLayer = nullptr;
+			g_glassSafetyZoneLayer.Reset();
 		}
 
-		auto glassSafetyZoneLayer = g_glassSafetyZoneLayer;
-		if (!glassSafetyZoneLayer)
+		if (g_glassSafetyZoneLayer.GetOwner())
 		{
-			glassSafetyZoneLayer = winrt::make_self<CGlassSafetyZoneLayer>();
-			g_glassSafetyZoneLayer = glassSafetyZoneLayer;
-		}
-		else
-		{
-			if (glassSafetyZoneLayer->GetOwner())
-			{
-				break;
-			}
+			break;
 		}
 
 		D2D1_RECT_F extendedPixelRectangle
@@ -780,7 +776,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 		};
 		if (
 			FAILED(
-				glassSafetyZoneLayer->Push(
+				g_glassSafetyZoneLayer.Push(
 					context,
 					renderTargetBitmap.get(),
 					This->GetDeviceTransform()->GetD2DMatrix(),
@@ -799,7 +795,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 		GlassRenderer::ControlBlurRendering(status);
 
 		This->FlushD2D();
-		glassSafetyZoneLayer->Pop();
+		g_glassSafetyZoneLayer.Pop();
 
 		return hr;
 	}
@@ -874,8 +870,6 @@ void GlassSafetyZone::Update([[maybe_unused]] GlassEngine::UpdateType type)
 	{
 		GlassCoverageSetFactory::Shutdown();
 	}
-
-	g_glassSafetyZoneLayer = nullptr;
 }
 
 void GlassSafetyZone::Startup()
@@ -979,5 +973,5 @@ void GlassSafetyZone::Shutdown()
 
 	GlassCoverageSetFactory::Shutdown();
 	g_shrunkCoverageSetMap.clear();
-	g_glassSafetyZoneLayer = nullptr;
+	g_glassSafetyZoneLayer.Reset();
 }

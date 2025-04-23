@@ -67,13 +67,13 @@ HRESULT CGlassRealizer::Render(
 		return S_OK;
 	}
 
-	const auto targetSize = input.renderTargetBitmap->GetSize();
-	const D2D1_RECT_F drawingWorldBounds
+	const auto targetSize = input.sourceBitmap->GetSize();
+	const D2D1_RECT_F sampleWorldBounds
 	{
-		std::max(0.f, input.drawingWorldBounds->left),
-		std::max(0.f, input.drawingWorldBounds->top),
-		std::min(targetSize.width, input.drawingWorldBounds->right),
-		std::min(targetSize.height, input.drawingWorldBounds->bottom),
+		std::max(0.f, input.sampleWorldBounds.left),
+		std::max(0.f, input.sampleWorldBounds.top),
+		std::min(targetSize.width, input.sampleWorldBounds.right),
+		std::min(targetSize.height, input.sampleWorldBounds.bottom),
 	};
 	const D2D1_RECT_F imageBounds
 	{
@@ -83,74 +83,77 @@ HRESULT CGlassRealizer::Render(
 		targetSize.height
 	};
 
-	input.buffer->Reserve(input.renderTargetBitmap->GetPixelSize());
-	RETURN_IF_FAILED(
-		input.buffer->CopyFrom(
-			context,
-			D2D1::Point2U(
-				static_cast<UINT32>(drawingWorldBounds.left),
-				static_cast<UINT32>(drawingWorldBounds.top)
-			),
-			input.renderTargetBitmap,
-			D2D1::RectU(
-				static_cast<UINT32>(drawingWorldBounds.left),
-				static_cast<UINT32>(drawingWorldBounds.top),
-				static_cast<UINT32>(drawingWorldBounds.right),
-				static_cast<UINT32>(drawingWorldBounds.bottom)
+	if (!input.zeroCopyAllowed)
+	{
+		input.buffer->Resize(input.sourceBitmap->GetPixelSize());
+		RETURN_IF_FAILED(
+			input.buffer->CopyFrom(
+				context,
+				D2D1::Point2U(
+					static_cast<UINT32>(sampleWorldBounds.left),
+					static_cast<UINT32>(sampleWorldBounds.top)
+				),
+				input.sourceBitmap,
+				D2D1::RectU(
+					static_cast<UINT32>(sampleWorldBounds.left),
+					static_cast<UINT32>(sampleWorldBounds.top),
+					static_cast<UINT32>(sampleWorldBounds.right),
+					static_cast<UINT32>(sampleWorldBounds.bottom)
+				)
 			)
-		)
-	);
+		);
+	}
 
-	const auto buffer = input.buffer->GetBitmapForEffectInputNoRef(context, input.renderTargetBitmap->GetPixelFormat());
 	const auto cleanupCustomEffect = wil::scope_exit([this]
 	{
 		m_glassEffect->Reset();
 	});
+
 	RETURN_IF_FAILED(
 		m_glassEffect->Build(
 			context,
-			buffer,
-			drawingWorldBounds,
-			imageBounds,
+			input.zeroCopyAllowed ? input.sourceBitmap : input.buffer->GetD2DBitmap(context, input.sourceBitmap->GetPixelFormat()),
+			sampleWorldBounds,
 			static_cast<const void*>(&input.params)
 		)
 	);
-
 	winrt::com_ptr<ID2D1Image> outputImage{};
 	m_glassEffect->GetOutput(outputImage.put());
-	RETURN_HR_IF_NULL(D2DERR_INVALID_CALL, outputImage);
+
+	RETURN_HR_IF_NULL(D2DERR_UNSUPPORTED_PIXEL_FORMAT, outputImage);
 
 	D2D1_MATRIX_3X2_F originalMatrix, outputMatrix = m_glassEffect->GetOutputMatrix();
+	D2D1_RENDERING_CONTROLS originalRenderingControls, renderingControls;
+	context->GetRenderingControls(&originalRenderingControls);
+	renderingControls = originalRenderingControls;
+	renderingControls.tileSize = D2D1::SizeU(4096, 4096);
+	context->SetRenderingControls(renderingControls);
 	context->GetTransform(&originalMatrix);
-	context->SetTransform(m_glassEffect->GetOutputMatrix());
+	context->SetTransform(outputMatrix);
 
 	D2D1InvertMatrix(&outputMatrix);
-	const auto transformedImageRect = RectF::TransformRect(drawingWorldBounds, outputMatrix);
-	for (const auto rectangle : input.rectangles)
+	const auto transformedDrawingRect = RectF::TransformRect(*input.drawingWorldBounds, outputMatrix);
+
+	for (const auto& rectangle : input.rectangles)
 	{
 		auto transformedSubRectangle = RectF::TransformRect(rectangle, outputMatrix);
-		RectF::IntersectUnsafe(transformedSubRectangle, transformedImageRect);
 
-		context->DrawImage(
-			outputImage.get(),
-			D2D1::Point2F(
-				transformedSubRectangle.left,
-				transformedSubRectangle.top
-			),
-			transformedSubRectangle,
-			(
-				input.params.optimization == D2D1_GAUSSIANBLUR_OPTIMIZATION_SPEED ?
-				D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR :
-				(
-					input.params.optimization == D2D1_GAUSSIANBLUR_OPTIMIZATION_QUALITY ?
-					D2D1_INTERPOLATION_MODE_MULTI_SAMPLE_LINEAR :
-					D2D1_INTERPOLATION_MODE_LINEAR
-				)
-			),
-			D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
-		);
+		if (RectF::IntersectUnsafe(transformedSubRectangle, transformedDrawingRect))
+		{
+			context->DrawImage(
+				outputImage.get(),
+				D2D1::Point2F(
+					transformedSubRectangle.left,
+					transformedSubRectangle.top
+				),
+				transformedSubRectangle,
+				input.nearestNeighborFinalScale ? D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR : D2D1_INTERPOLATION_MODE_LINEAR,
+				D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
+			);
+		}
 	}
 
+	context->SetRenderingControls(originalRenderingControls);
 	context->SetTransform(originalMatrix);
 
 	return S_OK;

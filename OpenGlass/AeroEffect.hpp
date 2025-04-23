@@ -25,7 +25,6 @@ namespace OpenGlass
 			ID2D1DeviceContext* context,
 			ID2D1Image* inputImage,
 			const D2D1_RECT_F& imageRectangle,
-			const D2D1_RECT_F& imageBounds,
 			const void* additionalParams
 		) override;
 		D2D1_MATRIX_3X2_F STDMETHODCALLTYPE GetOutputMatrix() const override;

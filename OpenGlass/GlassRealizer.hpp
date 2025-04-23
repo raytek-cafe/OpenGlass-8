@@ -4,7 +4,6 @@
 #include "dwmcoreProjection.hpp"
 #include "AeroEffect.hpp"
 #include "D2DBuffer.hpp"
-#include "D2DPrivates.hpp"
 #include "Shared.hpp"
 
 namespace OpenGlass
@@ -17,11 +16,13 @@ namespace OpenGlass
 	{
 		GlassParams params;
 
-		ID2D1Bitmap1* renderTargetBitmap;
+		ID2D1Bitmap1* sourceBitmap;
+		D2D1_RECT_F sampleWorldBounds;
 		const D2D1_RECT_F* drawingWorldBounds;
 		std::span<D2D1_RECT_F> rectangles;
-
 		CD2DBuffer* buffer;
+		bool zeroCopyAllowed;
+		bool nearestNeighborFinalScale;
 	};
 
 	class CGlassRealizer : public winrt::implements<CGlassRealizer, IUnknown, winrt::non_agile, winrt::no_weak_ref>

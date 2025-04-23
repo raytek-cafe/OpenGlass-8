@@ -36,7 +36,6 @@ float CCustomBlurEffect::DetermineOutputScale(
 	return outputScale;
 }
 
-// Input -> (optional) ScaleDown -> CropInput -> Border -> DirectionalBlurX -> DirectionalBlurY -> (optional) Embedded -> (optional) ScaleUp
 HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 {
 	RETURN_IF_FAILED(
@@ -71,21 +70,21 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 	);
 
 	RETURN_IF_FAILED(
-		m_scaleDownEffect->SetValue(
-			D2D1_SCALE_PROP_BORDER_MODE,
-			D2D1_BORDER_MODE_SOFT
+		m_cropInputEffect->SetValue(
+			D2D1_CROP_PROP_BORDER_MODE,
+			D2D1_BORDER_MODE_HARD
 		)
 	);
 
 	RETURN_IF_FAILED(
-		m_cropInputEffect->SetValue(
-			D2D1_CROP_PROP_BORDER_MODE,
-			D2D1_BORDER_MODE_SOFT
+		m_scaleDownEffect->SetValue(
+			D2D1_SCALE_PROP_BORDER_MODE,
+			D2D1_BORDER_MODE_HARD
 		)
 	);
-	m_cropInputEffect->SetInputEffect(0, m_scaleDownEffect.get());
+	m_scaleDownEffect->SetInputEffect(0, m_cropInputEffect.get());
 
-	m_borderEffect->SetInputEffect(0, m_cropInputEffect.get());
+	m_borderEffect->SetInputEffect(0, m_scaleDownEffect.get());
 	RETURN_IF_FAILED(
 		m_borderEffect->SetValue(
 			D2D1_BORDER_PROP_EDGE_MODE_X, 
@@ -120,13 +119,28 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 	return S_OK;
 }
 
-HRESULT CCustomBlurEffect::CalculateAndSetEffectParams()
+HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageRectangle)
 {
+	RETURN_IF_FAILED(
+		m_cropInputEffect->SetValue(
+			D2D1_CROP_PROP_RECT,
+			imageRectangle
+		)
+	);
 	m_prescaleAmount = 
 	{
-		DetermineOutputScale(wil::rect_width(m_imageBounds)),
-		DetermineOutputScale(wil::rect_height(m_imageBounds))
+		DetermineOutputScale(wil::rect_width(imageRectangle)),
+		DetermineOutputScale(wil::rect_height(imageRectangle))
 	};
+	/*OutputDebugStringW(
+		std::format(
+			L"prescaleAmount=[{},{}] for size=[{},{}]\n",
+			m_prescaleAmount.x,
+			m_prescaleAmount.y,
+			wil::rect_width(imageRectangle),
+			wil::rect_height(imageRectangle)
+		).c_str()
+	);*/
 	D2D1_VECTOR_2F finalBlurAmount{ m_blurAmount, m_blurAmount };
 	auto finalPrescaleAmount = m_prescaleAmount;
 
@@ -147,14 +161,10 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams()
 		}
 	}
 
-	m_outputEffect = m_directionalBlurYEffect;
-
 	RETURN_IF_FAILED(
 		m_scaleDownEffect->SetValue(
 			D2D1_SCALE_PROP_INTERPOLATION_MODE,
-			m_optimization == D2D1_GAUSSIANBLUR_OPTIMIZATION_QUALITY ? 
-			D2D1_SCALE_INTERPOLATION_MODE_LINEAR : 
-			D2D1_SCALE_INTERPOLATION_MODE_NEAREST_NEIGHBOR
+			static_cast<D2D1_SCALE_PROP>(k_optimizations[5 * m_optimization + 4])
 		)
 	);
 	RETURN_IF_FAILED(
@@ -163,20 +173,11 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams()
 			finalPrescaleAmount
 		)
 	);
-	if (finalPrescaleAmount.x == 1.f && finalPrescaleAmount.y == 1.f)
-	{
-		m_inputEffect = m_cropInputEffect;
-	}
-	else
-	{
-		m_inputEffect = m_scaleDownEffect;
-		m_cropInputEffect->SetInputEffect(0, m_scaleDownEffect.get());
 
-		finalBlurAmount = D2D1::Vector2F(
-			finalBlurAmount.x * finalPrescaleAmount.x,
-			finalBlurAmount.y * finalPrescaleAmount.y
-		);
-	}
+	finalBlurAmount = D2D1::Vector2F(
+		finalBlurAmount.x * finalPrescaleAmount.x,
+		finalBlurAmount.y * finalPrescaleAmount.y
+	);
 
 	RETURN_IF_FAILED(
 		m_directionalBlurXEffect->SetValue(
@@ -222,7 +223,6 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 	ID2D1DeviceContext* context,
 	ID2D1Image* inputImage,
 	const D2D1_RECT_F& imageRectangle,
-	const D2D1_RECT_F& imageBounds,
 	const void* additionalParams
 )
 {
@@ -231,14 +231,31 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 		RETURN_IF_FAILED(Initialize(context));
 	}
 
+	m_cropInputEffect->SetInput(0, inputImage);
+
 	bool recalculateParams{ true };
-	
 	do
 	{
 		const auto params = static_cast<const CustomBlurParams*>(additionalParams);
 		const auto blurAmount = params->blurAmount;
 		const auto optimization = params->optimization;
-		
+
+		if (params->blurAmount == 0.f)
+		{
+			m_blurNothing = true;
+			RETURN_IF_FAILED(
+				m_cropInputEffect->SetValue(
+					D2D1_CROP_PROP_RECT,
+					imageRectangle
+				)
+			);
+			return S_OK;
+		}
+		else
+		{
+			m_blurNothing = false;
+		}
+
 		if (m_blurAmount != blurAmount)
 		{
 			m_blurAmount = blurAmount;
@@ -249,9 +266,11 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 			m_optimization = optimization;
 			break;
 		}
-		if (memcmp(&m_imageBounds, &imageBounds, sizeof(D2D1_RECT_F)) != 0)
+
+		D2D1_RECT_F m_imageRectangle;
+		RETURN_IF_FAILED(m_cropInputEffect->GetValue(D2D1_CROP_PROP_RECT, &m_imageRectangle));
+		if (memcmp(&m_imageRectangle, &imageRectangle, sizeof(D2D1_RECT_F)) != 0)
 		{
-			m_imageBounds = imageBounds;
 			break;
 		}
 
@@ -261,37 +280,22 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 	if (recalculateParams)
 	{
 		RETURN_IF_FAILED(
-			CalculateAndSetEffectParams()
+			CalculateAndSetEffectParams(
+				imageRectangle
+			)
 		);
 	}
-
-	m_inputEffect->SetInput(0, inputImage);
-
-	D2D1_VECTOR_2F finalPrescaleAmount{ 1.f, 1.f };
-	RETURN_IF_FAILED(
-		m_scaleDownEffect->GetValue(
-			D2D1_SCALE_PROP_SCALE,
-			&finalPrescaleAmount
-		)
-	);
-
-	D2D1_RECT_F scaledImageRect{};
-	scaledImageRect.left = std::floor(imageRectangle.left * finalPrescaleAmount.x);
-	scaledImageRect.top = std::floor(imageRectangle.top * finalPrescaleAmount.y);
-	scaledImageRect.right = std::ceil(imageRectangle.right * finalPrescaleAmount.x);
-	scaledImageRect.bottom = std::ceil(imageRectangle.bottom * finalPrescaleAmount.y);
-	RETURN_IF_FAILED(
-		m_cropInputEffect->SetValue(
-			D2D1_CROP_PROP_RECT,
-			scaledImageRect
-		)
-	);
 
 	return S_OK;
 }
 
 D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CCustomBlurEffect::GetOutputMatrix() const
 {
+	if (m_blurNothing)
+	{
+		return D2D1::IdentityMatrix();
+	}
+
 	return D2D1::Matrix3x2F::Scale(
 		D2D1::SizeF(
 			1.f / m_prescaleAmount.x,
@@ -302,13 +306,20 @@ D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CCustomBlurEffect::GetOutputMatrix() const
 
 void STDMETHODCALLTYPE CCustomBlurEffect::GetOutput(ID2D1Image** output) const
 {
-	m_outputEffect->GetOutput(output);
+	if (m_blurNothing)
+	{
+		m_cropInputEffect->GetOutput(output);
+	}
+	else
+	{
+		m_directionalBlurYEffect->GetOutput(output);
+	}
 }
 
 void STDMETHODCALLTYPE CCustomBlurEffect::Reset()
 {
-	if (m_scaleDownEffect)
+	if (m_cropInputEffect)
 	{ 
-		m_scaleDownEffect->SetInput(0, nullptr);
+		m_cropInputEffect->SetInput(0, nullptr);
 	}
 }

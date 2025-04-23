@@ -18,9 +18,9 @@ namespace OpenGlass
 	{
 		bool m_initialized{ false };
 
+		bool m_blurNothing{ false };
 		float m_blurAmount{ 0.f };
 		D2D1_GAUSSIANBLUR_OPTIMIZATION m_optimization{ D2D1_GAUSSIANBLUR_OPTIMIZATION_BALANCED };
-		D2D1_RECT_F m_imageBounds{};
 		D2D1_VECTOR_2F m_prescaleAmount{};
 
 		winrt::com_ptr<ID2D1Effect> m_cropInputEffect{};
@@ -28,21 +28,18 @@ namespace OpenGlass
 		winrt::com_ptr<ID2D1Effect> m_borderEffect{};
 		winrt::com_ptr<ID2D1Effect> m_directionalBlurXEffect{};
 		winrt::com_ptr<ID2D1Effect> m_directionalBlurYEffect{};
-		winrt::com_ptr<ID2D1Effect> m_inputEffect{};
-		winrt::com_ptr<ID2D1Effect> m_outputEffect{};
 
 		static const float k_optimizations[16];
 		float DetermineOutputScale(
 			float size
 		);
 		HRESULT Initialize(ID2D1DeviceContext* context);
-		HRESULT CalculateAndSetEffectParams();
+		HRESULT CalculateAndSetEffectParams(const D2D1_RECT_F& imageRectangle);
 	public:
 		HRESULT STDMETHODCALLTYPE Build(
 			ID2D1DeviceContext* context,
 			ID2D1Image* inputImage,
 			const D2D1_RECT_F& imageRectangle,
-			const D2D1_RECT_F& imageBounds,
 			const void* additionalParams
 		) override;
 		D2D1_MATRIX_3X2_F STDMETHODCALLTYPE GetOutputMatrix() const override;

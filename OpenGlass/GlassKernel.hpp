@@ -16,6 +16,7 @@ namespace OpenGlass::GlassKernel
 		float& afterglowBalance,
 		float* colorBalance
 	);
+	bool IsInCVIHierarchy();
 
 	void Update(GlassEngine::UpdateType type);
 	void Startup();

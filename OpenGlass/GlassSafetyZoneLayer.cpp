@@ -15,7 +15,7 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	m_renderTargetBitmap.copy_from(renderTargetBitmap);
 	auto pushCleanupScope = wil::scope_exit([this]
 	{
-		Reset();
+		m_renderTargetBitmap = nullptr;
 	});
 	const auto targetSize = renderTargetBitmap->GetSize();
 
@@ -32,7 +32,7 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	extendedDeviceRectangle.right = std::min(std::ceil(extendedDeviceRectangle.right + extendedAmount), targetSize.width);
 	extendedDeviceRectangle.bottom = std::min(std::ceil(extendedDeviceRectangle.bottom + extendedAmount), targetSize.height);
 
-	m_safetyZoneBounds[0] = 
+	m_safetyZoneBounds[0] =
 	{
 		static_cast<UINT32>(extendedDeviceRectangle.left),
 		static_cast<UINT32>(extendedDeviceRectangle.top),
@@ -61,45 +61,60 @@ HRESULT CGlassSafetyZoneLayer::Push(
 		static_cast<UINT32>(extendedDeviceRectangle.bottom)
 	};
 
-	D2D1_SIZE_U safetyZoneBufferSizes[4]
-	{
-		{
-			static_cast<UINT32>(std::ceil(extendedAmount)), 
+	m_safetyZoneBufferVertical.Resize(
+		D2D1::SizeU(
+			static_cast<UINT32>(std::ceil(extendedAmount)) * 2,
 			static_cast<UINT32>(std::ceil(targetSize.height + extendedAmount))
-		},
-		{
-			static_cast<UINT32>(std::ceil(targetSize.width + extendedAmount)), 
-			static_cast<UINT32>(std::ceil(extendedAmount))
-		},
-		{
-			static_cast<UINT32>(std::ceil(extendedAmount)), 
-			static_cast<UINT32>(std::ceil(targetSize.height + extendedAmount))
-		},
-		{
-			static_cast<UINT32>(std::ceil(targetSize.width + extendedAmount)), 
-			static_cast<UINT32>(std::ceil(extendedAmount))
-		}
-	};
+		)
+	);
+	m_safetyZoneBufferHorizon.Resize(
+		D2D1::SizeU(
+			static_cast<UINT32>(std::ceil(targetSize.width + extendedAmount)),
+			static_cast<UINT32>(std::ceil(extendedAmount)) * 2
+		)
+	);
 
-	for (int i = 0; i < std::size(m_safetyZoneBounds); i++)
+	if (!wil::rect_is_empty(m_safetyZoneBounds[0]))
 	{
-		if (wil::rect_is_empty(m_safetyZoneBounds[i]))
-		{
-			continue;
-		}
-
-		m_safetyZoneBuffers[i]->Reserve(safetyZoneBufferSizes[i]);
-		D2D1_POINT_2U dest
-		{
-			0u,
-			0u
-		};
 		RETURN_IF_FAILED(
-			m_safetyZoneBuffers[i]->CopyFrom(
+			m_safetyZoneBufferVertical.CopyFrom(
 				context,
-				dest,
+				D2D1::Point2U(0, 0),
 				m_renderTargetBitmap.get(),
-				m_safetyZoneBounds[i]
+				m_safetyZoneBounds[0]
+			)
+		);
+	}
+	if (!wil::rect_is_empty(m_safetyZoneBounds[2]))
+	{
+		RETURN_IF_FAILED(
+			m_safetyZoneBufferVertical.CopyFrom(
+				context,
+				D2D1::Point2U(wil::rect_width(m_safetyZoneBounds[0]), 0),
+				m_renderTargetBitmap.get(),
+				m_safetyZoneBounds[2]
+			)
+		);
+	}
+	if (!wil::rect_is_empty(m_safetyZoneBounds[1]))
+	{
+		RETURN_IF_FAILED(
+			m_safetyZoneBufferHorizon.CopyFrom(
+				context,
+				D2D1::Point2U(0, 0),
+				m_renderTargetBitmap.get(),
+				m_safetyZoneBounds[1]
+			)
+		);
+	}
+	if (!wil::rect_is_empty(m_safetyZoneBounds[3]))
+	{
+		RETURN_IF_FAILED(
+			m_safetyZoneBufferHorizon.CopyFrom(
+				context,
+				D2D1::Point2U(0, wil::rect_height(m_safetyZoneBounds[1])),
+				m_renderTargetBitmap.get(),
+				m_safetyZoneBounds[3]
 			)
 		);
 	}
@@ -110,40 +125,65 @@ HRESULT CGlassSafetyZoneLayer::Push(
 
 void CGlassSafetyZoneLayer::Pop()
 {
-	for (int i = 0; i < std::size(m_safetyZoneBounds); i++)
+	if (!wil::rect_is_empty(m_safetyZoneBounds[0]))
 	{
-		if (wil::rect_is_empty(m_safetyZoneBounds[i]))
-		{
-			continue;
-		}
-
-		D2D1_POINT_2U dest
-		{
-			m_safetyZoneBounds[i].left,
-			m_safetyZoneBounds[i].top
-		};
-		D2D1_RECT_U src
-		{
-			0u,
-			0u,
-			wil::rect_width(m_safetyZoneBounds[i]),
-			wil::rect_height(m_safetyZoneBounds[i])
-		};
-		m_safetyZoneBuffers[i]->CopyTo(
-			dest,
+		m_safetyZoneBufferVertical.CopyTo(
+			D2D1::Point2U(m_safetyZoneBounds[0].left, m_safetyZoneBounds[0].top),
 			m_renderTargetBitmap.get(),
-			src
+			D2D1::RectU(
+				0u,
+				0u,
+				wil::rect_width(m_safetyZoneBounds[0]),
+				wil::rect_height(m_safetyZoneBounds[0])
+			)
 		);
-		m_safetyZoneBounds[i] = {};
 	}
+	if (!wil::rect_is_empty(m_safetyZoneBounds[2]))
+	{
+		m_safetyZoneBufferVertical.CopyTo(
+			D2D1::Point2U(m_safetyZoneBounds[2].left, m_safetyZoneBounds[2].top),
+			m_renderTargetBitmap.get(),
+			D2D1::RectU(
+				wil::rect_width(m_safetyZoneBounds[0]),
+				0,
+				wil::rect_width(m_safetyZoneBounds[0]) + wil::rect_width(m_safetyZoneBounds[2]),
+				wil::rect_height(m_safetyZoneBounds[2])
+			)
+		);
+	}
+	if (!wil::rect_is_empty(m_safetyZoneBounds[1]))
+	{
+		m_safetyZoneBufferHorizon.CopyTo(
+			D2D1::Point2U(m_safetyZoneBounds[1].left, m_safetyZoneBounds[1].top),
+			m_renderTargetBitmap.get(),
+			D2D1::RectU(
+				0u,
+				0u,
+				wil::rect_width(m_safetyZoneBounds[1]),
+				wil::rect_height(m_safetyZoneBounds[1])
+			)
+		);
+	}
+	if (!wil::rect_is_empty(m_safetyZoneBounds[3]))
+	{
+		m_safetyZoneBufferHorizon.CopyTo(
+			D2D1::Point2U(m_safetyZoneBounds[3].left, m_safetyZoneBounds[3].top),
+			m_renderTargetBitmap.get(),
+			D2D1::RectU(
+				0,
+				wil::rect_height(m_safetyZoneBounds[1]),
+				wil::rect_width(m_safetyZoneBounds[3]),
+				wil::rect_height(m_safetyZoneBounds[1]) + wil::rect_height(m_safetyZoneBounds[3])
+			)
+		);
+	}
+	
 	m_renderTargetBitmap = nullptr;
 }
 
 void CGlassSafetyZoneLayer::Reset()
 {
-	for (int i = 0; i < std::size(m_safetyZoneBounds); i++)
-	{
-		m_safetyZoneBuffers[i]->Reset();
-		m_safetyZoneBounds[i] = {};
-	}
+	m_safetyZoneBufferVertical.Reset();
+	m_safetyZoneBufferHorizon.Reset();
+	memset(m_safetyZoneBounds, 0, sizeof(m_safetyZoneBounds));
 }

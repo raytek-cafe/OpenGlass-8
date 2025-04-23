@@ -16,6 +16,10 @@ namespace OpenGlass
 		) = 0;
 		virtual void STDMETHODCALLTYPE Clear() = 0;
 		virtual std::span<dwmcore::CZOrderedRect> STDMETHODCALLTYPE GetViews() const = 0;
+		virtual bool STDMETHODCALLTYPE IsFullyCovered(
+			const D2D1_RECT_F & coverage,
+			int depth
+		) const = 0;
 		virtual bool STDMETHODCALLTYPE IsPartiallyCovered(
 			const D2D1_RECT_F& coverage,
 			int depth

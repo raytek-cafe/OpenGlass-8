@@ -16,7 +16,7 @@ D2D_PS_ENTRY(AeroColorizationEffect)
 {
 	minfloat4 input = minfloat4(D2DGetInput(0));
 	input.w = dot(input.xyz, grayFactor);
-	input.xyz = input.www * afterglow.xyz + blurBalance.xxx * input.xyz + color.xyz;
+	input.xyz = mad(input.w, afterglow.xyz, mad(blurBalance.x, input.xyz, color.xyz));
 	input.w = 1;
 
 	return input;

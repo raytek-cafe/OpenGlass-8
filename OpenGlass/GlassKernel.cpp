@@ -15,13 +15,21 @@ namespace OpenGlass::GlassKernel
 		float opacity,
 		BYTE flag
 	);
+	HRESULT STDMETHODCALLTYPE MyCCachedVisualImage_CCachedTarget_Update(
+		dwmcore::CCachedVisualImage::CCachedTarget* This,
+		const D2D1_RECT_F& rect,
+		DWM::MilStretch mode,
+		const dwmcore::RenderTargetInfo& info
+	);
 
 	decltype(&MyIDCompositionDesktopDevice_WaitForCommitCompletion) g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org{ nullptr };
 	decltype(&MyIDCompositionDesktopDevice_WaitForCommitCompletion)* g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address{ nullptr };
 	decltype(&MyCGlassColorizationParameters_AdjustWindowColorization) g_CGlassColorizationParameters_AdjustWindowColorization_Org{ nullptr };
+	decltype(&MyCCachedVisualImage_CCachedTarget_Update) g_CCachedVisualImage_CCachedTarget_Update_Org{ nullptr };
 
 	ULONG g_old_dwOverlayTestMode{};
 	ULONGLONG g_old_BackdropBlurCachingThrottleQPCTimeDelta{};
+	size_t g_CVIHierarchy{};
 
 	void RedrawTopLevelWindow(uDWM::CTopLevelWindow* window)
 	{
@@ -95,6 +103,11 @@ namespace OpenGlass::GlassKernel
 			*colorBalance = (1.f - Shared::g_colorBalance * magicFactor) * (!translucent ? 1.f : 0.f) + Shared::g_colorBalance * magicFactor;
 		}
 	}
+
+	bool IsInCVIHierarchy()
+	{
+		return g_CVIHierarchy != 0;
+	}
 }
 
 HRESULT STDMETHODCALLTYPE GlassKernel::MyIDCompositionDesktopDevice_WaitForCommitCompletion([[maybe_unused]] IDCompositionDesktopDevice* This)
@@ -120,6 +133,24 @@ HRESULT STDMETHODCALLTYPE GlassKernel::MyCGlassColorizationParameters_AdjustWind
 	This->glassAttribute = 0;
 
 	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE GlassKernel::MyCCachedVisualImage_CCachedTarget_Update(
+	dwmcore::CCachedVisualImage::CCachedTarget* This,
+	const D2D1_RECT_F& rect,
+	DWM::MilStretch mode,
+	const dwmcore::RenderTargetInfo& info
+)
+{
+	g_CVIHierarchy += 1;
+	const auto hr = g_CCachedVisualImage_CCachedTarget_Update_Org(
+		This,
+		rect,
+		mode,
+		info
+	);
+	g_CVIHierarchy -= 1;
+	return hr;
 }
 
 void GlassKernel::RedrawAllTopLevelWindow()
@@ -191,11 +222,13 @@ void GlassKernel::Startup()
 	g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org = HookHelper::WritePointer(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address, MyIDCompositionDesktopDevice_WaitForCommitCompletion);
 
 	uDWM::g_projectionArray.ApplyToVariable("CGlassColorizationParameters::AdjustWindowColorization", g_CGlassColorizationParameters_AdjustWindowColorization_Org);
+	dwmcore::g_projectionArray.ApplyToVariable("CCachedVisualImage::CCachedTarget::Update", g_CCachedVisualImage_CCachedTarget_Update_Org);
 
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
 			HookHelper::Detours::Attach(&g_CGlassColorizationParameters_AdjustWindowColorization_Org, MyCGlassColorizationParameters_AdjustWindowColorization);
+			HookHelper::Detours::Attach(&g_CCachedVisualImage_CCachedTarget_Update_Org, MyCCachedVisualImage_CCachedTarget_Update);
 		})
 	);
 }
@@ -206,6 +239,7 @@ void GlassKernel::Shutdown()
 		HookHelper::Detours::Write([]()
 		{
 			HookHelper::Detours::Detach(&g_CGlassColorizationParameters_AdjustWindowColorization_Org, MyCGlassColorizationParameters_AdjustWindowColorization);
+			HookHelper::Detours::Detach(&g_CCachedVisualImage_CCachedTarget_Update_Org, MyCCachedVisualImage_CCachedTarget_Update);
 		})
 	);
 
