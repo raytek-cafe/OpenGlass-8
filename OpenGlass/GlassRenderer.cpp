@@ -101,7 +101,6 @@ namespace OpenGlass::GlassRenderer
 		const dwmcore::CMILMatrix* matrix,
 		float extendedAmount,
 		D2D1_RECT_F& drawingWorldBounds,
-		D2D1_RECT_F& sampleWorldBounds,
 		std::unique_ptr<D2D1_RECT_F[]>& rectangles,
 		UINT& rectanglesCount,
 		bool& shapeIsRectangles,
@@ -126,12 +125,14 @@ namespace OpenGlass::GlassRenderer
 
 		if (renderingShape && !renderingShape->IsEmpty()) [[likely]]
 		{
+			D2D1_RECT_F shapeWorldBounds{};
 			drawingContext->GetClipBoundsWorld(&drawingWorldBounds);
-			renderingShape->GetTightBounds(&sampleWorldBounds, nullptr);
-			sampleWorldBounds.left -= extendedAmount;
-			sampleWorldBounds.top -= extendedAmount;
-			sampleWorldBounds.right += extendedAmount;
-			sampleWorldBounds.bottom += extendedAmount;
+			renderingShape->GetTightBounds(&shapeWorldBounds, nullptr);
+			shapeWorldBounds.left = std::max(shapeWorldBounds.left - extendedAmount, drawingWorldBounds.left);
+			shapeWorldBounds.top = std::max(shapeWorldBounds.top - extendedAmount, drawingWorldBounds.top);
+			shapeWorldBounds.right = std::min(shapeWorldBounds.right + extendedAmount, drawingWorldBounds.right);
+			shapeWorldBounds.bottom = std::min(shapeWorldBounds.bottom + extendedAmount, drawingWorldBounds.bottom);
+			drawingWorldBounds = shapeWorldBounds;
 
 			if (renderingShape->IsRectangles(&rectanglesCount)) [[likely]]
 			{
@@ -157,7 +158,6 @@ namespace OpenGlass::GlassRenderer
 		else
 		{
 			drawingWorldBounds = {};
-			sampleWorldBounds = {};
 			rectangles.reset();
 			rectanglesCount = 0;
 		}
@@ -310,7 +310,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		matrix,
 		extendedAmount,
 		g_drawingWorldBounds,
-		g_glassInput.sampleWorldBounds,
 		rectangles,
 		rectanglesCount,
 		g_shapeIsRectangles,
@@ -488,7 +487,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					);
 				}
 
-				g_glassInput.drawingWorldBounds = &g_drawingWorldBounds;
 				g_glassInput.sourceBitmap = g_sharedAtlasBitmap.get();
 				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
 				g_glassInput.nearestNeighborFinalScale = false;
@@ -773,6 +771,7 @@ void GlassRenderer::Startup()
 		} while (i);
 	}
 	g_glassInput.buffer = &g_buffer;
+	g_glassInput.drawingWorldBounds = &g_drawingWorldBounds;
 	
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()

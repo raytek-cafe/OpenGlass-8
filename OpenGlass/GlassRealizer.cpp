@@ -68,13 +68,6 @@ HRESULT CGlassRealizer::Render(
 	}
 
 	const auto targetSize = input.sourceBitmap->GetSize();
-	const D2D1_RECT_F sampleWorldBounds
-	{
-		std::max(0.f, input.sampleWorldBounds.left),
-		std::max(0.f, input.sampleWorldBounds.top),
-		std::min(targetSize.width, input.sampleWorldBounds.right),
-		std::min(targetSize.height, input.sampleWorldBounds.bottom),
-	};
 	const D2D1_RECT_F imageBounds
 	{
 		0.f,
@@ -90,15 +83,15 @@ HRESULT CGlassRealizer::Render(
 			input.buffer->CopyFrom(
 				context,
 				D2D1::Point2U(
-					static_cast<UINT32>(sampleWorldBounds.left),
-					static_cast<UINT32>(sampleWorldBounds.top)
+					static_cast<UINT32>(input.drawingWorldBounds->left),
+					static_cast<UINT32>(input.drawingWorldBounds->top)
 				),
 				input.sourceBitmap,
 				D2D1::RectU(
-					static_cast<UINT32>(sampleWorldBounds.left),
-					static_cast<UINT32>(sampleWorldBounds.top),
-					static_cast<UINT32>(sampleWorldBounds.right),
-					static_cast<UINT32>(sampleWorldBounds.bottom)
+					static_cast<UINT32>(input.drawingWorldBounds->left),
+					static_cast<UINT32>(input.drawingWorldBounds->top),
+					static_cast<UINT32>(input.drawingWorldBounds->right),
+					static_cast<UINT32>(input.drawingWorldBounds->bottom)
 				)
 			)
 		);
@@ -113,7 +106,7 @@ HRESULT CGlassRealizer::Render(
 		m_glassEffect->Build(
 			context,
 			input.zeroCopyAllowed ? input.sourceBitmap : input.buffer->GetD2DBitmap(context, input.sourceBitmap->GetPixelFormat()),
-			sampleWorldBounds,
+			*input.drawingWorldBounds,
 			static_cast<const void*>(&input.params)
 		)
 	);

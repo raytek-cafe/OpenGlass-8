@@ -17,7 +17,6 @@ namespace OpenGlass
 		GlassParams params;
 
 		ID2D1Bitmap1* sourceBitmap;
-		D2D1_RECT_F sampleWorldBounds;
 		const D2D1_RECT_F* drawingWorldBounds;
 		std::span<D2D1_RECT_F> rectangles;
 		CD2DBuffer* buffer;
