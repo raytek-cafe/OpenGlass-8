@@ -116,11 +116,6 @@ HRESULT CGlassRealizer::Render(
 	RETURN_HR_IF_NULL(D2DERR_UNSUPPORTED_PIXEL_FORMAT, outputImage);
 
 	D2D1_MATRIX_3X2_F originalMatrix, outputMatrix = m_glassEffect->GetOutputMatrix();
-	D2D1_RENDERING_CONTROLS originalRenderingControls, renderingControls;
-	context->GetRenderingControls(&originalRenderingControls);
-	renderingControls = originalRenderingControls;
-	renderingControls.tileSize = D2D1::SizeU(4096, 4096);
-	context->SetRenderingControls(renderingControls);
 	context->GetTransform(&originalMatrix);
 	context->SetTransform(outputMatrix);
 
@@ -146,7 +141,6 @@ HRESULT CGlassRealizer::Render(
 		}
 	}
 
-	context->SetRenderingControls(originalRenderingControls);
 	context->SetTransform(originalMatrix);
 
 	return S_OK;

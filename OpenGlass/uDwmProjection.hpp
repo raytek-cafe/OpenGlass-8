@@ -1782,9 +1782,10 @@ namespace OpenGlass::uDWM
 		MAKE_FUNCTION_PROJECTION_TUPLE(CRenderDataVisual::AddInstruction, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CRenderDataVisual::ClearInstructions, 0, 0),
 
-		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::_UpdateAccentBlurBehind", 0, os::build_w11_22h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::UpdateAccentPolicy", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::_UpdateSolidFill", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CAccentBlurBehind::IsBlurBehindDirty", 0, os::build_w11_22h2),
-
+		
 		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowBorder::EnableBorder, os::build_w11_21h2, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win10, "CTopLevelWindow::CloneVisualTreeForLivePreview", os::build_w11_21h2, os::build_w11_22h2),

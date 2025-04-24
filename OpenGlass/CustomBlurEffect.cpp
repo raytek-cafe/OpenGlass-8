@@ -84,7 +84,6 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 	);
 	m_scaleDownEffect->SetInputEffect(0, m_cropInputEffect.get());
 
-	m_borderEffect->SetInputEffect(0, m_scaleDownEffect.get());
 	RETURN_IF_FAILED(
 		m_borderEffect->SetValue(
 			D2D1_BORDER_PROP_EDGE_MODE_X, 
@@ -97,6 +96,7 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 			D2D1_BORDER_EDGE_MODE_MIRROR
 		)
 	);
+	m_borderEffect->SetInputEffect(0, m_scaleDownEffect.get());
 
 	m_directionalBlurXEffect->SetInputEffect(0, m_borderEffect.get());
 	RETURN_IF_FAILED(

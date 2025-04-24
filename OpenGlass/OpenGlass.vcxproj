@@ -132,7 +132,6 @@
     <FxCompile>
       <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
       <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
-      <ShaderModel>5.0</ShaderModel>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -170,7 +169,6 @@
     <FxCompile>
       <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
       <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
-      <ShaderModel>5.0</ShaderModel>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -201,7 +199,6 @@
     <FxCompile>
       <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
       <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
-      <ShaderModel>5.0</ShaderModel>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -239,7 +236,6 @@
     <FxCompile>
       <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
       <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
-      <ShaderModel>5.0</ShaderModel>
     </FxCompile>
   </ItemDefinitionGroup>
   <ItemGroup>

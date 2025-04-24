@@ -72,8 +72,6 @@ namespace OpenGlass::GlassRenderer
 	};
 
 	bool g_shapeIsRectangles{};
-	ID2D1Bitmap1* g_renderTargetBitmapNoRef{};
-	winrt::com_ptr<ID2D1Bitmap1> g_sharedAtlasBitmap{};
 	GlassInput g_glassInput{};
 	ReflectionInput g_reflectionInput{};
 	std::bitset<2> g_renderFlag{};
@@ -324,7 +322,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		)
 	)
 	{
-		OutputDebugStringW(L"fully covered, why not skip it?");
 		return S_OK;
 	}
 
@@ -348,8 +345,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	{
 		g_deviceNoRef = device.get();
 		g_brush = nullptr;
-		g_renderTargetBitmapNoRef = nullptr;
-		g_sharedAtlasBitmap = nullptr;
 		g_glassRealizer = nullptr;
 		g_reflectionRealizer = nullptr;
 		g_buffer.Reset();
@@ -359,6 +354,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		context->CreateSolidColorBrush({}, g_brush.put());
 	}
 
+	winrt::com_ptr<ID2D1Bitmap1> sharedAtlasBitmap;
 	winrt::com_ptr<ID2D1Bitmap1> renderTargetBitmap;
 	std::unique_ptr<dwmcore::CMILMatrix> visualWorldTransform;
 	D2D1_RECT_F shapeLocalBounds;
@@ -451,6 +447,10 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				);
 				!opaque && 
 				extendedAmount &&
+				(
+					renderTargetBitmap = drawingContext->AcquireRenderTargetBitmap(true),
+					renderTargetBitmap
+				) &&
 				!(
 					(
 						!desktopTree ||
@@ -465,42 +465,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				glassCoverageSet
 			)
 			{
-				if (!renderTargetBitmap)
-				{
-					renderTargetBitmap = drawingContext->AcquireRenderTargetBitmap(true);
-				}
-
-				if (g_renderTargetBitmapNoRef != renderTargetBitmap.get())
-				{
-					g_renderTargetBitmapNoRef = renderTargetBitmap.get();
-
-					const auto bitmapProperties = D2D1::BitmapProperties1(
-						renderTargetBitmap->GetOptions(),
-						renderTargetBitmap->GetPixelFormat()
-					);
-					RETURN_IF_FAILED(
-						d2dContext->GetPrivateCompositorDeviceContext()->CreateSharedAtlasBitmap(
-							renderTargetBitmap.get(),
-							&bitmapProperties,
-							g_sharedAtlasBitmap.put()
-						)
-					);
-				}
-
-				g_glassInput.sourceBitmap = g_sharedAtlasBitmap.get();
-				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
-				g_glassInput.nearestNeighborFinalScale = false;
-				// effect settings
-				g_glassInput.params.blurAmount = Shared::g_blurAmount;
-				g_glassInput.params.optimization = Shared::g_blurOptimization;
-				g_glassInput.params.color = color;
-				g_glassInput.params.color.a = 1.f;
-				g_glassInput.params.colorBalance = (Shared::g_type == Shared::GlassType::Blur) ? glassOpacity : colorBalance;
-				g_glassInput.params.afterglow = Shared::g_afterglow;
-				g_glassInput.params.afterglowBalance = afterglowBalance;
-				g_glassInput.params.blurBalance = blurBalance;
-				g_glassInput.params.type = Shared::g_type;
-
 				if (
 					glassCoverageSet->IsFullyCovered(
 						occlusionConctext->PageInPixelsRectToDeviceRect(shapeWorldBounds),
@@ -512,6 +476,49 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					g_glassInput.nearestNeighborFinalScale = true;
 					g_glassInput.zeroCopyAllowed = true;
 				}
+				else
+				{
+					g_glassInput.nearestNeighborFinalScale = false;
+					g_glassInput.params.optimization = Shared::g_blurOptimization;
+				}
+				
+				if (g_glassInput.zeroCopyAllowed)
+				{
+					winrt::com_ptr<ID2D1ColorContext> colorContext;
+					renderTargetBitmap->GetColorContext(colorContext.put());
+					const auto bitmapProperties = D2D1::BitmapProperties1(
+						renderTargetBitmap->GetOptions(),
+						renderTargetBitmap->GetPixelFormat(),
+						0.f,
+						0.f,
+						colorContext.get()
+					);
+					
+					if (
+						FAILED(
+							d2dContext->GetPrivateCompositorDeviceContext()->CreateSharedAtlasBitmap(
+								renderTargetBitmap.get(),
+								&bitmapProperties,
+								sharedAtlasBitmap.put()
+							)
+						)
+					)
+					{
+						g_glassInput.zeroCopyAllowed = false;
+					}
+				}
+
+				g_glassInput.sourceBitmap = sharedAtlasBitmap.get() ? sharedAtlasBitmap.get() : renderTargetBitmap.get();
+				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
+				// effect settings
+				g_glassInput.params.blurAmount = Shared::g_blurAmount;
+				g_glassInput.params.color = color;
+				g_glassInput.params.color.a = 1.f;
+				g_glassInput.params.colorBalance = (Shared::g_type == Shared::GlassType::Blur) ? glassOpacity : colorBalance;
+				g_glassInput.params.afterglow = Shared::g_afterglow;
+				g_glassInput.params.afterglowBalance = afterglowBalance;
+				g_glassInput.params.blurBalance = blurBalance;
+				g_glassInput.params.type = Shared::g_type;
 
 				g_renderFlag.set(RenderFlag_Backdrop, true);
 			}
@@ -821,8 +828,6 @@ void GlassRenderer::Shutdown()
 	g_buffer.Reset();
 	g_reflectionRealizer = nullptr;
 	g_glassRealizer = nullptr;
-	g_sharedAtlasBitmap = nullptr;
-	g_renderTargetBitmapNoRef = nullptr;
 	g_brush = nullptr;
 	THROW_IF_FAILED(CAeroColorizationEffect::UnRegister(*dwmcore::g_DeviceManager));
 }

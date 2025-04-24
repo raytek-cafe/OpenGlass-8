@@ -732,8 +732,11 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 			const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionContext);
 
 			if (
-				!glassCoverageSet ||
-				!glassCoverageSet->IsOverlapped(transformedRect)
+				(
+					!glassCoverageSet ||
+					!glassCoverageSet->IsOverlapped(transformedRect)
+				) &&
+				!Shared::g_overrideAccent
 			)
 			{
 				break;
