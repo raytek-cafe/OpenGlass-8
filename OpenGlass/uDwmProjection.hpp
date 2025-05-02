@@ -187,6 +187,10 @@ namespace OpenGlass::uDWM
 			}
 			return pt;
 		}
+		BYTE* IsCloneAllowed()
+		{
+			return &(reinterpret_cast<BYTE*>(this)[84]);
+		}
 		VisualCollection* GetVisualCollection()
 		{
 			if (g_buildNumber < os::build_w11_24h2)
@@ -411,9 +415,44 @@ namespace OpenGlass::uDWM
 		}
 	};
 
-	struct CButton : CVisual
+	struct CBitmapSource {};
+	struct CBitmapSourceArray : DynArray<CBitmapSource*> {};
+
+	struct CAtlasedRectsVisual : CVisual {};
+	struct CTopLevelAtlasedRectsVisual : CAtlasedRectsVisual {};
+	struct CAtlasedImage
+	{
+		DWORD GetPartId() const
+		{
+			return reinterpret_cast<DWORD const*>(this)[30];
+		}
+	};
+
+	struct CTimeline {};
+	struct CButton : CAtlasedRectsVisual
 	{
 		inline static PVOID* vftable{ nullptr };
+
+		float GetGlyphOpacity()
+		{
+			return reinterpret_cast<float*>(this)[101];
+		}
+		BYTE* GetButtonState()
+		{
+			return &(reinterpret_cast<BYTE*>(this)[280]);
+		}
+		CTimeline* GetTimeline()
+		{
+			return reinterpret_cast<CTimeline**>(this)[49];
+		}
+		CBitmapSourceArray* GetGlyphBitmapArray()
+		{
+			return reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 304);
+		}
+		CBitmapSourceArray* GetButtonBitmapArray()
+		{
+			return reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 336);
+		}
 	};
 
 	struct ACCENT_POLICY
@@ -1198,6 +1237,16 @@ namespace OpenGlass::uDWM
 			return parameters;
 		}
 
+		CButton* GetButton(int index)
+		{
+			CButton** button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 61));
+			if (button && *button)
+			{
+				return *button;
+			}
+			return nullptr;
+		}
+
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CloneVisualTreeForLivePreview_Win10(
 			bool windowFramesOnly,
 			bool unused1,
@@ -1758,6 +1807,7 @@ namespace OpenGlass::uDWM
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CVisual::s_dtor, "CVisual::~CVisual", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::Initialize", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::CloneVisualTree", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::RenderRecursive", 0, os::build_w11_21h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::InitializeFromSharedHandle, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetParent, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetSize, 0, 0),
@@ -1775,7 +1825,13 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CText::InitializeVisualTreeClone", 0, os::build_w11_22h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CText::`scalar deleting destructor'", 0, os::build_w11_22h2),
 
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::CloneVisualTree", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::InitializeVisualTreeClone", 0, os::build_w11_21h2),
+
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CButton::vftable, "CButton::`vftable'", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::Create", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::SetVisualStates", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::UpdateCrossfade", 0, os::build_w11_21h2),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawGeometryInstruction::Create, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CRenderDataVisual::Create, 0, 0),
@@ -1785,10 +1841,12 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::UpdateAccentPolicy", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::_UpdateSolidFill", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CAccentBlurBehind::IsBlurBehindDirty", 0, os::build_w11_22h2),
-		
+
 		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowBorder::EnableBorder, os::build_w11_21h2, 0),
 
-		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win10, "CTopLevelWindow::CloneVisualTreeForLivePreview", os::build_w11_21h2, os::build_w11_22h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelAtlasedRectsVisual::ShouldCloneAtlasImage", 0, 0),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win10, "CTopLevelWindow::CloneVisualTreeForLivePreview", 0, os::build_w11_22h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win11, "CTopLevelWindow::CloneVisualTreeForLivePreview", os::build_w11_22h2, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::GetActualWindowRect, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::TreatAsActiveWindow, 0, 0),

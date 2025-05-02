@@ -16,8 +16,12 @@ namespace OpenGlass::GlassFrameHandler
 
 	HRESULT STDMETHODCALLTYPE MyResourceHelper_CreateGeometryFromHRGN(HRGN hrgn, uDWM::CRgnGeometryProxy** geometry);
 	HRESULT STDMETHODCALLTYPE MyCSolidColorLegacyMilBrushProxy_Update(uDWM::CSolidColorLegacyMilBrushProxy* This, double opacity, const D2D1_COLOR_F& color);
+	bool STDMETHODCALLTYPE MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage(uDWM::CTopLevelAtlasedRectsVisual* This, const uDWM::CAtlasedImage* atlasedImage, UINT cloneOptions);
+	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10(uDWM::CTopLevelWindow* This, bool windowFramesOnly, bool unused1, bool unused2, uDWM::CTopLevelWindow** clonedWindow);
+	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11(uDWM::CTopLevelWindow* This, bool windowFramesOnly, uDWM::CTopLevelWindow** clonedWindow);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateNCAreaBackground(uDWM::CTopLevelWindow* This);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateClientBlur(uDWM::CTopLevelWindow* This);
+	HRESULT STDMETHODCALLTYPE MyCButton_CloneVisualTree(uDWM::CButton* This, uDWM::CButton** clonedVisual, UINT cloneOption);
 	void STDMETHODCALLTYPE MyCButton_SetSize(uDWM::CButton* This, const SIZE* size);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_ValidateVisual(uDWM::CTopLevelWindow* This);
 	bool WINAPI MySetMargin(
@@ -29,15 +33,25 @@ namespace OpenGlass::GlassFrameHandler
 		const MARGINS* srcMargins
 	);
 
+	HRESULT(STDMETHODCALLTYPE* CVisual_RenderRecursive)(uDWM::CVisual* visual);
+	HRESULT(STDMETHODCALLTYPE* CButton_Create)(uDWM::CButton** outButton);
+	HRESULT(STDMETHODCALLTYPE* CButton_SetVisualStates)(uDWM::CButton* This, uDWM::CBitmapSourceArray* buttonArray, uDWM::CBitmapSourceArray* glyphArray, uDWM::CBitmapSource* glowBitmap, float opacity);
+	HRESULT(STDMETHODCALLTYPE* CAtlasedRectsVisual_InitializeVisualTreeClone)(uDWM::CAtlasedRectsVisual* This, uDWM::CAtlasedRectsVisual* clonedVisual, UINT cloneOption);
+
 	decltype(&MyCreateRoundRectRgn) g_CreateRoundRectRgn_Org{ nullptr };
 	decltype(&MyCreateRectRgn) g_CreateRectRgn_Org{ nullptr };
 	decltype(&MyExtCreateRegion) g_ExtCreateRegion_Org{ nullptr };
 
 	decltype(&MyResourceHelper_CreateGeometryFromHRGN) g_ResourceHelper_CreateGeometryFromHRGN_Org{ nullptr };
 	decltype(&MyCSolidColorLegacyMilBrushProxy_Update) g_CSolidColorLegacyMilBrushProxy_Update_Org{ nullptr };
+	decltype(&MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage) g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org{ nullptr };
+	decltype(&MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10) g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org{ nullptr };
+	decltype(&MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11) g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateNCAreaBackground) g_CTopLevelWindow_UpdateNCAreaBackground_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateClientBlur) g_CTopLevelWindow_UpdateClientBlur_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_ValidateVisual) g_CTopLevelWindow_ValidateVisual_Org{ nullptr };
+	decltype(&MyCButton_CloneVisualTree) g_CButton_CloneVisualTree_Org{ nullptr };
+	decltype(&MyCButton_CloneVisualTree)* g_CButton_CloneVisualTree_Org_Address{ nullptr };
 	decltype(&MyCButton_SetSize) g_CButton_SetSize_Org{ nullptr };
 	decltype(&MyCButton_SetSize)* g_CButton_SetSize_Org_Address{ nullptr };
 	decltype(&MySetMargin) g_SetMargin_Org{ nullptr };
@@ -106,6 +120,8 @@ namespace OpenGlass::GlassFrameHandler
 	bool g_systemBackdrop{ false };
 	std::optional<bool> g_redirectFirstCreateRectRgnCall{};
 	bool g_blockUpdatingSolidColorBrush{ false };
+	bool g_CloneVisualForLivePreview{ false };
+	bool g_windowFramesOnly{ false };
 }
 
 HRGN WINAPI GlassFrameHandler::MyCreateRoundRectRgn(int x1, int y1, int x2, int y2, int w, int h)
@@ -224,6 +240,72 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCSolidColorLegacyMilBrushProxy_Up
 		opacity,
 		color
 	);
+}
+
+bool STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage(uDWM::CTopLevelAtlasedRectsVisual* This, const uDWM::CAtlasedImage* atlasedImage, UINT cloneOptions)
+{
+	const auto partId = atlasedImage->GetPartId();
+
+	bool isSqueegeePart = (partId - 9) <= 8;
+	bool isButtonPart = (partId == 22);
+	bool isWindowPart = (partId) <= 7;
+
+	// hide button image
+	if (isButtonPart && uDWM::g_buildNumber != os::build_w11_21h2)
+	{
+		return 0;
+	}
+
+	// hide live preview images in close/minimize animation and focused live preview window
+	if ((isSqueegeePart && !g_CloneVisualForLivePreview) || (isSqueegeePart && g_CloneVisualForLivePreview && !g_windowFramesOnly))
+	{
+		return 0;
+	}
+
+	// show window frames in focused live preview window
+	if (isWindowPart && g_CloneVisualForLivePreview && !g_windowFramesOnly)
+	{
+		return 1;
+	}
+
+	return g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org(This, atlasedImage, cloneOptions);
+}
+
+HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10(uDWM::CTopLevelWindow* This, bool windowFramesOnly, bool unused1, bool unused2, uDWM::CTopLevelWindow** clonedWindow)
+{
+	g_CloneVisualForLivePreview = true;
+	g_windowFramesOnly = windowFramesOnly;
+	auto hr = g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org(This, windowFramesOnly, unused1, unused2, clonedWindow);
+	g_CloneVisualForLivePreview = false;
+	g_windowFramesOnly = !windowFramesOnly;
+
+	for (int i = 0; i < 4; i++)
+	{
+		if (auto button = This->GetButton(i))
+		{
+			// HACK: we need to allow the cloning of buttons after this function for close/minimize
+			if (uDWM::g_buildNumber < os::build_w11_21h2)
+			{
+				if (*button->IsCloneAllowed() == 12)
+				{
+					*button->IsCloneAllowed() = 4;
+				}
+			}
+		}
+	}
+
+	return hr;
+}
+
+HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11(uDWM::CTopLevelWindow* This, bool windowFramesOnly, uDWM::CTopLevelWindow** clonedWindow)
+{
+	g_CloneVisualForLivePreview = true;
+	g_windowFramesOnly = windowFramesOnly;
+	auto hr = g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org(This, windowFramesOnly, clonedWindow);
+	g_CloneVisualForLivePreview = false;
+	g_windowFramesOnly = !windowFramesOnly;
+
+	return hr;
 }
 
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackground(uDWM::CTopLevelWindow* This)
@@ -385,6 +467,33 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateClientBlur(
 	return hr;
 }
 
+HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCButton_CloneVisualTree(uDWM::CButton* This, uDWM::CButton** clonedVisual, UINT cloneOption)
+{
+	auto cleanup = wil::scope_exit([clonedVisual]
+		{
+			if (clonedVisual)
+			{
+				(*clonedVisual)->Release();
+				*clonedVisual = nullptr;
+			}
+		});
+
+		// CButton::CancelCrossfade
+		if (This->GetTimeline())
+		{
+			*This->GetButtonState() |= 0x40u;
+			This->SetDirtyFlags(0x10000);
+			RETURN_IF_FAILED(CVisual_RenderRecursive(This));
+		}
+
+		RETURN_IF_FAILED(CButton_Create(clonedVisual));
+		RETURN_IF_FAILED(CAtlasedRectsVisual_InitializeVisualTreeClone(This, *clonedVisual, cloneOption));
+		RETURN_IF_FAILED(CButton_SetVisualStates(*clonedVisual, This->GetGlyphBitmapArray(), This->GetButtonBitmapArray(), nullptr, This->GetGlyphOpacity()));
+		cleanup.release();
+
+		return S_OK;
+}
+
 void STDMETHODCALLTYPE GlassFrameHandler::MyCButton_SetSize(uDWM::CButton* This, const SIZE* size)
 {
 	if (Shared::g_captionHeight.has_value())
@@ -526,21 +635,47 @@ void GlassFrameHandler::Startup()
 {
 	uDWM::g_projectionArray.ApplyToVariable("ResourceHelper::CreateGeometryFromHRGN", g_ResourceHelper_CreateGeometryFromHRGN_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CSolidColorLegacyMilBrushProxy::Update", g_CSolidColorLegacyMilBrushProxy_Update_Org);
+	uDWM::g_projectionArray.ApplyToVariable("CTopLevelAtlasedRectsVisual::ShouldCloneAtlasImage", g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateNCAreaBackground", g_CTopLevelWindow_UpdateNCAreaBackground_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateClientBlur", g_CTopLevelWindow_UpdateClientBlur_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::ValidateVisual", g_CTopLevelWindow_ValidateVisual_Org);
 	uDWM::g_projectionArray.ApplyToVariable("SetMargin", g_SetMargin_Org);
 	
 	PVOID CVisual_SetSize_Org{ nullptr };
+	PVOID CAtlasedRectsVisual_CloneVisualTree_Org{ nullptr };
 	uDWM::g_projectionArray.ApplyToVariable("CVisual::SetSize", CVisual_SetSize_Org);
-	for (auto& vf : std::span{ uDWM::CButton::vftable, 16 })
+	uDWM::g_projectionArray.ApplyToVariable("CAtlasedRectsVisual::CloneVisualTree", CAtlasedRectsVisual_CloneVisualTree_Org);
+	for (auto& vf : std::span{ uDWM::CButton::vftable, 20 })
 	{
 		if (vf == CVisual_SetSize_Org)
 		{
 			g_CButton_SetSize_Org_Address = reinterpret_cast<decltype(g_CButton_SetSize_Org_Address)>(&vf);
 			g_CButton_SetSize_Org = HookHelper::WritePointer(g_CButton_SetSize_Org_Address, MyCButton_SetSize);
 		}
+		if (vf == CAtlasedRectsVisual_CloneVisualTree_Org && uDWM::g_buildNumber < os::build_w11_21h2)
+		{
+			g_CButton_CloneVisualTree_Org_Address = reinterpret_cast<decltype(g_CButton_CloneVisualTree_Org_Address)>(&vf);
+			g_CButton_CloneVisualTree_Org = HookHelper::WritePointer(g_CButton_CloneVisualTree_Org_Address, MyCButton_CloneVisualTree);
+		}
 	}
+
+	if (uDWM::g_buildNumber < os::build_w11_21h2)
+	{
+		uDWM::g_projectionArray.ApplyToVariable("CVisual::RenderRecursive", CVisual_RenderRecursive);
+		uDWM::g_projectionArray.ApplyToVariable("CButton::Create", CButton_Create);
+		uDWM::g_projectionArray.ApplyToVariable("CButton::SetVisualStates", CButton_SetVisualStates);
+		uDWM::g_projectionArray.ApplyToVariable("CAtlasedRectsVisual::InitializeVisualTreeClone", CAtlasedRectsVisual_InitializeVisualTreeClone);
+	}
+	
+	if (uDWM::g_buildNumber <= os::build_w11_21h2)
+	{
+		uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CloneVisualTreeForLivePreview", g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org);
+	}
+	else
+	{
+		uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CloneVisualTreeForLivePreview", g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org);
+	}
+
 
 	if (uDWM::g_buildNumber >= os::build_w11_21h2)
 	{
@@ -684,9 +819,19 @@ void GlassFrameHandler::Startup()
 		{
 			HookHelper::Detours::Attach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
 			HookHelper::Detours::Attach(&g_CSolidColorLegacyMilBrushProxy_Update_Org, MyCSolidColorLegacyMilBrushProxy_Update);
+			HookHelper::Detours::Attach(&g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org, MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateClientBlur_Org, MyCTopLevelWindow_UpdateClientBlur);
 			
+			if (uDWM::g_buildNumber <= os::build_w11_21h2)
+			{
+				HookHelper::Detours::Attach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
+			}
+			else
+			{
+				HookHelper::Detours::Attach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11);
+			}
+
 			if (uDWM::g_buildNumber >= os::build_w11_21h2)
 			{
 				HookHelper::Detours::Attach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
@@ -703,8 +848,18 @@ void GlassFrameHandler::Shutdown()
 		{
 			HookHelper::Detours::Detach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
 			HookHelper::Detours::Detach(&g_CSolidColorLegacyMilBrushProxy_Update_Org, MyCSolidColorLegacyMilBrushProxy_Update);
+			HookHelper::Detours::Detach(&g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org, MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateClientBlur_Org, MyCTopLevelWindow_UpdateClientBlur);
+
+			if (uDWM::g_buildNumber <= os::build_w11_21h2)
+			{
+				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
+			}
+			else
+			{
+				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11);
+			}
 
 			if (uDWM::g_buildNumber >= os::build_w11_21h2)
 			{
@@ -729,6 +884,10 @@ void GlassFrameHandler::Shutdown()
 	if (g_CButton_SetSize_Org)
 	{
 		HookHelper::WritePointer(g_CButton_SetSize_Org_Address, g_CButton_SetSize_Org);
+	}
+	if (g_CButton_CloneVisualTree_Org)
+	{
+		HookHelper::WritePointer(g_CButton_CloneVisualTree_Org_Address, g_CButton_CloneVisualTree_Org);
 	}
 
 	g_combinedRgn.reset();
