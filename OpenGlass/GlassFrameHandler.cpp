@@ -489,6 +489,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCButton_CloneVisualTree(uDWM::CBu
 		RETURN_IF_FAILED(CButton_Create(clonedVisual));
 		RETURN_IF_FAILED(CAtlasedRectsVisual_InitializeVisualTreeClone(This, *clonedVisual, cloneOption));
 		RETURN_IF_FAILED(CButton_SetVisualStates(*clonedVisual, This->GetGlyphBitmapArray(), This->GetButtonBitmapArray(), nullptr, This->GetGlyphOpacity()));
+		*(*clonedVisual)->GetButtonState() = *This->GetButtonState();
 		cleanup.release();
 
 		return S_OK;
