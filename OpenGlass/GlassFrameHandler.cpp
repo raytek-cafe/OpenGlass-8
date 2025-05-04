@@ -33,9 +33,9 @@ namespace OpenGlass::GlassFrameHandler
 		const MARGINS* srcMargins
 	);
 
-	HRESULT(STDMETHODCALLTYPE* CVisual_RenderRecursive)(uDWM::CVisual* visual);
 	HRESULT(STDMETHODCALLTYPE* CButton_Create)(uDWM::CButton** outButton);
-	HRESULT(STDMETHODCALLTYPE* CButton_SetVisualStates)(uDWM::CButton* This, uDWM::CBitmapSourceArray* buttonArray, uDWM::CBitmapSourceArray* glyphArray, uDWM::CBitmapSource* glowBitmap, float opacity);
+	HRESULT(STDMETHODCALLTYPE* CButton_SetVisualStates_Win10)(uDWM::CButton* This, uDWM::CBitmapSourceArray* buttonArray, uDWM::CBitmapSourceArray* glyphArray, uDWM::CBitmapSource* glowBitmap, float opacity);
+	HRESULT(STDMETHODCALLTYPE* CButton_SetVisualStates_Win11)(uDWM::CButton* This, uDWM::CBitmapSourceArray* buttonArray, uDWM::CBitmapSourceArray* glyphArray, float opacity);
 	HRESULT(STDMETHODCALLTYPE* CAtlasedRectsVisual_InitializeVisualTreeClone)(uDWM::CAtlasedRectsVisual* This, uDWM::CAtlasedRectsVisual* clonedVisual, UINT cloneOption);
 
 	decltype(&MyCreateRoundRectRgn) g_CreateRoundRectRgn_Org{ nullptr };
@@ -251,7 +251,7 @@ bool STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelAtlasedRectsVisual_ShouldCl
 	bool isWindowPart = (partId) <= 7;
 
 	// hide button image
-	if (isButtonPart && uDWM::g_buildNumber != os::build_w11_21h2)
+	if (isButtonPart)
 	{
 		return 0;
 	}
@@ -483,12 +483,21 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCButton_CloneVisualTree(uDWM::CBu
 		{
 			*This->GetButtonState() |= 0x40u;
 			This->SetDirtyFlags(0x10000);
-			RETURN_IF_FAILED(CVisual_RenderRecursive(This));
+			RETURN_IF_FAILED(This->RenderRecursive());
 		}
 
 		RETURN_IF_FAILED(CButton_Create(clonedVisual));
 		RETURN_IF_FAILED(CAtlasedRectsVisual_InitializeVisualTreeClone(This, *clonedVisual, cloneOption));
-		RETURN_IF_FAILED(CButton_SetVisualStates(*clonedVisual, This->GetGlyphBitmapArray(), This->GetButtonBitmapArray(), nullptr, This->GetGlyphOpacity()));
+		
+		if (uDWM::g_buildNumber < os::build_w11_21h2)
+		{
+			RETURN_IF_FAILED(CButton_SetVisualStates_Win10(*clonedVisual, This->GetGlyphBitmapArray(), This->GetButtonBitmapArray(), nullptr, This->GetGlyphOpacity()));
+		}
+		else
+		{
+			RETURN_IF_FAILED(CButton_SetVisualStates_Win11(*clonedVisual, This->GetGlyphBitmapArray(), This->GetButtonBitmapArray(), This->GetGlyphOpacity()));
+		}
+
 		*(*clonedVisual)->GetButtonState() = *This->GetButtonState();
 		cleanup.release();
 
@@ -653,7 +662,7 @@ void GlassFrameHandler::Startup()
 			g_CButton_SetSize_Org_Address = reinterpret_cast<decltype(g_CButton_SetSize_Org_Address)>(&vf);
 			g_CButton_SetSize_Org = HookHelper::WritePointer(g_CButton_SetSize_Org_Address, MyCButton_SetSize);
 		}
-		if (vf == CAtlasedRectsVisual_CloneVisualTree_Org && uDWM::g_buildNumber < os::build_w11_21h2)
+		if (vf == CAtlasedRectsVisual_CloneVisualTree_Org && uDWM::g_buildNumber <= os::build_w11_21h2)
 		{
 			g_CButton_CloneVisualTree_Org_Address = reinterpret_cast<decltype(g_CButton_CloneVisualTree_Org_Address)>(&vf);
 			g_CButton_CloneVisualTree_Org = HookHelper::WritePointer(g_CButton_CloneVisualTree_Org_Address, MyCButton_CloneVisualTree);
@@ -662,15 +671,18 @@ void GlassFrameHandler::Startup()
 
 	if (uDWM::g_buildNumber < os::build_w11_21h2)
 	{
-		uDWM::g_projectionArray.ApplyToVariable("CVisual::RenderRecursive", CVisual_RenderRecursive);
-		uDWM::g_projectionArray.ApplyToVariable("CButton::Create", CButton_Create);
-		uDWM::g_projectionArray.ApplyToVariable("CButton::SetVisualStates", CButton_SetVisualStates);
-		uDWM::g_projectionArray.ApplyToVariable("CAtlasedRectsVisual::InitializeVisualTreeClone", CAtlasedRectsVisual_InitializeVisualTreeClone);
+		uDWM::g_projectionArray.ApplyToVariable("CButton::SetVisualStates", CButton_SetVisualStates_Win10);
+	}
+	else
+	{
+		uDWM::g_projectionArray.ApplyToVariable("CButton::SetVisualStates", CButton_SetVisualStates_Win11);
 	}
 	
 	if (uDWM::g_buildNumber <= os::build_w11_21h2)
 	{
 		uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CloneVisualTreeForLivePreview", g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org);
+		uDWM::g_projectionArray.ApplyToVariable("CAtlasedRectsVisual::InitializeVisualTreeClone", CAtlasedRectsVisual_InitializeVisualTreeClone);
+		uDWM::g_projectionArray.ApplyToVariable("CButton::Create", CButton_Create);
 	}
 	else
 	{

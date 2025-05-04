@@ -189,7 +189,18 @@ namespace OpenGlass::uDWM
 		}
 		BYTE* IsCloneAllowed()
 		{
-			return &(reinterpret_cast<BYTE*>(this)[84]);
+			BYTE* cloneAllowed{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				cloneAllowed = &(reinterpret_cast<BYTE*>(this)[84]);
+			}
+			else
+			{
+				cloneAllowed = &(reinterpret_cast<BYTE*>(this)[92]);
+			}
+
+			return cloneAllowed;
 		}
 		VisualCollection* GetVisualCollection()
 		{
@@ -243,6 +254,10 @@ namespace OpenGlass::uDWM
 		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetDirtyFlags(int flags)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::SetDirtyFlags, flags);
+		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE RenderRecursive()
+		{
+			return HANDLE_PROJECTION_FUNCTION(CVisual::RenderRecursive);
 		}
 	};
 
@@ -439,7 +454,18 @@ namespace OpenGlass::uDWM
 		}
 		BYTE* GetButtonState()
 		{
-			return &(reinterpret_cast<BYTE*>(this)[280]);
+			BYTE* buttonState{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				buttonState = &(reinterpret_cast<BYTE*>(this)[280]);
+			}
+			else
+			{
+				buttonState = &(reinterpret_cast<BYTE*>(this)[288]);
+			}
+
+			return buttonState;
 		}
 		CTimeline* GetTimeline()
 		{
@@ -447,11 +473,33 @@ namespace OpenGlass::uDWM
 		}
 		CBitmapSourceArray* GetGlyphBitmapArray()
 		{
-			return reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 304);
+			CBitmapSourceArray* glyphBitmapArray{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				glyphBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 304);
+			}
+			else
+			{
+				glyphBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 312);
+			}
+
+			return glyphBitmapArray;
 		}
 		CBitmapSourceArray* GetButtonBitmapArray()
 		{
-			return reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 336);
+			CBitmapSourceArray* buttonBitmapArray{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				buttonBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 336);
+			}
+			else
+			{
+				buttonBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 344);
+			}
+
+			return buttonBitmapArray;
 		}
 	};
 
@@ -1807,7 +1855,6 @@ namespace OpenGlass::uDWM
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CVisual::s_dtor, "CVisual::~CVisual", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::Initialize", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::CloneVisualTree", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::RenderRecursive", 0, os::build_w11_21h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::InitializeFromSharedHandle, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetParent, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetSize, 0, 0),
@@ -1816,6 +1863,7 @@ namespace OpenGlass::uDWM
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::InitializeVisualTreeClone, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::ValidateVisual, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetDirtyFlags, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::RenderRecursive, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::Remove, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::RemoveAll, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::InsertRelative, 0, 0),
@@ -1825,12 +1873,12 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CText::InitializeVisualTreeClone", 0, os::build_w11_22h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CText::`scalar deleting destructor'", 0, os::build_w11_22h2),
 
-		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::CloneVisualTree", 0, os::build_w11_21h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::InitializeVisualTreeClone", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::CloneVisualTree", 0, os::build_w11_22h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::InitializeVisualTreeClone", 0, os::build_w11_22h2),
 
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CButton::vftable, "CButton::`vftable'", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CButton::Create", 0, os::build_w11_21h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CButton::SetVisualStates", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::Create", 0, os::build_w11_22h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::SetVisualStates", 0, os::build_w11_22h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CButton::UpdateCrossfade", 0, os::build_w11_21h2),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawGeometryInstruction::Create, 0, 0),
