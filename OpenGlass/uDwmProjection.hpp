@@ -187,20 +187,27 @@ namespace OpenGlass::uDWM
 			}
 			return pt;
 		}
-		BYTE* IsCloneAllowed()
+		void SetExcludeSubtree(bool exclude)
 		{
-			BYTE* cloneAllowed{ nullptr };
+			BYTE* properties{ nullptr };
 
 			if (g_buildNumber < os::build_w11_21h2)
 			{
-				cloneAllowed = &(reinterpret_cast<BYTE*>(this)[84]);
+				properties = &(reinterpret_cast<BYTE*>(this)[84]);
 			}
 			else
 			{
-				cloneAllowed = &(reinterpret_cast<BYTE*>(this)[92]);
+				properties = &(reinterpret_cast<BYTE*>(this)[92]);
 			}
 
-			return cloneAllowed;
+			if (exclude)
+			{
+				*properties |= 8;
+			}
+			else
+			{
+				*properties &= ~8;
+			}
 		}
 		VisualCollection* GetVisualCollection()
 		{
@@ -430,12 +437,21 @@ namespace OpenGlass::uDWM
 		}
 	};
 
-	struct CBitmapSource {};
+	struct CBitmapSource : CBaseObject {};
 	struct CBitmapSourceArray : DynArray<CBitmapSource*> {};
 
-	struct CAtlasedRectsVisual : CVisual {};
+	struct CAtlasedRectsVisual : CVisual 
+	{
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InitializeVisualTreeClone(
+			CAtlasedRectsVisual* clonedVisual, 
+			UINT cloneOption
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CAtlasedRectsVisual::InitializeVisualTreeClone, clonedVisual, cloneOption);
+		}
+	};
 	struct CTopLevelAtlasedRectsVisual : CAtlasedRectsVisual {};
-	struct CAtlasedImage
+	struct CAtlasedImage : CBaseObject
 	{
 		DWORD GetPartId() const
 		{
@@ -447,6 +463,63 @@ namespace OpenGlass::uDWM
 	struct CButton : CAtlasedRectsVisual
 	{
 		inline static PVOID* vftable{ nullptr };
+
+		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE Create(CButton** visual)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CButton::Create, visual);
+		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetVisualStates_Win10(
+			uDWM::CBitmapSourceArray* buttonArray, 
+			uDWM::CBitmapSourceArray* glyphArray, 
+			uDWM::CBitmapSource* glowBitmap, 
+			float opacity
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(
+				CButton::SetVisualStates_Win10,
+				buttonArray,
+				glyphArray,
+				glowBitmap,
+				opacity
+			);
+		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetVisualStates_Win11(
+			uDWM::CBitmapSourceArray* buttonArray,
+			uDWM::CBitmapSourceArray* glyphArray,
+			float opacity
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(
+				CButton::SetVisualStates_Win11,
+				buttonArray,
+				glyphArray,
+				opacity
+			);
+		}
+		HRESULT STDMETHODCALLTYPE SetVisualStates(
+			uDWM::CBitmapSourceArray* buttonArray,
+			uDWM::CBitmapSourceArray* glyphArray,
+			float opacity
+		)
+		{
+			if (g_buildNumber < os::build_w11_22h2) [[likely]]
+			{
+				return SetVisualStates_Win10(
+					buttonArray,
+					glyphArray,
+					nullptr,
+					opacity
+				);
+			}
+			else
+			{
+				return SetVisualStates_Win11(
+					buttonArray,
+					glyphArray,
+					opacity
+				);
+			}
+		}
 
 		float GetGlyphOpacity()
 		{
@@ -1874,11 +1947,12 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CText::`scalar deleting destructor'", 0, os::build_w11_22h2),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::CloneVisualTree", 0, os::build_w11_22h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::InitializeVisualTreeClone", 0, os::build_w11_22h2),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CAtlasedRectsVisual::InitializeVisualTreeClone, 0, os::build_w11_22h2),
 
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CButton::vftable, "CButton::`vftable'", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CButton::Create", 0, os::build_w11_22h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CButton::SetVisualStates", 0, os::build_w11_22h2),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CButton::Create, 0, os::build_w11_22h2),
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CButton::SetVisualStates_Win10, "CButton::SetVisualStates", 0, os::build_w11_21h2),
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CButton::SetVisualStates_Win11, "CButton::SetVisualStates", os::build_w11_21h2, os::build_w11_22h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CButton::UpdateCrossfade", 0, os::build_w11_21h2),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawGeometryInstruction::Create, 0, 0),
