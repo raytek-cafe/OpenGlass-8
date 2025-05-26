@@ -3,6 +3,7 @@
 #include "GlassKernel.hpp"
 #include "uDWMProjection.hpp"
 #include "Shared.hpp"
+#include "GlassReflectionBrush.hpp"
 
 using namespace OpenGlass;
 namespace OpenGlass::AccentOverrider
@@ -14,14 +15,11 @@ namespace OpenGlass::AccentOverrider
 		uDWM::CBaseGeometryProxy* geometry
 	);
 	HRESULT STDMETHODCALLTYPE MyCAccent__UpdateSolidFill(
-		uDWM::CAccentBlurBehind* This,
+		uDWM::CAccent* This,
 		uDWM::CRenderDataVisual* visual,
 		UINT color,
 		const D2D1_RECT_F& rect,
 		float opacity
-	);
-	HRESULT STDMETHODCALLTYPE MyCAccent__UpdateAccentBlurBehind(
-		uDWM::CAccent* This
 	);
 	bool STDMETHODCALLTYPE MyCAccentBlurBehind_IsBlurBehindDirty(
 		uDWM::CAccentBlurBehind* This,
@@ -32,7 +30,6 @@ namespace OpenGlass::AccentOverrider
 	);
 	decltype(&MyCAccent_UpdateAccentPolicy) g_CAccent_UpdateAccentPolicy_Org{ nullptr };
 	decltype(&MyCAccent__UpdateSolidFill) g_CAccent__UpdateSolidFill_Org{ nullptr };
-	decltype(&MyCAccent__UpdateAccentBlurBehind) g_CAccent__UpdateAccentBlurBehind_Org{ nullptr };
 	decltype(&MyCAccentBlurBehind_IsBlurBehindDirty) g_CAccentBlurBehind_IsBlurBehindDirty_Org{ nullptr };
 }
 
@@ -43,26 +40,32 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent_UpdateAccentPolicy(
 	uDWM::CBaseGeometryProxy* geometry
 )
 {
-	if (!Shared::g_overrideAccent)
-	{
-		return g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
-	}
-
-	auto accentPolicy = *policy;
 	if (
-		accentPolicy.AccentState != 2 &&
-		accentPolicy.AccentState != 3 &&
-		accentPolicy.AccentState != 4
+		policy->AccentState != 1 &&
+		policy->AccentState != 3 &&
+		policy->AccentState != 4
 	)
 	{
 		return g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
 	}
 
-	accentPolicy.AccentState = 2;
-	return g_CAccent_UpdateAccentPolicy_Org(This, rect, &accentPolicy, geometry);
+	HRESULT hr{ S_OK };
+	if (!Shared::g_overrideAccent)
+	{
+		hr = g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
+	}
+	else
+	{
+		auto accentPolicy = *policy;
+		accentPolicy.AccentState = 1;
+		accentPolicy.dwGradientColor = 0;
+		hr = g_CAccent_UpdateAccentPolicy_Org(This, rect, &accentPolicy, geometry);
+	}
+
+	return hr;
 }
 HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
-	uDWM::CAccentBlurBehind* This,
+	uDWM::CAccent* This,
 	uDWM::CRenderDataVisual* visual,
 	UINT color,
 	const D2D1_RECT_F& rect,
@@ -81,13 +84,6 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
 	}
 
 	RETURN_IF_FAILED(visual->ClearInstructions());
-	winrt::com_ptr<uDWM::CSolidColorLegacyMilBrushProxy> brush{ nullptr };
-	RETURN_IF_FAILED(
-		uDWM::CDesktopManager::GetInstance()->GetCompositor()->CreateSolidColorLegacyMilBrushProxy(
-			brush.put()
-		)
-	);
-	RETURN_IF_FAILED(brush->Update(0.5, Color::sRGBToscRGB(GlassKernel::CalculateWindowColorization(true))));
 	winrt::com_ptr<uDWM::CRgnGeometryProxy> geometry{ nullptr };
 	RETURN_IF_FAILED(
 		uDWM::ResourceHelper::CreateGeometryFromHRGN(
@@ -103,15 +99,75 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
 			geometry.put()
 		)
 	);
-	winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
-	RETURN_IF_FAILED(
-		uDWM::CDrawGeometryInstruction::Create(
-			brush.get(),
-			geometry.get(),
-			instruction.put()
+
+	const auto window = uDWM::TryGetWindowFromVisual(This);
+	{
+		winrt::com_ptr<uDWM::CSolidColorLegacyMilBrushProxy> brush{ nullptr };
+		RETURN_IF_FAILED(
+			uDWM::CDesktopManager::GetInstance()->GetCompositor()->CreateSolidColorLegacyMilBrushProxy(
+				brush.put()
+			)
+		);
+
+		auto glassColor = Color::sRGBToscRGB(GlassKernel::CalculateWindowColorization(true));
+		glassColor.a = 0.5f;
+		RETURN_IF_FAILED(brush->Update(1.0, glassColor));
+		winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
+		RETURN_IF_FAILED(
+			uDWM::CDrawGeometryInstruction::Create(
+				brush.get(),
+				geometry.get(),
+				instruction.put()
+			)
+		);
+		RETURN_IF_FAILED(visual->AddInstruction(instruction.get()));
+	}
+
+	if (window)
+	{
+		if (
+			const auto brush = GlassReflectionBrush::GetOrCreate(
+				window,
+				true
+			);
+			brush
 		)
-	);
-	RETURN_IF_FAILED(visual->AddInstruction(instruction.get()));
+		{
+			RETURN_IF_FAILED(
+				brush->Update(
+					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
+					Shared::g_reflectionIntensity :
+					0.f,
+					GlassReflectionBrush::CalculateTargetViewport(
+						visual->GetLocalToParentVisualOffset(window->GetTransformParent()),
+						Shared::g_reflectionParallaxIntensity,
+						window->IsRTLMirrored(),
+						visual->GetTransformParent()->GetWidth()
+					),
+					D2D1::RectF(),
+					nullptr,
+					DWM::MilBrushMappingMode::Absolute,
+					DWM::MilBrushMappingMode::Absolute,
+					nullptr,
+					nullptr,
+					DWM::MilStretch::None,
+					DWM::MilTileMode::Extend,
+					DWM::MilHorizontalAlignment::Left,
+					DWM::MilVerticalAlignment::Top,
+					nullptr
+				)
+			);
+			winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
+			RETURN_IF_FAILED(
+				uDWM::CDrawGeometryInstruction::Create(
+					brush.get(),
+					geometry.get(),
+					instruction.put()
+				)
+			);
+			RETURN_IF_FAILED(visual->AddInstruction(instruction.get()));
+		}
+	}
 	return S_OK;
 }
 bool STDMETHODCALLTYPE AccentOverrider::MyCAccentBlurBehind_IsBlurBehindDirty(

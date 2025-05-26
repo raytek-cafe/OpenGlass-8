@@ -3,7 +3,7 @@
 #include "uDWMProjection.hpp"
 #include "Shared.hpp"
 #include "dwmcoreProjection.hpp"
-#include "GlassVisuals.hpp"
+#include "GlassReflectionBrush.hpp"
 
 using namespace OpenGlass;
 namespace OpenGlass::GlassKernel
@@ -186,8 +186,6 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 		GlassEngine::GetStringFromRegistry(L"CustomThemeReflection", reflectionTexturePath);
 		PathUnquoteSpacesW(reflectionTexturePath);
 		Shared::g_reflectionTexturePath.assign(reflectionTexturePath);
-
-		//CGlassReflectionVisual::Resources().Reload();
 	}
 	if (type & GlassEngine::UpdateType::Framework)
 	{
@@ -195,6 +193,11 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 	}
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
+		auto value = GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensity");
+		Shared::g_reflectionIntensity = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
+		Shared::g_reflectionIntensityInactive = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensityInactive", value)) / 100.f, 0.f, 1.f);
+		Shared::g_reflectionParallaxIntensity = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionParallaxIntensity", 13)) / 100.f, 0.f, 1.f);
+
 		Shared::g_type = static_cast<Shared::GlassType>(std::clamp(GlassEngine::GetDwordFromRegistry(L"GlassType", 0), 0ul, 1ul));
 		Shared::g_reflectionPolicy = static_cast<Shared::ReflectionPolicy>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionPolicy", 0xFFFFFFFF));
 		Shared::g_blurAmount = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"BlurDeviation", 30)) / 10.f * 3.f, 0.f, 250.f);
@@ -202,7 +205,7 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 		Shared::g_roundRectRadius = static_cast<int>(GlassEngine::GetDwordFromRegistry(L"RoundRectRadius"));
 		Shared::g_transparencyEnabled = Util::IsTransparencyEnabled(GlassEngine::GetPersonalizeKey());
 		
-		auto value = GlassEngine::GetDwordFromRegistry(L"ColorizationColorOverride", GlassEngine::GetDwordFromRegistry(L"ColorizationColor"));
+		value = GlassEngine::GetDwordFromRegistry(L"ColorizationColorOverride", GlassEngine::GetDwordFromRegistry(L"ColorizationColor"));
 		Shared::g_color = Color::FromArgb(value);
 		Shared::g_colorInactive = Color::FromArgb(GlassEngine::GetDwordFromRegistry(L"ColorizationColorInactive", value));
 
@@ -243,7 +246,7 @@ void GlassKernel::Shutdown()
 		})
 	);
 
-	//CGlassReflectionVisual::RemoveAll();
+	GlassReflectionBrush::Shutdown();
 	Sleep(1);
 
 	HookHelper::WritePointer(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address, g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org);

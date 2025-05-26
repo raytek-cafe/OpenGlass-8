@@ -3,6 +3,7 @@
 #include "uDWMProjection.hpp"
 #include "dwmcoreProjection.hpp"
 #include "Shared.hpp"
+#include "GlassReflectionBrush.hpp"
 
 using namespace OpenGlass;
 
@@ -37,7 +38,6 @@ namespace OpenGlass::GlassReflectionHandler
 		uDWM::CAnimatedGlassSheet* m_sheet{ nullptr };
 		winrt::com_ptr<uDWM::CRenderDataVisual> m_visual{ nullptr };
 		winrt::com_ptr<uDWM::CRgnGeometryProxy> m_geometry{ nullptr };
-		winrt::com_ptr<uDWM::CSolidColorLegacyMilBrushProxy> m_brush{ nullptr };
 	public:
 		CAnimatedReflectionSheet(uDWM::CAnimatedGlassSheet* sheet) : m_sheet{ sheet } {};
 		virtual ~CAnimatedReflectionSheet()
@@ -45,6 +45,7 @@ namespace OpenGlass::GlassReflectionHandler
 			if (m_visual)
 			{
 				m_sheet->GetVisualCollection()->Remove(m_visual.get());
+				GlassReflectionBrush::Remove(m_visual.get());
 			}
 		}
 		static HRESULT STDMETHODCALLTYPE Create(uDWM::CAnimatedGlassSheet* glassSheet, CAnimatedReflectionSheet** outputSheet)
@@ -62,12 +63,12 @@ namespace OpenGlass::GlassReflectionHandler
 					m_visual.put()
 				)
 			);
-			RETURN_IF_FAILED(
-				uDWM::CDesktopManager::GetInstance()->GetCompositor()->CreateSolidColorLegacyMilBrushProxy(
-					m_brush.put()
-				)
-			);
-			RETURN_IF_FAILED(m_brush->Update((Shared::g_reflectionPolicy & Shared::ReflectionPolicy::AnimatedGlassSheet) ? 0.5 : 0.0, {}));
+			m_visual->SetInsetFromParent({});
+			const auto brush = GlassReflectionBrush::GetOrCreate(m_visual.get(), true);
+			if (!brush)
+			{
+				return E_FAIL;
+			}
 			
 			wil::unique_hrgn emptyRegion{ CreateRectRgn(0, 0, 0, 0) };
 			RETURN_LAST_ERROR_IF_NULL(emptyRegion);
@@ -81,7 +82,7 @@ namespace OpenGlass::GlassReflectionHandler
 			winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
 			RETURN_IF_FAILED(
 				uDWM::CDrawGeometryInstruction::Create(
-					m_brush.get(),
+					brush.get(),
 					m_geometry.get(),
 					instruction.put()
 				)
@@ -100,7 +101,30 @@ namespace OpenGlass::GlassReflectionHandler
 		}
 		HRESULT STDMETHODCALLTYPE OnRectUpdated(LPCRECT lprc)
 		{
-			const auto offset = m_visual->GetOffsetRelativeToRoot();
+			const auto brush = GlassReflectionBrush::GetOrCreate(m_visual.get());
+			RETURN_IF_FAILED(
+				brush->Update(
+					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::AnimatedGlassSheet) ? 
+					Shared::g_reflectionIntensity : 
+					0.f,
+					GlassReflectionBrush::CalculateTargetViewport(
+						{ lprc->left, lprc->top }
+					),
+					D2D1::RectF(),
+					nullptr,
+					DWM::MilBrushMappingMode::Absolute,
+					DWM::MilBrushMappingMode::Absolute,
+					nullptr,
+					nullptr,
+					DWM::MilStretch::None,
+					DWM::MilTileMode::Extend,
+					DWM::MilHorizontalAlignment::Left,
+					DWM::MilVerticalAlignment::Top,
+					nullptr
+				)
+			);
+			m_visual->_ValidateVisual();
+
 			RETURN_IF_FAILED(
 				uDWM::ResourceHelper::CreateGeometryFromHRGN(
 					wil::unique_hrgn
@@ -122,13 +146,13 @@ namespace OpenGlass::GlassReflectionHandler
 	};
 	std::unordered_map<uDWM::CAnimatedGlassSheet*, winrt::com_ptr<CAnimatedReflectionSheet>> g_sheetMap{};
 
-	bool g_updatingResources{ false };
+	uDWM::LivePreviewResource* g_livepreviewResource{ nullptr };
 }
 
 void STDMETHODCALLTYPE GlassReflectionHandler::MyCAnimatedGlassSheet_OnRectUpdated(uDWM::CAnimatedGlassSheet* This, LPCRECT lprc)
 {
 	winrt::com_ptr<CAnimatedReflectionSheet> reflectionSheet{};
-	if (auto it = g_sheetMap.find(This); it != g_sheetMap.end())
+	if (const auto it = g_sheetMap.find(This); it != g_sheetMap.end())
 	{
 		reflectionSheet = it->second;
 	}
@@ -194,47 +218,87 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__FadeOutToGlass
 	for (const auto& resource : This->GetLivePreviewResourceArray()->views())
 	{
 		//if (resource.IsWindowBoundingRectNotEmpty())
-		if (!IsRectEmpty(resource.GetWindowBoundingRect()))
+		if (
+			!IsRectEmpty(resource.GetWindowBoundingRect())
+		)
 		{
 			winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
-			RETURN_IF_FAILED(
-				uDWM::CDrawGeometryInstruction::Create(
-					resource.GetWindowVisualBrush(),
-					resource.GetWindowBoundingGeometry(),
-					instruction.put()
-				)
-			);
-			RETURN_IF_FAILED(This->AddInstruction(instruction.get()));
+			if (
+				resource.GetWindowVisualBrush() &&
+				resource.GetWindowBoundingGeometry()
+			)
+			{
+				RETURN_IF_FAILED(
+					uDWM::CDrawGeometryInstruction::Create(
+						resource.GetWindowVisualBrush(),
+						resource.GetWindowBoundingGeometry(),
+						instruction.put()
+					)
+				);
+				RETURN_IF_FAILED(This->AddInstruction(instruction.get()));
+			}
 
-			RETURN_IF_FAILED(
-				uDWM::CDrawGeometryInstruction::Create(
-					resource.GetGlassVisualBrush(),
-					resource.GetGlassBoundingGeometry(),
-					instruction.put()
-				)
-			);
-			RETURN_IF_FAILED(This->AddInstruction(instruction.get()));
+			if (
+				resource.GetGlassVisualBrush() &&
+				resource.GetGlassBoundingGeometry()
+			)
+			{
+				RETURN_IF_FAILED(
+					uDWM::CDrawGeometryInstruction::Create(
+						resource.GetGlassVisualBrush(),
+						resource.GetGlassBoundingGeometry(),
+						instruction.put()
+					)
+				);
+				RETURN_IF_FAILED(This->AddInstruction(instruction.get()));
+			}
 		}
 		//if (resource.IsGlassBoundingRectNotEmpty())
-		if (!IsRectEmpty(resource.GetGlassBoundingRect()))
+		if (
+			!IsRectEmpty(resource.GetGlassBoundingRect()) && 
+			resource.GetReflectionGeometry()
+		)
 		{
-			winrt::com_ptr<uDWM::CSolidColorLegacyMilBrushProxy> brush{ nullptr };
-			RETURN_IF_FAILED(
-				uDWM::CDesktopManager::GetInstance()->GetCompositor()->CreateSolidColorLegacyMilBrushProxy(
-					brush.put()
-				)
-			);
-			RETURN_IF_FAILED(brush->Update((Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ? 0.5 : 0.0, {}));
-			
-			winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
-			RETURN_IF_FAILED(
-				uDWM::CDrawGeometryInstruction::Create(
-					brush.get(),
-					resource.GetReflectionGeometry(),
-					instruction.put()
-				)
-			);
-			RETURN_IF_FAILED(This->GetGlassVisual()->AddInstruction(instruction.get()));
+			if (
+				const auto brush = GlassReflectionBrush::GetOrCreate(
+					This,
+					true
+				);
+				brush
+			)
+			{
+				RETURN_IF_FAILED(
+					brush->Update(
+						(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ? 
+						Shared::g_reflectionIntensity : 
+						0.f,
+						GlassReflectionBrush::CalculateTargetViewport(
+							This->GetGlassVisual()->GetLocalToParentVisualOffset(This->GetTransformParent())
+						),
+						D2D1::RectF(),
+						nullptr,
+						DWM::MilBrushMappingMode::Absolute,
+						DWM::MilBrushMappingMode::Absolute,
+						nullptr,
+						nullptr,
+						DWM::MilStretch::None,
+						DWM::MilTileMode::Extend,
+						DWM::MilHorizontalAlignment::Left,
+						DWM::MilVerticalAlignment::Top,
+						nullptr
+					)
+				);
+
+				winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
+				RETURN_IF_FAILED(
+					uDWM::CDrawGeometryInstruction::Create(
+						brush.get(),
+						resource.GetReflectionGeometry(),
+						instruction.put()
+					)
+				);
+				RETURN_IF_FAILED(This->GetGlassVisual()->AddInstruction(instruction.get()));
+			}
 		}
 	}
 
@@ -247,25 +311,51 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstruct
 	for (const auto& resource : This->GetLivePreviewResourceArray()->views())
 	{
 		//if (resource.IsGlassBoundingRectNotEmpty())
-		if (!IsRectEmpty(resource.GetGlassBoundingRect()))
+		if (
+			!IsRectEmpty(resource.GetGlassBoundingRect()) && 
+			resource.GetReflectionGeometry()
+		)
 		{
-			winrt::com_ptr<uDWM::CSolidColorLegacyMilBrushProxy> brush{ nullptr };
-			RETURN_IF_FAILED(
-				uDWM::CDesktopManager::GetInstance()->GetCompositor()->CreateSolidColorLegacyMilBrushProxy(
-					brush.put()
-				)
-			);
-			RETURN_IF_FAILED(brush->Update((Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ? 0.5 : 0.0, {}));
-			
-			winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
-			RETURN_IF_FAILED(
-				uDWM::CDrawGeometryInstruction::Create(
-					brush.get(),
-					resource.GetReflectionGeometry(),
-					instruction.put()
-				)
-			);
-			RETURN_IF_FAILED(This->GetGlassVisual()->AddInstruction(instruction.get()));
+			if (
+				const auto brush = GlassReflectionBrush::GetOrCreate(
+					This,
+					true
+				);
+				brush
+			)
+			{
+				RETURN_IF_FAILED(
+					brush->Update(
+						(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ? 
+						Shared::g_reflectionIntensity : 
+						0.f,
+						GlassReflectionBrush::CalculateTargetViewport(
+							This->GetGlassVisual()->GetLocalToParentVisualOffset(This->GetTransformParent())
+						),
+						D2D1::RectF(),
+						nullptr,
+						DWM::MilBrushMappingMode::Absolute,
+						DWM::MilBrushMappingMode::Absolute,
+						nullptr,
+						nullptr,
+						DWM::MilStretch::None,
+						DWM::MilTileMode::Extend,
+						DWM::MilHorizontalAlignment::Left,
+						DWM::MilVerticalAlignment::Top,
+						nullptr
+					)
+				);
+
+				winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
+				RETURN_IF_FAILED(
+					uDWM::CDrawGeometryInstruction::Create(
+						brush.get(),
+						resource.GetReflectionGeometry(),
+						instruction.put()
+					)
+				);
+				RETURN_IF_FAILED(This->GetGlassVisual()->AddInstruction(instruction.get()));
+			}
 		}
 	}
 
@@ -273,9 +363,9 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstruct
 }
 HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateResourcesForMonitor(uDWM::CLivePreview* This, uDWM::LivePreviewResource* livepreviewResource)
 {
-	g_updatingResources = true;
+	g_livepreviewResource = livepreviewResource;
 	auto hr = g_CLivePreview__UpdateResourcesForMonitor_Org(This, livepreviewResource);
-	g_updatingResources = false;
+	g_livepreviewResource = nullptr;
 
 	return hr;
 }
@@ -289,15 +379,17 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCCachedVisualImageProxy_Upda
 	DWM::MilBrushMappingMode viewboxUnits
 )
 {
-	// The DWM team changed the implementation of dwmcore!CCachedVisualImage, 
+	// The DWM team changed the implementation of dwmcore!CRenderData::TryDrawCommandAsDrawList, 
 	// which is why Aero Peek is glitching since Windows 10 1803. 
 	// 
 	// https://github.com/microsoft/Windows-Dev-Performance/issues/12
-	if (g_updatingResources)
+	if (g_livepreviewResource)
 	{
 		auto fixedViewBox = viewbox;
-		fixedViewBox.left = 0.f;
-		fixedViewBox.top = 0.f;
+		fixedViewBox.left = static_cast<float>(g_livepreviewResource->GetMonitorRect()->left);
+		fixedViewBox.top = static_cast<float>(g_livepreviewResource->GetMonitorRect()->top);
+		fixedViewBox.right = static_cast<float>(g_livepreviewResource->GetMonitorRect()->right);
+		fixedViewBox.bottom = static_cast<float>(g_livepreviewResource->GetMonitorRect()->bottom);
 		return g_CCachedVisualImageProxy_Update_Org(This, fixedViewBox, realizationSize, rectProxy, sizeProxy, visualProxy, viewboxUnits);
 	}
 	return g_CCachedVisualImageProxy_Update_Org(This, viewbox, realizationSize, rectProxy, sizeProxy, visualProxy, viewboxUnits);

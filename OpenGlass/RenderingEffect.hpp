@@ -13,8 +13,9 @@ namespace OpenGlass
 			const D2D1_RECT_F & imageRectangle,
 			const void* additionalParams
 		) = 0;
+		virtual D2D1_POINT_2F STDMETHODCALLTYPE GetOutputOffset() const = 0;
 		virtual D2D1_MATRIX_3X2_F STDMETHODCALLTYPE GetOutputMatrix() const = 0;
-		virtual void STDMETHODCALLTYPE GetOutput(ID2D1Image * *output) const = 0;
+		virtual void STDMETHODCALLTYPE GetOutput(ID2D1Image **output) const = 0;
 		virtual void STDMETHODCALLTYPE Reset() = 0;
 	};
 }

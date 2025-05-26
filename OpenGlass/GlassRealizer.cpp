@@ -68,6 +68,13 @@ HRESULT CGlassRealizer::Render(
 	}
 
 	const auto targetSize = input.sourceBitmap->GetSize();
+	const D2D1_RECT_F alignedDrawingWorldBounds
+	{
+		std::floor(input.drawingWorldBounds->left),
+		std::floor(input.drawingWorldBounds->top),
+		std::ceil(input.drawingWorldBounds->right),
+		std::ceil(input.drawingWorldBounds->bottom)
+	};
 	const D2D1_RECT_F imageBounds
 	{
 		0.f,
@@ -83,15 +90,15 @@ HRESULT CGlassRealizer::Render(
 			input.buffer->CopyFrom(
 				context,
 				D2D1::Point2U(
-					static_cast<UINT32>(input.drawingWorldBounds->left),
-					static_cast<UINT32>(input.drawingWorldBounds->top)
+					static_cast<UINT32>(alignedDrawingWorldBounds.left),
+					static_cast<UINT32>(alignedDrawingWorldBounds.top)
 				),
 				input.sourceBitmap,
 				D2D1::RectU(
-					static_cast<UINT32>(input.drawingWorldBounds->left),
-					static_cast<UINT32>(input.drawingWorldBounds->top),
-					static_cast<UINT32>(input.drawingWorldBounds->right),
-					static_cast<UINT32>(input.drawingWorldBounds->bottom)
+					static_cast<UINT32>(alignedDrawingWorldBounds.left),
+					static_cast<UINT32>(alignedDrawingWorldBounds.top),
+					static_cast<UINT32>(alignedDrawingWorldBounds.right),
+					static_cast<UINT32>(alignedDrawingWorldBounds.bottom)
 				)
 			)
 		);
@@ -105,8 +112,8 @@ HRESULT CGlassRealizer::Render(
 	RETURN_IF_FAILED(
 		m_glassEffect->Build(
 			context,
-			input.zeroCopyAllowed ? input.sourceBitmap : input.buffer->GetD2DBitmap(context, input.sourceBitmap->GetPixelFormat()),
-			*input.drawingWorldBounds,
+			input.zeroCopyAllowed ? input.sourceBitmap : input.buffer->GetCompatibleD2DBitmap(context, input.sourceBitmap),
+			alignedDrawingWorldBounds,
 			static_cast<const void*>(&input.params)
 		)
 	);
@@ -120,21 +127,26 @@ HRESULT CGlassRealizer::Render(
 	context->SetTransform(outputMatrix);
 
 	D2D1InvertMatrix(&outputMatrix);
-	const auto transformedDrawingRect = RectF::TransformRect(*input.drawingWorldBounds, outputMatrix);
+	const auto offset = m_glassEffect->GetOutputOffset();
 
-	for (const auto& rectangle : input.rectangles)
+	for (auto rectangle : input.rectangles)
 	{
-		auto transformedSubRectangle = RectF::TransformRect(rectangle, outputMatrix);
-
-		if (RectF::IntersectUnsafe(transformedSubRectangle, transformedDrawingRect))
+		if (RectF::IntersectUnsafe(rectangle, alignedDrawingWorldBounds))
 		{
+			auto transformedSubRectangle = RectF::TransformRect(rectangle, outputMatrix);
+
 			context->DrawImage(
 				outputImage.get(),
 				D2D1::Point2F(
 					transformedSubRectangle.left,
 					transformedSubRectangle.top
 				),
-				transformedSubRectangle,
+				D2D1::RectF(
+					transformedSubRectangle.left + offset.x,
+					transformedSubRectangle.top + offset.y,
+					transformedSubRectangle.right + offset.x,
+					transformedSubRectangle.bottom + offset.y
+				),
 				input.nearestNeighborFinalScale ? D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR : D2D1_INTERPOLATION_MODE_LINEAR,
 				D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
 			);

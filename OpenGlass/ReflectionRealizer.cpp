@@ -88,70 +88,15 @@ HRESULT CReflectionRealizer::Render(
 		RETURN_IF_FAILED(LoadTexture(context));
 	}
 
-	const auto reflectionSize = m_reflectionBitmap->GetSize();
-	const auto visualWorldTransform2D = input.visualWorldTransform->GetD2DMatrix();
-	
-	static ULONGLONG s_frameId{};
-	static D2D1_SIZE_F s_desktopSize{};
-	static D2D1_POINT_2F s_desktopOrigin{};
-	if (const auto frameId = dwmcore::GetCurrentFrameId(); s_frameId != frameId)
-	{
-		s_desktopSize =
-		{
-			static_cast<float>(GetSystemMetrics(SM_CXVIRTUALSCREEN)),
-			static_cast<float>(GetSystemMetrics(SM_CYVIRTUALSCREEN))
-		};
-		s_desktopOrigin =
-		{
-			static_cast<float>(GetSystemMetrics(SM_XVIRTUALSCREEN)),
-			static_cast<float>(GetSystemMetrics(SM_YVIRTUALSCREEN))
-		};
-		s_frameId = frameId;
-	}
-
-	// if the visual is rtl, the rect is mirrored
-	const auto reflectionDesktopRect = RectF::TransformRect(*input.shapeLocalBounds, visualWorldTransform2D);
-	D2D1_RECT_F clippedReflectionDesktopRect
-	{
-		std::max(reflectionDesktopRect.left, 0.f),
-		std::max(reflectionDesktopRect.top, 0.f),
-		std::min(reflectionDesktopRect.right, s_desktopOrigin.x + s_desktopSize.width),
-		std::min(reflectionDesktopRect.bottom, s_desktopOrigin.x + s_desktopSize.height)
-	};
-
-	D2D1_RECT_F sourceRect
-	{
-		clippedReflectionDesktopRect.left / s_desktopSize.width * reflectionSize.width,
-		clippedReflectionDesktopRect.top / s_desktopSize.height * reflectionSize.height,
-		clippedReflectionDesktopRect.right / s_desktopSize.width * reflectionSize.width,
-		clippedReflectionDesktopRect.bottom / s_desktopSize.height * reflectionSize.height
-	};
-
-	const auto worldTransform2D = input.worldTransform->GetD2DMatrix();
-	auto shapeLocalBounds = *input.shapeLocalBounds;
-	shapeLocalBounds.left += clippedReflectionDesktopRect.left - reflectionDesktopRect.left;
-	shapeLocalBounds.top += clippedReflectionDesktopRect.top - reflectionDesktopRect.top;
-	shapeLocalBounds.right += clippedReflectionDesktopRect.right - reflectionDesktopRect.right;
-	shapeLocalBounds.bottom += clippedReflectionDesktopRect.bottom - reflectionDesktopRect.bottom;
-
-	if (input.reflectionParallaxIntensity)
-	{
-		const auto width = wil::rect_width(sourceRect);
-		sourceRect.left -= input.reflectionParallaxIntensity * (reflectionDesktopRect.left / s_desktopSize.width * reflectionSize.width);
-		sourceRect.right = sourceRect.left + width;
-	}
-
 	const auto worldTransform3D = input.worldTransform->GetD3DMatrix();
-	context->SetTransform(worldTransform2D);
 	context->DrawBitmap(
 		m_reflectionBitmap.get(),
-		&shapeLocalBounds,
-		input.reflectionIntensity,
+		input.viewport,
+		input.intensity,
 		D2D1_INTERPOLATION_MODE_LINEAR,
-		&sourceRect,
-		nullptr
+		nullptr,
+		&worldTransform3D
 	);
-	context->SetTransform(D2D1::IdentityMatrix());
 
 	return S_OK;
 }

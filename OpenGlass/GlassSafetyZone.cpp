@@ -402,29 +402,27 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_DrawGeometry(
 
 	const auto solidColorBrush = static_cast<dwmcore::CSolidColorLegacyMilBrush*>(brush);
 	const auto color = solidColorBrush->GetRealizedColor();
-	const auto opacity = solidColorBrush->GetRealizedOpacity();
-	const auto active = (opacity == 0.5f);
+	const auto active = (color.a == 0.5f);
 	const auto extendedAmount = GlassKernel::GetBlurExtendedAmount();
-	float glassOpacity, blurBalance, afterglowBalance;
-	GlassKernel::CalculateRealizedAeroParams(
-		active,
-		extendedAmount,
-		glassOpacity,
-		blurBalance,
-		afterglowBalance,
-		nullptr
-	);
 	if (
-		color.a == 1.f &&
+		float glassOpacity, blurBalance, afterglowBalance;
+		solidColorBrush->IsConstantOpaque() ||
 		(
-			opacity == 1.f
-		) ||
-		(
-			(opacity == 0.5f || opacity == 0.25f) &&
-			Shared::IsGlassFullyOpaque(
-				glassOpacity, 
-				blurBalance, 
-				afterglowBalance
+			(color.a == 0.50f || color.a == 0.25f) &&
+			(
+				GlassKernel::CalculateRealizedAeroParams(
+					active,
+					extendedAmount,
+					glassOpacity,
+					blurBalance,
+					afterglowBalance,
+					nullptr
+				),
+				Shared::IsGlassFullyOpaque(
+					glassOpacity,
+					blurBalance,
+					afterglowBalance
+				)
 			)
 		)
 	)
@@ -452,8 +450,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_DrawGeometry(
 	}
 	// here are the glass regions
 	else if (
-		color.a == 1.f &&
-		(opacity == 0.5f || opacity == 0.25f) &&
+		(color.a == 0.50f || color.a == 0.25f) &&
 		extendedAmount
 	)
 	{

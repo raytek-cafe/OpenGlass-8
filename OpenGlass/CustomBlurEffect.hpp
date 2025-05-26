@@ -22,9 +22,11 @@ namespace OpenGlass
 		float m_blurAmount{ 0.f };
 		D2D1_GAUSSIANBLUR_OPTIMIZATION m_optimization{ D2D1_GAUSSIANBLUR_OPTIMIZATION_BALANCED };
 		D2D1_VECTOR_2F m_prescaleAmount{};
+		D2D1_POINT_2F m_offset{};
 
 		winrt::com_ptr<ID2D1Effect> m_cropInputEffect{};
 		winrt::com_ptr<ID2D1Effect> m_scaleDownEffect{};
+		winrt::com_ptr<ID2D1Effect> m_cropAlignEffect{};
 		winrt::com_ptr<ID2D1Effect> m_borderEffect{};
 		winrt::com_ptr<ID2D1Effect> m_directionalBlurXEffect{};
 		winrt::com_ptr<ID2D1Effect> m_directionalBlurYEffect{};
@@ -43,6 +45,7 @@ namespace OpenGlass
 			const void* additionalParams
 		) override;
 		D2D1_MATRIX_3X2_F STDMETHODCALLTYPE GetOutputMatrix() const override;
+		D2D1_POINT_2F STDMETHODCALLTYPE GetOutputOffset() const override { return m_offset; }
 		void STDMETHODCALLTYPE GetOutput(ID2D1Image** output) const override;
 		void STDMETHODCALLTYPE Reset() override;
 	};

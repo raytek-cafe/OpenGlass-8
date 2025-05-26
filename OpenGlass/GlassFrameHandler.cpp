@@ -4,7 +4,7 @@
 #include "GlassKernel.hpp"
 #include "uDWMProjection.hpp"
 #include "dwmcoreProjection.hpp"
-#include "GlassVisuals.hpp"
+#include "GlassReflectionBrush.hpp"
 
 using namespace OpenGlass;
 
@@ -15,11 +15,11 @@ namespace OpenGlass::GlassFrameHandler
 	HRGN WINAPI MyExtCreateRegion(const XFORM* lpx, DWORD nCount, const RGNDATA* lpData);
 
 	HRESULT STDMETHODCALLTYPE MyResourceHelper_CreateGeometryFromHRGN(HRGN hrgn, uDWM::CRgnGeometryProxy** geometry);
-	HRESULT STDMETHODCALLTYPE MyCSolidColorLegacyMilBrushProxy_Update(uDWM::CSolidColorLegacyMilBrushProxy* This, double opacity, const D2D1_COLOR_F& color);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateNCAreaBackground(uDWM::CTopLevelWindow* This);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateClientBlur(uDWM::CTopLevelWindow* This);
 	void STDMETHODCALLTYPE MyCButton_SetSize(uDWM::CButton* This, const SIZE* size);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_ValidateVisual(uDWM::CTopLevelWindow* This);
+	void STDMETHODCALLTYPE MyCTopLevelWindow_Destructor(uDWM::CTopLevelWindow* This);
 	bool WINAPI MySetMargin(
 		MARGINS* dstMargins,
 		int cxLeftWidth,
@@ -34,10 +34,10 @@ namespace OpenGlass::GlassFrameHandler
 	decltype(&MyExtCreateRegion) g_ExtCreateRegion_Org{ nullptr };
 
 	decltype(&MyResourceHelper_CreateGeometryFromHRGN) g_ResourceHelper_CreateGeometryFromHRGN_Org{ nullptr };
-	decltype(&MyCSolidColorLegacyMilBrushProxy_Update) g_CSolidColorLegacyMilBrushProxy_Update_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateNCAreaBackground) g_CTopLevelWindow_UpdateNCAreaBackground_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateClientBlur) g_CTopLevelWindow_UpdateClientBlur_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_ValidateVisual) g_CTopLevelWindow_ValidateVisual_Org{ nullptr };
+	decltype(&MyCTopLevelWindow_Destructor) g_CTopLevelWindow_Destructor_Org{ nullptr };
 	decltype(&MyCButton_SetSize) g_CButton_SetSize_Org{ nullptr };
 	decltype(&MyCButton_SetSize)* g_CButton_SetSize_Org_Address{ nullptr };
 	decltype(&MySetMargin) g_SetMargin_Org{ nullptr };
@@ -105,7 +105,137 @@ namespace OpenGlass::GlassFrameHandler
 	RECT g_roundedBounds{};
 	bool g_systemBackdrop{ false };
 	std::optional<bool> g_redirectFirstCreateRectRgnCall{};
-	bool g_blockUpdatingSolidColorBrush{ false };
+
+	HRESULT UpdateReflectionViewport(uDWM::CTopLevelWindow* window);
+}
+
+HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* window)
+{
+	const auto active = window->TreatAsActiveWindow();
+	const auto desktop = window->GetTransformParent();
+	if (
+		const auto legacyVisual = window->GetLegacyVisual();
+		legacyVisual &&
+		legacyVisual->GetCount() == 3
+	)
+	{
+		if (
+			const auto brush = GlassReflectionBrush::GetOrCreate(window);
+			brush &&
+			!window->IsTrullyMinimized()
+		)
+		{
+			RETURN_IF_FAILED(
+				brush->Update(
+					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
+					(
+						active ?
+						Shared::g_reflectionIntensity :
+						Shared::g_reflectionIntensityInactive
+					) :
+					0.f,
+					GlassReflectionBrush::CalculateTargetViewport(
+						legacyVisual->GetLocalToParentVisualOffset(desktop),
+						Shared::g_reflectionParallaxIntensity,
+						window->IsRTLMirrored(),
+						legacyVisual->GetTransformParent()->GetWidth()
+					),
+					D2D1::RectF(),
+					nullptr,
+					DWM::MilBrushMappingMode::Absolute,
+					DWM::MilBrushMappingMode::Absolute,
+					nullptr,
+					nullptr,
+					DWM::MilStretch::None,
+					DWM::MilTileMode::Extend,
+					DWM::MilHorizontalAlignment::Left,
+					DWM::MilVerticalAlignment::Top,
+					nullptr
+				)
+			);
+		}
+	}
+	if (
+		const auto clientBlurVisual = window->GetClientBlurVisual();
+		clientBlurVisual &&
+		clientBlurVisual->GetCount() == 2
+	)
+	{
+		if (
+			const auto brush = GlassReflectionBrush::GetOrCreate(window);
+			brush &&
+			!window->IsTrullyMinimized()
+		)
+		{
+			RETURN_IF_FAILED(
+				brush->Update(
+					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
+					(
+						active ?
+						Shared::g_reflectionIntensity :
+						Shared::g_reflectionIntensityInactive
+					) :
+					0.f,
+					GlassReflectionBrush::CalculateTargetViewport(
+						clientBlurVisual->GetLocalToParentVisualOffset(desktop),
+						Shared::g_reflectionParallaxIntensity,
+						window->IsRTLMirrored(),
+						clientBlurVisual->GetTransformParent()->GetWidth()
+					),
+					D2D1::RectF(),
+					nullptr,
+					DWM::MilBrushMappingMode::Absolute,
+					DWM::MilBrushMappingMode::Absolute,
+					nullptr,
+					nullptr,
+					DWM::MilStretch::None,
+					DWM::MilTileMode::Extend,
+					DWM::MilHorizontalAlignment::Left,
+					DWM::MilVerticalAlignment::Top,
+					nullptr
+				)
+			);
+		}
+	}
+	if (
+		const auto accentVisual = window->GetAccent();
+		accentVisual
+	)
+	{
+		if (
+			const auto brush = GlassReflectionBrush::GetOrCreate(window);
+			brush &&
+			!window->IsTrullyMinimized()
+		)
+		{
+			RETURN_IF_FAILED(
+				brush->Update(
+					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
+					Shared::g_reflectionIntensity :
+					0.f,
+					GlassReflectionBrush::CalculateTargetViewport(
+						accentVisual->GetLocalToParentVisualOffset(desktop),
+						Shared::g_reflectionParallaxIntensity,
+						window->IsRTLMirrored(),
+						accentVisual->GetTransformParent()->GetWidth()
+					),
+					D2D1::RectF(),
+					nullptr,
+					DWM::MilBrushMappingMode::Absolute,
+					DWM::MilBrushMappingMode::Absolute,
+					nullptr,
+					nullptr,
+					DWM::MilStretch::None,
+					DWM::MilTileMode::Extend,
+					DWM::MilHorizontalAlignment::Left,
+					DWM::MilVerticalAlignment::Top,
+					nullptr
+				)
+			);
+		}
+	}
+
+	return S_OK;
 }
 
 HRGN WINAPI GlassFrameHandler::MyCreateRoundRectRgn(int x1, int y1, int x2, int y2, int w, int h)
@@ -213,36 +343,9 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyResourceHelper_CreateGeometryFrom
 	);
 }
 
-HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCSolidColorLegacyMilBrushProxy_Update(uDWM::CSolidColorLegacyMilBrushProxy* This, double opacity, const D2D1_COLOR_F& color)
-{
-	if (g_blockUpdatingSolidColorBrush)
-	{
-		return S_OK;
-	}
-	return g_CSolidColorLegacyMilBrushProxy_Update_Org(
-		This,
-		opacity,
-		color
-	);
-}
-
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackground(uDWM::CTopLevelWindow* This)
 {
 	HRESULT hr{ S_OK };
-
-	/*{
-		const auto data = This->GetData();
-		WCHAR className[MAX_PATH]{};
-		GetClassNameW(data->GetHwnd(), className, MAX_PATH);
-		if (!wcscmp(className, L"Notepad"))
-		{
-			if (const auto legacyVisual = *((uDWM::CVisual**)This + 73); legacyVisual && legacyVisual->GetTransformParent())
-			{
-				legacyVisual->GetTransformParent()->GetVisualCollection()->Remove(legacyVisual);
-			}
-			return S_OK;
-		}
-	}*/
 
 	auto& highContrastMode = uDWM::CDesktopManager::GetInstance()->GetIsHighContrastMode();
 	const auto old_highContrastMode = highContrastMode;
@@ -258,80 +361,101 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackg
 		}
 	});
 
-	const auto active = This->TreatAsActiveWindow();
-	const auto replacedOpacity = active ? 0.50 : 0.25;
-
-	if (This->HasNonClientBackground())
 	{
+		const auto active = This->TreatAsActiveWindow();
+
 		g_redirectFirstCreateRectRgnCall = true;
 		g_combinedRgn.reset(CreateRectRgn(0, 0, 0, 0));
 		const auto combinedRgnScope = wil::scope_exit([] { g_redirectFirstCreateRectRgnCall = std::nullopt; g_combinedRgn.reset(); });
-		g_blockUpdatingSolidColorBrush = true;
 		hr = g_CTopLevelWindow_UpdateNCAreaBackground_Org(This);
-		g_blockUpdatingSolidColorBrush = false;
 
-		// why reusing the old one instead of creating a new one?
-		// because using the new one will cause the window cannot render correctly 
-		// in minimize animation,
-		// it will only show a small square, not complete title bar and borders
-		// idk why
-		if (auto captionGeometry = This->GetCaptionGeometry(); captionGeometry)
+		if (
+			const auto legacyVisual = This->GetLegacyVisual();
+			legacyVisual &&
+			SUCCEEDED(legacyVisual->_ValidateVisual())
+		)
 		{
-			RETURN_IF_FAILED(
-				uDWM::ResourceHelper::CreateGeometryFromHRGN(
-					g_combinedRgn.get(),
-					&captionGeometry
-				)
-			);
+			if (auto captionGeometry = This->GetCaptionGeometry(); captionGeometry)
+			{
+				RETURN_IF_FAILED(
+					uDWM::ResourceHelper::CreateGeometryFromHRGN(
+						g_combinedRgn.get(),
+						&captionGeometry
+					)
+				);
+
+				if (legacyVisual->GetCount() == 2)
+				{
+					if (
+						const auto brush = GlassReflectionBrush::GetOrCreate(
+							This,
+							true
+						);
+						brush &&
+						!This->IsTrullyMinimized()
+					)
+					{
+						RETURN_IF_FAILED(
+							brush->Update(
+								(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
+								(
+									active ?
+									Shared::g_reflectionIntensity :
+									Shared::g_reflectionIntensityInactive
+								) :
+								0.f,
+								GlassReflectionBrush::CalculateTargetViewport(
+									legacyVisual->GetLocalToParentVisualOffset(This->GetTransformParent()),
+									Shared::g_reflectionParallaxIntensity,
+									This->IsRTLMirrored(),
+									legacyVisual->GetTransformParent()->GetWidth()
+								),
+								D2D1::RectF(),
+								nullptr,
+								DWM::MilBrushMappingMode::Absolute,
+								DWM::MilBrushMappingMode::Absolute,
+								nullptr,
+								nullptr,
+								DWM::MilStretch::None,
+								DWM::MilTileMode::Extend,
+								DWM::MilHorizontalAlignment::Left,
+								DWM::MilVerticalAlignment::Top,
+								nullptr
+							)
+						);
+						winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
+						RETURN_IF_FAILED(
+							uDWM::CDrawGeometryInstruction::Create(
+								brush.get(),
+								captionGeometry,
+								instruction.put()
+							)
+						);
+						RETURN_IF_FAILED(legacyVisual->AddInstruction(instruction.get()));
+					}
+				}
+			}
+			if (auto borderGeometry = This->GetBorderGeometry(); borderGeometry)
+			{
+				RETURN_IF_FAILED(
+					uDWM::ResourceHelper::CreateGeometryFromHRGN(
+						wil::unique_hrgn{ CreateRectRgn(0, 0, 0, 0) }.get(),
+						&borderGeometry
+					)
+				);
+			}
 		}
-		if (auto borderGeometry = This->GetBorderGeometry(); borderGeometry)
+
+		auto color = This->GetCaptionColorizationParameters()->getArgbcolor();
+		color.a = active ? 0.50f : 0.25f;
+		if (auto captionBrush = This->GetCaptionBrush(); captionBrush)
 		{
-			RETURN_IF_FAILED(
-				uDWM::ResourceHelper::CreateGeometryFromHRGN(
-					wil::unique_hrgn{ CreateRectRgn(0, 0, 0, 0) }.get(),
-					&borderGeometry
-				)
-			);
+			RETURN_IF_FAILED(captionBrush->Update(1.0, color));
 		}
-	}
-	else
-	{
-		g_blockUpdatingSolidColorBrush = true;
-		hr = g_CTopLevelWindow_UpdateNCAreaBackground_Org(This);
-		g_blockUpdatingSolidColorBrush = false;
-	}
-
-	/*if (const auto legacyVisual = This->GetLegacyVisual(); legacyVisual)
-	{
-		winrt::com_ptr<CGlassReflectionVisual> glassReflectionVisual{ nullptr };
-
-		glassReflectionVisual.copy_from(CGlassReflectionVisual::GetChildOf(legacyVisual));
-		if (!glassReflectionVisual)
+		if (auto clientBlurBrush = This->GetClientBlurBrush(); clientBlurBrush)
 		{
-			RETURN_IF_FAILED(CGlassReflectionVisual::Create(glassReflectionVisual.put()));
-			RETURN_IF_FAILED(
-				legacyVisual->GetVisualCollection()->InsertRelative(
-					glassReflectionVisual.get(),
-					nullptr,
-					true,
-					true
-				)
-			);
+			RETURN_IF_FAILED(clientBlurBrush->Update(1.0, color));
 		}
-
-		glassReflectionVisual->SetClip(
-			This->HasNonClientBackground() ? This->GetCaptionGeometry() : nullptr
-		);
-	}*/
-
-	const auto color = This->GetCaptionColorizationParameters()->getArgbcolor();
-	if (auto captionBrush = This->GetCaptionBrush(); captionBrush)
-	{
-		RETURN_IF_FAILED(captionBrush->Update(replacedOpacity, color));
-	}
-	if (auto clientBlurBrush = This->GetClientBlurBrush(); clientBlurBrush)
-	{
-		RETURN_IF_FAILED(clientBlurBrush->Update(replacedOpacity, color));
 	}
 
 	return hr;
@@ -339,48 +463,72 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackg
 
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateClientBlur(uDWM::CTopLevelWindow* This)
 {
-	g_blockUpdatingSolidColorBrush = true;
 	const auto hr = g_CTopLevelWindow_UpdateClientBlur_Org(This);
-	g_blockUpdatingSolidColorBrush = false;
 	const auto active = This->TreatAsActiveWindow();
-	const auto replacedOpacity = active ? 0.50 : 0.25;
-	const auto color = This->GetCaptionColorizationParameters()->getArgbcolor();
+	auto color = This->GetCaptionColorizationParameters()->getArgbcolor();
+	color.a = active ? 0.50f : 0.25f;
+
 	if (auto clientBlurBrush = This->GetClientBlurBrush(); clientBlurBrush)
 	{
-		RETURN_IF_FAILED(clientBlurBrush->Update(replacedOpacity, color));
+		RETURN_IF_FAILED(clientBlurBrush->Update(1.0, color));
 	}
 
-	/*if (const auto clientBlurVisual = This->GetClientBlurVisual(); clientBlurVisual)
+	if (
+		const auto clientBlurVisual = This->GetClientBlurVisual(); 
+		clientBlurVisual &&
+		clientBlurVisual->GetCount() == 1
+	)
 	{
-		winrt::com_ptr<CGlassReflectionVisual> glassReflectionVisual{ nullptr };
-
-		glassReflectionVisual.copy_from(CGlassReflectionVisual::GetChildOf(clientBlurVisual));
-		if (!glassReflectionVisual)
+		if (
+			const auto brush = GlassReflectionBrush::GetOrCreate(
+				This,
+				true
+			);
+			brush &&
+			!This->IsTrullyMinimized()
+		)
 		{
-			RETURN_IF_FAILED(CGlassReflectionVisual::Create(glassReflectionVisual.put()));
 			RETURN_IF_FAILED(
-				clientBlurVisual->GetVisualCollection()->InsertRelative(
-					glassReflectionVisual.get(),
+				brush->Update(
+					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
+					(
+						active ?
+						Shared::g_reflectionIntensity :
+						Shared::g_reflectionIntensityInactive
+					) :
+					0.f,
+					GlassReflectionBrush::CalculateTargetViewport(
+						clientBlurVisual->GetLocalToParentVisualOffset(This->GetTransformParent()),
+						Shared::g_reflectionParallaxIntensity,
+						This->IsRTLMirrored(),
+						clientBlurVisual->GetTransformParent()->GetWidth()
+					),
+					D2D1::RectF(),
 					nullptr,
-					true,
-					true
+					DWM::MilBrushMappingMode::Absolute,
+					DWM::MilBrushMappingMode::Absolute,
+					nullptr,
+					nullptr,
+					DWM::MilStretch::None,
+					DWM::MilTileMode::Extend,
+					DWM::MilHorizontalAlignment::Left,
+					DWM::MilVerticalAlignment::Top,
+					nullptr
 				)
 			);
-		}
-
-		if (!clientBlurVisual->IsEmpty())
-		{
-			glassReflectionVisual->SetClip(
-				static_cast<uDWM::CDrawGeometryInstruction*>(
-					clientBlurVisual->GetInstructions().views()[0]
-				)->GetGeometry()
+			winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
+			RETURN_IF_FAILED(
+				uDWM::CDrawGeometryInstruction::Create(
+					brush.get(),
+					static_cast<uDWM::CDrawGeometryInstruction*>(
+						clientBlurVisual->GetInstructions().views()[0]
+					)->GetGeometry(),
+					instruction.put()
+				)
 			);
+			RETURN_IF_FAILED(clientBlurVisual->AddInstruction(instruction.get()));
 		}
-		else
-		{
-			glassReflectionVisual->SetClip(nullptr);
-		}
-	}*/
+	}
 
 	return hr;
 }
@@ -404,6 +552,16 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_ValidateVisual(uD
 {
 	auto data = This->GetData();
 	if (!data)
+	{
+		return g_CTopLevelWindow_ValidateVisual_Org(This);
+	}
+
+	const auto updateReflectionBeforeLeave = wil::scope_exit([This]
+	{
+		LOG_IF_FAILED(UpdateReflectionViewport(This));
+	});
+
+	if (uDWM::g_buildNumber < os::build_w11_21h2)
 	{
 		return g_CTopLevelWindow_ValidateVisual_Org(This);
 	}
@@ -495,6 +653,12 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_ValidateVisual(uD
 	return g_CTopLevelWindow_ValidateVisual_Org(This);
 }
 
+void STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_Destructor(uDWM::CTopLevelWindow* This)
+{
+	GlassReflectionBrush::Remove(This);
+	return g_CTopLevelWindow_Destructor_Org(This);
+}
+
 bool WINAPI GlassFrameHandler::MySetMargin(
 	MARGINS* dstMargins,
 	int cxLeftWidth,
@@ -525,10 +689,10 @@ void GlassFrameHandler::Update(GlassEngine::UpdateType type)
 void GlassFrameHandler::Startup()
 {
 	uDWM::g_projectionArray.ApplyToVariable("ResourceHelper::CreateGeometryFromHRGN", g_ResourceHelper_CreateGeometryFromHRGN_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CSolidColorLegacyMilBrushProxy::Update", g_CSolidColorLegacyMilBrushProxy_Update_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateNCAreaBackground", g_CTopLevelWindow_UpdateNCAreaBackground_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateClientBlur", g_CTopLevelWindow_UpdateClientBlur_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::ValidateVisual", g_CTopLevelWindow_ValidateVisual_Org);
+	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::~CTopLevelWindow", g_CTopLevelWindow_Destructor_Org);
 	uDWM::g_projectionArray.ApplyToVariable("SetMargin", g_SetMargin_Org);
 	
 	PVOID CVisual_SetSize_Org{ nullptr };
@@ -683,13 +847,13 @@ void GlassFrameHandler::Startup()
 		HookHelper::Detours::Write([]()
 		{
 			HookHelper::Detours::Attach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
-			HookHelper::Detours::Attach(&g_CSolidColorLegacyMilBrushProxy_Update_Org, MyCSolidColorLegacyMilBrushProxy_Update);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateClientBlur_Org, MyCTopLevelWindow_UpdateClientBlur);
-			
+			HookHelper::Detours::Attach(&g_CTopLevelWindow_Destructor_Org, MyCTopLevelWindow_Destructor);
+			HookHelper::Detours::Attach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
+
 			if (uDWM::g_buildNumber >= os::build_w11_21h2)
 			{
-				HookHelper::Detours::Attach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
 				HookHelper::Detours::Attach(&g_SetMargin_Org, MySetMargin);
 			}
 		})
@@ -702,13 +866,13 @@ void GlassFrameHandler::Shutdown()
 		HookHelper::Detours::Write([]()
 		{
 			HookHelper::Detours::Detach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
-			HookHelper::Detours::Detach(&g_CSolidColorLegacyMilBrushProxy_Update_Org, MyCSolidColorLegacyMilBrushProxy_Update);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateClientBlur_Org, MyCTopLevelWindow_UpdateClientBlur);
+			HookHelper::Detours::Detach(&g_CTopLevelWindow_Destructor_Org, MyCTopLevelWindow_Destructor);
+			HookHelper::Detours::Detach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
 
 			if (uDWM::g_buildNumber >= os::build_w11_21h2)
 			{
-				HookHelper::Detours::Detach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
 				HookHelper::Detours::Detach(&g_SetMargin_Org, MySetMargin);
 			}
 		})

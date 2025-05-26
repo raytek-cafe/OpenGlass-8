@@ -210,148 +210,309 @@ namespace OpenGlass::Util
 		RETURN_LAST_ERROR_IF(GetObjectW(bitmap, sizeof(bmp), &bmp) == 0);
 
 		SelectObject(compatibleDC.get(), bitmap);
-
-		BLENDFUNCTION bf
-		{
-			AC_SRC_OVER,
-			0,
-			static_cast<BYTE>(opacity),
-			AC_SRC_ALPHA
-		};
+		
 		POINT pt{};
-		OffsetViewportOrgEx(hdc, destinationRect.left, destinationRect.top, &pt);
+		RETURN_IF_WIN32_BOOL_FALSE(OffsetViewportOrgEx(hdc, destinationRect.left, destinationRect.top, &pt));
+		const auto cleanUp = wil::scope_exit([hdc, &pt]
+		{
+			SetViewportOrgEx(hdc, pt.x, pt.y, nullptr);
+		});
 
 		const auto destinationWidth = wil::rect_width(destinationRect);
 		const auto destinationHeight = wil::rect_height(destinationRect);
 
-		// left, top
-		GdiAlphaBlend(
-			hdc,
-			0,
-			0,
-			margins.cxLeftWidth,
-			margins.cyTopHeight,
-			compatibleDC.get(),
-			0,
-			0,
-			margins.cxLeftWidth,
-			margins.cyTopHeight,
-			bf
-		);
-		// right, top
-		GdiAlphaBlend(
-			hdc,
-			destinationWidth - margins.cxRightWidth,
-			0,
-			margins.cxRightWidth,
-			margins.cyTopHeight,
-			compatibleDC.get(),
-			bmp.bmWidth - margins.cxRightWidth,
-			0,
-			margins.cxRightWidth,
-			margins.cyTopHeight,
-			bf
-		);
-		// left, bottom
-		GdiAlphaBlend(
-			hdc,
-			0,
-			destinationHeight - margins.cyBottomHeight,
-			margins.cxLeftWidth,
-			margins.cyBottomHeight,
-			compatibleDC.get(),
-			0,
-			bmp.bmHeight - margins.cyBottomHeight,
-			margins.cxLeftWidth,
-			margins.cyBottomHeight,
-			bf
-		);
-		// right, bottom
-		GdiAlphaBlend(
-			hdc,
-			destinationWidth - margins.cxRightWidth,
-			destinationHeight - margins.cyBottomHeight,
-			margins.cxRightWidth,
-			margins.cyBottomHeight,
-			compatibleDC.get(),
-			bmp.bmWidth - margins.cxRightWidth,
-			bmp.bmHeight - margins.cyBottomHeight,
-			margins.cxRightWidth,
-			margins.cyBottomHeight,
-			bf
-		);
-		// center, top
-		GdiAlphaBlend(
-			hdc,
-			margins.cxLeftWidth,
-			0,
-			destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-			margins.cyTopHeight,
-			compatibleDC.get(),
-			margins.cxLeftWidth,
-			0,
-			bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
-			margins.cyTopHeight,
-			bf
-		);
-		// left, center
-		GdiAlphaBlend(
-			hdc,
-			0,
-			margins.cyTopHeight,
-			margins.cxLeftWidth,
-			destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
-			compatibleDC.get(),
-			0,
-			margins.cyTopHeight,
-			margins.cxLeftWidth,
-			bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-			bf
-		);
-		// right, center
-		GdiAlphaBlend(
-			hdc,
-			destinationWidth - margins.cxRightWidth,
-			margins.cyTopHeight,
-			margins.cxRightWidth,
-			destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
-			compatibleDC.get(),
-			bmp.bmWidth - margins.cxRightWidth,
-			margins.cyTopHeight,
-			margins.cxRightWidth,
-			bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-			bf
-		);
-		// center, bottom
-		GdiAlphaBlend(
-			hdc,
-			margins.cxLeftWidth,
-			destinationHeight - margins.cyBottomHeight,
-			destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-			margins.cyBottomHeight,
-			compatibleDC.get(),
-			margins.cxLeftWidth,
-			bmp.bmHeight - margins.cyBottomHeight,
-			bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
-			margins.cyBottomHeight,
-			bf
-		);
-		// center, center
-		GdiAlphaBlend(
-			hdc,
-			margins.cxLeftWidth,
-			margins.cyTopHeight,
-			destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-			destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
-			compatibleDC.get(),
-			margins.cxLeftWidth,
-			margins.cyTopHeight,
-			bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
-			bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-			bf
-		);
+		if (opacity == 255)
+		{
+			// left, top
+			StretchBlt(
+				hdc,
+				0,
+				0,
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				compatibleDC.get(),
+				0,
+				0,
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				SRCCOPY
+			);
+			// right, top
+			StretchBlt(
+				hdc,
+				destinationWidth - margins.cxRightWidth,
+				0,
+				margins.cxRightWidth,
+				margins.cyTopHeight,
+				compatibleDC.get(),
+				bmp.bmWidth - margins.cxRightWidth,
+				0,
+				margins.cxRightWidth,
+				margins.cyTopHeight,
+				SRCCOPY
+			);
+			// left, bottom
+			StretchBlt(
+				hdc,
+				0,
+				destinationHeight - margins.cyBottomHeight,
+				margins.cxLeftWidth,
+				margins.cyBottomHeight,
+				compatibleDC.get(),
+				0,
+				bmp.bmHeight - margins.cyBottomHeight,
+				margins.cxLeftWidth,
+				margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// right, bottom
+			StretchBlt(
+				hdc,
+				destinationWidth - margins.cxRightWidth,
+				destinationHeight - margins.cyBottomHeight,
+				margins.cxRightWidth,
+				margins.cyBottomHeight,
+				compatibleDC.get(),
+				bmp.bmWidth - margins.cxRightWidth,
+				bmp.bmHeight - margins.cyBottomHeight,
+				margins.cxRightWidth,
+				margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// center, top
+			StretchBlt(
+				hdc,
+				margins.cxLeftWidth,
+				0,
+				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				compatibleDC.get(),
+				margins.cxLeftWidth,
+				0,
+				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				SRCCOPY
+			);
+			// left, center
+			StretchBlt(
+				hdc,
+				0,
+				margins.cyTopHeight,
+				margins.cxLeftWidth,
+				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				compatibleDC.get(),
+				0,
+				margins.cyTopHeight,
+				margins.cxLeftWidth,
+				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// right, center
+			StretchBlt(
+				hdc,
+				destinationWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				margins.cxRightWidth,
+				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				compatibleDC.get(),
+				bmp.bmWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				margins.cxRightWidth,
+				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// center, bottom
+			StretchBlt(
+				hdc,
+				margins.cxLeftWidth,
+				destinationHeight - margins.cyBottomHeight,
+				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyBottomHeight,
+				compatibleDC.get(),
+				margins.cxLeftWidth,
+				bmp.bmHeight - margins.cyBottomHeight,
+				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// center, center
+			StretchBlt(
+				hdc,
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				compatibleDC.get(),
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				SRCCOPY
+			);
+		}
+		else
+		{
+			BLENDFUNCTION bf
+			{
+				AC_SRC_OVER,
+				0,
+				static_cast<BYTE>(opacity),
+				AC_SRC_ALPHA
+			};
+			BP_PAINTPARAMS paintParams
+			{
+				sizeof(BP_PAINTPARAMS),
+				0,
+				nullptr,
+				&bf
+			};
+			HDC bufferedDC;
+			RECT targetRect
+			{
+				0,
+				0,
+				destinationWidth,
+				destinationHeight
+			};
+			const auto paintBuffer = BeginBufferedPaint(
+				hdc, 
+				&targetRect,
+				BPBF_TOPDOWNDIB, 
+				&paintParams,
+				&bufferedDC
+			);
+			RETURN_LAST_ERROR_IF_NULL(paintBuffer);
 
-		SetViewportOrgEx(hdc, pt.x, pt.y, nullptr);
+			// left, top
+			StretchBlt(
+				bufferedDC,
+				0,
+				0,
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				compatibleDC.get(),
+				0,
+				0,
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				SRCCOPY
+			);
+			// right, top
+			StretchBlt(
+				bufferedDC,
+				destinationWidth - margins.cxRightWidth,
+				0,
+				margins.cxRightWidth,
+				margins.cyTopHeight,
+				compatibleDC.get(),
+				bmp.bmWidth - margins.cxRightWidth,
+				0,
+				margins.cxRightWidth,
+				margins.cyTopHeight,
+				SRCCOPY
+			);
+			// left, bottom
+			StretchBlt(
+				bufferedDC,
+				0,
+				destinationHeight - margins.cyBottomHeight,
+				margins.cxLeftWidth,
+				margins.cyBottomHeight,
+				compatibleDC.get(),
+				0,
+				bmp.bmHeight - margins.cyBottomHeight,
+				margins.cxLeftWidth,
+				margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// right, bottom
+			StretchBlt(
+				bufferedDC,
+				destinationWidth - margins.cxRightWidth,
+				destinationHeight - margins.cyBottomHeight,
+				margins.cxRightWidth,
+				margins.cyBottomHeight,
+				compatibleDC.get(),
+				bmp.bmWidth - margins.cxRightWidth,
+				bmp.bmHeight - margins.cyBottomHeight,
+				margins.cxRightWidth,
+				margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// center, top
+			StretchBlt(
+				bufferedDC,
+				margins.cxLeftWidth,
+				0,
+				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				compatibleDC.get(),
+				margins.cxLeftWidth,
+				0,
+				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				SRCCOPY
+			);
+			// left, center
+			StretchBlt(
+				bufferedDC,
+				0,
+				margins.cyTopHeight,
+				margins.cxLeftWidth,
+				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				compatibleDC.get(),
+				0,
+				margins.cyTopHeight,
+				margins.cxLeftWidth,
+				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// right, center
+			StretchBlt(
+				bufferedDC,
+				destinationWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				margins.cxRightWidth,
+				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				compatibleDC.get(),
+				bmp.bmWidth - margins.cxRightWidth,
+				margins.cyTopHeight,
+				margins.cxRightWidth,
+				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// center, bottom
+			StretchBlt(
+				bufferedDC,
+				margins.cxLeftWidth,
+				destinationHeight - margins.cyBottomHeight,
+				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyBottomHeight,
+				compatibleDC.get(),
+				margins.cxLeftWidth,
+				bmp.bmHeight - margins.cyBottomHeight,
+				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cyBottomHeight,
+				SRCCOPY
+			);
+			// center, center
+			StretchBlt(
+				bufferedDC,
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				compatibleDC.get(),
+				margins.cxLeftWidth,
+				margins.cyTopHeight,
+				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
+				SRCCOPY
+			);
+
+			RETURN_IF_FAILED(EndBufferedPaint(paintBuffer, TRUE));
+		}
+
 		return S_OK;
 	}
 }

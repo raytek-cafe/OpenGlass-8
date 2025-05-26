@@ -30,7 +30,6 @@ namespace OpenGlass::CaptionTextHandler
 		WICBitmapAlphaChannelOption options,
 		IWICBitmap** ppIBitmap
 	);
-	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateWindowVisuals(uDWM::CTopLevelWindow* This);
 	HRESULT STDMETHODCALLTYPE MyCText_ValidateResources(uDWM::CText* This);
 	HRESULT STDMETHODCALLTYPE MyCText_SetSize(uDWM::CText* This, const SIZE* size);
 	HRESULT STDMETHODCALLTYPE MyCText_InitializeVisualTreeClone(uDWM::CText* This, uDWM::CText* clonedVisual, UINT cloneOption);
@@ -40,7 +39,6 @@ namespace OpenGlass::CaptionTextHandler
 	decltype(&MyDrawTextW) g_DrawTextW_Org{ nullptr };
 	decltype(&MyCreateBitmap) g_CreateBitmap_Org{ nullptr };
 	decltype(&MyIWICImagingFactory2_CreateBitmapFromHBITMAP) g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org{ nullptr };
-	decltype(&MyCTopLevelWindow_UpdateWindowVisuals) g_CTopLevelWindow_UpdateWindowVisuals_Org{ nullptr };
 	decltype(&MyCText_ValidateResources) g_CText_ValidateResources_Org{ nullptr };
 	decltype(&MyCText_SetSize) g_CText_SetSize_Org{ nullptr };
 	decltype(&MyCText_InitializeVisualTreeClone) g_CText_InitializeVisualTreeClone_Org{ nullptr };
@@ -219,19 +217,14 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyIWICImagingFactory2_CreateBitmap
 	);
 }
 
-HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCTopLevelWindow_UpdateWindowVisuals(uDWM::CTopLevelWindow* This)
-{
-	const auto hr = g_CTopLevelWindow_UpdateWindowVisuals_Org(This);
-	if (const auto textVisual = This->GetTextVisual(); textVisual)
-	{
-		g_textVisualStateMap[textVisual] = This->TreatAsActiveWindow();
-	}
-	return hr;
-}
 HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCText_ValidateResources(uDWM::CText* This)
 {
 	// redraw the text to get the width and height
 	This->SetDirtyFlags(0x1000);
+	if (const auto window = uDWM::TryGetWindowFromVisual(This); window && window->GetData())
+	{
+		g_textVisualStateMap[This] = window->TreatAsActiveWindow();
+	}
 	g_active = g_textVisualStateMap[This];
 	g_textVisual = This;
 	auto hr = g_CText_ValidateResources_Org(This);
@@ -418,7 +411,6 @@ void CaptionTextHandler::Startup()
 	uDWM::g_projectionArray.ApplyToVariable("CText::SetSize", g_CText_SetSize_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CText::InitializeVisualTreeClone", g_CText_InitializeVisualTreeClone_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CText::`scalar deleting destructor'", g_CText_scalar_deleting_destructor_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateWindowVisuals", g_CTopLevelWindow_UpdateWindowVisuals_Org);
 
 	wil::unique_hmodule wincodecsMoudle{ LoadLibraryExW(L"WindowsCodecs.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32) };
 	THROW_LAST_ERROR_IF_NULL(wincodecsMoudle);
@@ -444,28 +436,8 @@ void CaptionTextHandler::Startup()
 			HookHelper::Detours::Attach(&g_CText_SetSize_Org, MyCText_SetSize);
 			HookHelper::Detours::Attach(&g_CText_InitializeVisualTreeClone_Org, MyCText_InitializeVisualTreeClone);
 			HookHelper::Detours::Attach(&g_CText_scalar_deleting_destructor_Org, MyCText_scalar_deleting_destructor);
-			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateWindowVisuals_Org, MyCTopLevelWindow_UpdateWindowVisuals);
 		})
 	);
-
-	const auto lock = wil::EnterCriticalSection(uDWM::CDesktopManager::s_csDwmInstance);
-	ULONG_PTR desktopID{ 0 };
-	Util::GetDesktopID(1, &desktopID);
-	const auto windowList = uDWM::CDesktopManager::GetInstance()->GetWindowList()->GetWindowListForDesktop(desktopID);
-	for (auto i = windowList->Blink; i != windowList; i = i->Blink)
-	{
-		const auto window = reinterpret_cast<uDWM::CWindowData*>(i)->GetWindow();
-		if (!window)
-		{
-			continue;
-		}
-		const auto textVisual = window->GetTextVisual();
-		if (!textVisual)
-		{
-			continue;
-		}
-		g_textVisualStateMap[textVisual] = window->TreatAsActiveWindow();
-	}
 }
 void CaptionTextHandler::Shutdown()
 {
@@ -487,7 +459,6 @@ void CaptionTextHandler::Shutdown()
 			HookHelper::Detours::Detach(&g_CText_SetSize_Org, MyCText_SetSize);
 			HookHelper::Detours::Detach(&g_CText_InitializeVisualTreeClone_Org, MyCText_InitializeVisualTreeClone);
 			HookHelper::Detours::Detach(&g_CText_scalar_deleting_destructor_Org, MyCText_scalar_deleting_destructor);
-			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateWindowVisuals_Org, MyCTopLevelWindow_UpdateWindowVisuals);
 		})
 	);
 

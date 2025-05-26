@@ -334,6 +334,7 @@ HRESULT CustomThemeAtlasLoader::LoadTextGlowFromThemeAtlas()
 			&textGlowAtlasRect
 		)
 	);
+	RETURN_IF_WIN32_BOOL_FALSE(InflateRect(&textGlowAtlasRect, -1, -1));
 	winrt::com_ptr<IStream> stream{ SHCreateMemStream(g_themeAtlasStream.get(), g_themeAtlasStreamSize), winrt::take_ownership_from_abi };
 	RETURN_HR_IF_NULL(E_OUTOFMEMORY, stream);
 	winrt::com_ptr<IWICImagingFactory2> wicFactory{ nullptr };

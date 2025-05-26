@@ -62,7 +62,43 @@ namespace OpenGlass::uDWM
 
 	struct CRectResourceProxy : CBaseResourceProxy {};
 	struct CSizeResourceProxy : CBaseResourceProxy {};
-	struct CRectangleGeometryProxy : CBaseGeometryProxy {};
+	struct CDoubleResourceProxy : CBaseResourceProxy {};
+	struct CRectangleGeometryProxy : CBaseGeometryProxy 
+	{
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetRectangle(
+			float left,
+			float top,
+			float right,
+			float bottom,
+			float topLeftRadiusX,
+			float topLeftRadiusY,
+			float topRightRadiusX,
+			float topRightRadiusY,
+			float bottomLeftRadiusX,
+			float bottomLeftRadiusY,
+			float bottomRightRadiusX,
+			float bottomRightRadiusY,
+			bool animate
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(
+				CRectangleGeometryProxy::SetRectangle,
+				left,
+				top,
+				right,
+				bottom,
+				topLeftRadiusX,
+				topLeftRadiusY,
+				topRightRadiusX,
+				topRightRadiusY,
+				bottomLeftRadiusX,
+				bottomLeftRadiusY,
+				bottomRightRadiusX,
+				bottomRightRadiusY,
+				animate
+			);
+		}
+	};
 	struct CCombinedGeometryProxy : CBaseGeometryProxy {};
 	struct CRgnGeometryProxy : CBaseGeometryProxy {};
 	struct CSolidColorLegacyMilBrushProxy : CBaseLegacyMilBrushProxy 
@@ -72,7 +108,65 @@ namespace OpenGlass::uDWM
 			return HANDLE_PROJECTION_FUNCTION(CSolidColorLegacyMilBrushProxy::Update, opacity, color);
 		}
 	};
-	struct CCachedVisualImageProxy : CBaseImageProxy {};
+	struct CImageLegacyMilBrushProxy : CBaseLegacyMilBrushProxy
+	{
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE Update(
+			double opacity,
+			[[maybe_unused]] const D2D1_RECT_F& viewport, // this parameter is will always be ignored, the bounding box of the geometry will be used instead
+			const D2D1_RECT_F& viewbox,
+			const CDoubleResourceProxy* opacityAnimation,
+			MilBrushMappingMode viewportUnits,
+			MilBrushMappingMode viewboxUnits,
+			const CRectResourceProxy* viewportAnimations,
+			const CRectResourceProxy* viewboxAnimations,
+			MilStretch stretchMode,
+			MilTileMode tileMode,
+			MilHorizontalAlignment alignmentX,
+			MilVerticalAlignment alignmentY,
+			const CBaseImageProxy* imageSource 
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(
+				CImageLegacyMilBrushProxy::Update,
+				opacity,
+				viewport,
+				viewbox,
+				opacityAnimation,
+				viewportUnits,
+				viewboxUnits,
+				viewportAnimations,
+				viewboxAnimations,
+				stretchMode,
+				tileMode,
+				alignmentX,
+				alignmentY,
+				imageSource
+			);
+		}
+	};
+	struct CVisualProxy;
+	struct CCachedVisualImageProxy : CBaseImageProxy 
+	{
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE Update(
+			const D2D1_RECT_F& viewbox,
+			const DWM::MilSizeD& realizationSize,
+			const uDWM::CRectResourceProxy* rectProxy,
+			const uDWM::CSizeResourceProxy* sizeProxy,
+			const uDWM::CVisualProxy* visualProxy,
+			DWM::MilBrushMappingMode viewboxUnits
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(
+				CCachedVisualImageProxy::Update,
+				viewbox,
+				realizationSize,
+				rectProxy,
+				sizeProxy,
+				visualProxy,
+				viewboxUnits
+			);
+		}
+	};
 
 	struct VisualCollection;
 	struct CVisualProxy : CResource 
@@ -83,107 +177,80 @@ namespace OpenGlass::uDWM
 		}
 	};
 
+	struct IVisual : CBaseObject
+	{
+		STDMETHOD(Initialize)() PURE;
+		STDMETHOD(InitializeFromSharedHandle)(HANDLE sharedHandle) PURE;
+		STDMETHOD_(void, SetDirtyFlags)(ULONG flags) PURE;
+	};
 	struct CVisual : CBaseObject
 	{
-		char reserved[280];
 		inline static PVOID* vftable{ nullptr };
 
-		inline static CVisual* (STDMETHODCALLTYPE CVisual::* s_ctor)();
-		inline static void(STDMETHODCALLTYPE CVisual::* s_dtor)();
-		FORCEINLINE CVisual() : reserved{}
+		const SIZE& GetSize() const
 		{
-			std::invoke(s_ctor, this);
-		}
-		FORCEINLINE ~CVisual()
-		{
-			std::invoke(s_dtor, this);
-		}
-
-		LONG GetWidth() const
-		{
-			LONG width{ 0 };
+			const SIZE* size{ nullptr };
 
 			if (g_buildNumber < os::build_w11_21h2)
 			{
-				width = reinterpret_cast<LONG const*>(this)[30];
+				size = &reinterpret_cast<SIZE const*>(this)[15];
 			}
 			else if (g_buildNumber < os::build_w11_24h2)
 			{
-				width = reinterpret_cast<LONG const*>(this)[32];
+				size = &reinterpret_cast<SIZE const*>(this)[16];
 			}
 			else
 			{
-				width = reinterpret_cast<LONG const*>(this)[18];
+				size = &reinterpret_cast<SIZE const*>(this)[9];
 			}
 
-			return width;
+			return *size;
+		}
+		LONG GetWidth() const
+		{
+			return GetSize().cx;
 		}
 		LONG GetHeight() const
 		{
-			LONG height{ 0 };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				height = reinterpret_cast<LONG const*>(this)[31];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				height = reinterpret_cast<LONG const*>(this)[33];
-			}
-			else
-			{
-				height = reinterpret_cast<LONG const*>(this)[19];
-			}
-
-			return height;
+			return GetSize().cy;
 		}
-		LONG GetX()
+
+		const POINT& GetOffset() const
 		{
-			LONG x{ 0 };
+			const POINT* pt{ nullptr };
 
 			if (g_buildNumber < os::build_w11_21h2)
 			{
-				x = reinterpret_cast<LONG const*>(this)[28];
+				pt = &reinterpret_cast<POINT const*>(this)[14];
 			}
 			else if (g_buildNumber < os::build_w11_24h2)
 			{
-				x = reinterpret_cast<LONG const*>(this)[30];
+				pt = &reinterpret_cast<POINT const*>(this)[15];
 			}
 			else
 			{
-				x = reinterpret_cast<LONG const*>(this)[16];
+				pt = &reinterpret_cast<POINT const*>(this)[8];
 			}
 
-			return x;
+			return *pt;
 		}
-		LONG GetY()
+		LONG GetX() const
 		{
-			LONG y{ 0 };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				y = reinterpret_cast<LONG const*>(this)[29];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				y = reinterpret_cast<LONG const*>(this)[31];
-			}
-			else
-			{
-				y = reinterpret_cast<LONG const*>(this)[17];
-			}
-
-			return y;
+			return GetOffset().x;
 		}
-		POINT GetOffsetRelativeToRoot()
+		LONG GetY() const
+		{
+			return GetOffset().y;
+		}
+		POINT GetLocalToParentVisualOffset(CVisual* parent = nullptr) const
 		{
 			POINT pt{ GetX(), GetY() };
-			auto parent = GetTransformParent();
-			while (parent)
+			auto current = GetTransformParent();
+			while (current && current != parent)
 			{
-				pt.x += parent->GetX();
-				pt.y += parent->GetY();
-				parent = parent->GetTransformParent();
+				pt.x += current->GetX();
+				pt.y += current->GetY();
+				current = current->GetTransformParent();
 			}
 			return pt;
 		}
@@ -202,7 +269,37 @@ namespace OpenGlass::uDWM
 		}
 		CVisual* GetTransformParent() const
 		{
-			return reinterpret_cast<CVisual* const*>(this)[3];
+			const auto vtfble = HookHelper::vftbl_of(this);
+
+			if (g_buildNumber < os::build_w11_22h2)
+			{
+				return std::invoke(
+					Util::force_cast_to<decltype(&CVisual::GetTransformParent)>(
+						vtfble[10]
+					),
+					this
+				);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				return std::invoke(
+					Util::force_cast_to<decltype(&CVisual::GetTransformParent)>(
+						vtfble[11]
+					),
+					this
+				);
+			}
+			else
+			{
+				return std::invoke(
+					Util::force_cast_to<decltype(&CVisual::GetTransformParent)>(
+						vtfble[8]
+					),
+					this
+				);
+			}
+
+			return nullptr;
 		}
 
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InitializeFromSharedHandle(HANDLE visualHandle)
@@ -239,6 +336,24 @@ namespace OpenGlass::uDWM
 		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetDirtyFlags(int flags)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::SetDirtyFlags, flags);
+		}
+		HRESULT STDMETHODCALLTYPE _ValidateVisual()
+		{
+			decltype(&CVisual::_ValidateVisual) vfptr{ nullptr };
+
+			if (g_buildNumber < os::build_w11_24h2)
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[6]);
+			}
+			else
+			{
+				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[4]);
+			}
+
+			return std::invoke(
+				vfptr,
+				this
+			);
 		}
 	};
 
@@ -327,13 +442,21 @@ namespace OpenGlass::uDWM
 		D2D1_COLOR_F& GetColor() { return m_color; }
 		D2D1_RECT_F& GetRectangle() { return m_drawRect; }
 	};
-
 	class CDrawVisualTreeInstruction : public CRenderDataInstruction
 	{
 		DWORD m_refCount{ 1 };
 		winrt::com_ptr<CVisual> m_visual{ nullptr };
 	public:
-		CDrawVisualTreeInstruction(CVisual* visual) : CRenderDataInstruction{} { m_visual.copy_from(visual); }
+		static HRESULT STDMETHODCALLTYPE Create(CVisual* visual, CDrawVisualTreeInstruction** instruction)
+		{
+			*instruction = new (std::nothrow) CDrawVisualTreeInstruction(visual);
+			RETURN_HR_IF_NULL(E_OUTOFMEMORY, *instruction);
+			return S_OK;
+		}
+		CDrawVisualTreeInstruction(CVisual* visual) : CRenderDataInstruction{} 
+		{ 
+			m_visual.copy_from(visual); 
+		}
 		STDMETHOD(WriteInstruction)(
 			IRenderDataBuilder* builder,
 			[[maybe_unused]] const CVisual* visual
@@ -348,6 +471,7 @@ namespace OpenGlass::uDWM
 			return builder->DrawVisual(visualHandleId);
 		}
 	};
+
 	struct CRenderDataVisual : CVisual
 	{
 		DynArray<CRenderDataInstruction*>& GetInstructions() const
@@ -725,6 +849,7 @@ namespace OpenGlass::uDWM
 	};
 	struct CTopLevelWindow : CVisual
 	{
+		inline static PVOID* vftable{ nullptr };
 		inline static PVOID** s_rgpwfWindowFrames{ nullptr };
 		static auto GetWindowFrames()
 		{
@@ -1528,9 +1653,13 @@ namespace OpenGlass::uDWM
 
 	struct CCompositor
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateSolidColorLegacyMilBrushProxy(CSolidColorLegacyMilBrushProxy** milBrushProxy)
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateSolidColorLegacyMilBrushProxy(CSolidColorLegacyMilBrushProxy** solidColorBrushProxy)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CCompositor::CreateSolidColorLegacyMilBrushProxy, milBrushProxy);
+			return HANDLE_PROJECTION_FUNCTION(CCompositor::CreateSolidColorLegacyMilBrushProxy, solidColorBrushProxy);
+		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateImageLegacyMilBrushProxy(CImageLegacyMilBrushProxy** imageBrushProxy)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CCompositor::CreateImageLegacyMilBrushProxy, imageBrushProxy);
 		}
 		IDwmChannel* GetChannel() const
 		{
@@ -1745,26 +1874,36 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(ResourceHelper::CreateGeometryFromHRGN, hrgn, geometry);
 		}
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateRectangleGeometry(
+			LPCRECT lprc,
+			CRectangleGeometryProxy** geometry
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(ResourceHelper::CreateRectangleGeometry, lprc, geometry);
+		}
+	}
+
+	inline uDWM::CTopLevelWindow* TryGetWindowFromVisual(uDWM::CVisual* visual)
+	{
+		auto current = visual->GetTransformParent();
+
+		while (current && HookHelper::vftbl_of(current) != uDWM::CTopLevelWindow::vftable)
+		{
+			current = current->GetTransformParent();
+		}
+
+		return static_cast<uDWM::CTopLevelWindow*>(current);
 	}
 
 	inline auto g_projectionArray = make_projection_array(
 		g_buildNumber,
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CSolidColorLegacyMilBrushProxy::Update, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CImageLegacyMilBrushProxy::Update, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CCachedVisualImageProxy::Update, 0, 0),
 
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisualProxy::SetClip, 0, 0),
-		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CVisual::vftable, "CVisual::`vftable'", 0, 0),
-		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CVisual::s_ctor, "CVisual::CVisual", 0, 0),
-		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CVisual::s_dtor, "CVisual::~CVisual", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::Initialize", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::CloneVisualTree", 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::InitializeFromSharedHandle, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetParent, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetSize, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetOpacity, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetInsetFromParent, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::InitializeVisualTreeClone, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::ValidateVisual, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetDirtyFlags, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::Remove, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::RemoveAll, 0, 0),
@@ -1788,6 +1927,7 @@ namespace OpenGlass::uDWM
 		
 		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowBorder::EnableBorder, os::build_w11_21h2, 0),
 
+		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::vftable, "CTopLevelWindow::`vftable'", 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win10, "CTopLevelWindow::CloneVisualTreeForLivePreview", os::build_w11_21h2, os::build_w11_22h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win11, "CTopLevelWindow::CloneVisualTreeForLivePreview", os::build_w11_22h2, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::GetActualWindowRect, 0, 0),
@@ -1801,31 +1941,30 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateClientBlur", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::ValidateVisual", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateWindowVisuals", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::~CTopLevelWindow", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::IsShadowNCAreaPart", os::build_w11_24h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateBitmapFromAtlas", 0, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateGlyphsFromAtlas", 0, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("SetMargin", os::build_w11_21h2, 0),
 
-		MAKE_FUNCTION_PROJECTION_TUPLE(CLivePreview::_IsTrulyMaximized, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CLivePreview::_UpdateResources, os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CLivePreview::_FadeOutToGlass", os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CLivePreview::_UpdateResourcesForMonitor", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CLivePreview::_UpdateInstructions", 0, os::build_w11_21h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CCachedVisualImageProxy::Update", 0, 0),
-
+		
 		MAKE_EMPTY_PROJECTION_TUPLE("CAnimatedGlassSheet::OnRectUpdated", 0, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CAnimatedGlassSheet::~CAnimatedGlassSheet", 0, os::build_w11_21h2),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CGlassColorizationParameters::AdjustWindowColorization", 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowList::GetWindowListForDesktop, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowList::FindWindowDataByHwnd, 0, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CDesktopManager::IsHighContrastMode", os::build_w11_21h2, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE(CDesktopManager::s_pDesktopManagerInstance, 0, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE(CDesktopManager::s_csDwmInstance, 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateSolidColorLegacyMilBrushProxy, "CCompositor::CreateProxy<CSolidColorLegacyMilBrushProxy>", 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateImageLegacyMilBrushProxy, "CCompositor::CreateProxy<CImageLegacyMilBrushProxy>", 0, 0),
 		
 		MAKE_FUNCTION_PROJECTION_TUPLE(ResourceHelper::CreateGeometryFromHRGN, 0, 0)
 	);

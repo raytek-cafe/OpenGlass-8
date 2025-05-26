@@ -163,6 +163,22 @@ namespace OpenGlass::DWM
 		Uniform,
 		UniformToFill
 	};
+	enum class MilTileMode
+	{
+		Extend
+	};
+	enum class MilHorizontalAlignment
+	{
+		Left,
+		Center,
+		Right
+	};
+	enum class MilVerticalAlignment
+	{
+		Top,
+		Center,
+		Bottom
+	};
 	struct MilColorTransform
 	{
 		union

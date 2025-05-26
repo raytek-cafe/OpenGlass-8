@@ -18,19 +18,28 @@ HRESULT CGlassSafetyZoneLayer::Push(
 		m_renderTargetBitmap = nullptr;
 	});
 	const auto targetSize = renderTargetBitmap->GetSize();
+	const D2D1_RECT_F targetRect
+	{
+		0.f,
+		0.f,
+		targetSize.width,
+		targetSize.height
+	};
 
-	auto extendedDeviceRectangle = RectF::TransformRect(originalPixelRectangle, deviceTransform);
-	auto originalDeviceRectangle = extendedDeviceRectangle;
+	auto originalDeviceRectangle = RectF::TransformRect(originalPixelRectangle, deviceTransform);
+	D2D1_RECT_F extendedDeviceRectangle;
 
-	originalDeviceRectangle.left = std::max(std::floor(originalDeviceRectangle.left), 0.f);
-	originalDeviceRectangle.top = std::max(std::floor(originalDeviceRectangle.top), 0.f);
-	originalDeviceRectangle.right = std::min(std::ceil(originalDeviceRectangle.right), targetSize.width);
-	originalDeviceRectangle.bottom = std::min(std::ceil(originalDeviceRectangle.bottom), targetSize.height);
+	originalDeviceRectangle.left = std::floor(originalDeviceRectangle.left);
+	originalDeviceRectangle.top = std::floor(originalDeviceRectangle.top);
+	originalDeviceRectangle.right = std::ceil(originalDeviceRectangle.right);
+	originalDeviceRectangle.bottom = std::ceil(originalDeviceRectangle.bottom);
+	RectF::IntersectUnsafe(originalDeviceRectangle, targetRect);
 
-	extendedDeviceRectangle.left = std::max(std::floor(extendedDeviceRectangle.left - extendedAmount), 0.f);
-	extendedDeviceRectangle.top = std::max(std::floor(extendedDeviceRectangle.top - extendedAmount), 0.f);
-	extendedDeviceRectangle.right = std::min(std::ceil(extendedDeviceRectangle.right + extendedAmount), targetSize.width);
-	extendedDeviceRectangle.bottom = std::min(std::ceil(extendedDeviceRectangle.bottom + extendedAmount), targetSize.height);
+	extendedDeviceRectangle.left = std::floor(originalDeviceRectangle.left - extendedAmount);
+	extendedDeviceRectangle.top = std::floor(originalDeviceRectangle.top - extendedAmount);
+	extendedDeviceRectangle.right = std::ceil(originalDeviceRectangle.right + extendedAmount);
+	extendedDeviceRectangle.bottom = std::ceil(originalDeviceRectangle.bottom + extendedAmount);
+	RectF::IntersectUnsafe(extendedDeviceRectangle, targetRect);
 
 	m_safetyZoneBounds[0] =
 	{

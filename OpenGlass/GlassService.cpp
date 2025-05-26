@@ -353,7 +353,7 @@ HRESULT GlassService::RunInjectionThread()
 			{
 				auto currentTimeStamp = std::chrono::steady_clock::now();
 
-				auto it = g_dwmInjectionMap.find(sessionId);
+				const auto it = g_dwmInjectionMap.find(sessionId);
 				if (it != g_dwmInjectionMap.end())
 				{
 					const auto& [injectionSessionId, injectionTimeStamp] = *it;

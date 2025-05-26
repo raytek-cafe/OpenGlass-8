@@ -8,12 +8,9 @@ namespace OpenGlass
 {
 	struct ReflectionInput
 	{
-		float reflectionIntensity;
-		float reflectionParallaxIntensity;
-		const D2D1_RECT_F* shapeLocalBounds;
+		float intensity;
 		const dwmcore::CMILMatrix* worldTransform;
-		const dwmcore::CMILMatrix* deviceTransform;
-		const dwmcore::CMILMatrix* visualWorldTransform;
+		const D2D1_RECT_F* viewport;
 	};
 
 	class CReflectionRealizer : public winrt::implements<CReflectionRealizer, IUnknown, winrt::non_agile, winrt::no_weak_ref>

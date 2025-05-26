@@ -97,7 +97,6 @@ namespace OpenGlass::GlassRenderer
 		const dwmcore::CDrawingContext* drawingContext,
 		const dwmcore::CShape* shape, 
 		const dwmcore::CMILMatrix* matrix,
-		float extendedAmount,
 		D2D1_RECT_F& drawingWorldBounds,
 		std::unique_ptr<D2D1_RECT_F[]>& rectangles,
 		UINT& rectanglesCount,
@@ -123,15 +122,11 @@ namespace OpenGlass::GlassRenderer
 
 		if (renderingShape && !renderingShape->IsEmpty()) [[likely]]
 		{
-			D2D1_RECT_F shapeWorldBounds{};
+			D2D1_RECT_F shapeWorldBounds;
+			shape->GetTightBounds(&shapeWorldBounds, matrix);
 			drawingContext->GetClipBoundsWorld(&drawingWorldBounds);
-			renderingShape->GetTightBounds(&shapeWorldBounds, nullptr);
-			shapeWorldBounds.left = std::max(shapeWorldBounds.left - extendedAmount, drawingWorldBounds.left);
-			shapeWorldBounds.top = std::max(shapeWorldBounds.top - extendedAmount, drawingWorldBounds.top);
-			shapeWorldBounds.right = std::min(shapeWorldBounds.right + extendedAmount, drawingWorldBounds.right);
-			shapeWorldBounds.bottom = std::min(shapeWorldBounds.bottom + extendedAmount, drawingWorldBounds.bottom);
-			drawingWorldBounds = shapeWorldBounds;
-
+			RectF::IntersectUnsafe(drawingWorldBounds, shapeWorldBounds);
+			
 			if (renderingShape->IsRectangles(&rectanglesCount)) [[likely]]
 			{
 				rectangles = std::make_unique_for_overwrite<D2D1_RECT_F[]>(rectanglesCount);
@@ -177,7 +172,19 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCRenderData_TryDrawCommandAsDrawList(
 	if (
 		commandType == g_drawGeometryCommandType &&
 		resources->length == sizeof(dwmcore::CDrawGeometryCommand) &&
-		HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex]) == dwmcore::CSolidColorLegacyMilBrush::vftable
+		(
+			(
+				HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex]) == dwmcore::CSolidColorLegacyMilBrush::vftable
+			) ||
+			(
+				HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex]) == dwmcore::CImageLegacyMilBrush::vftable &&
+				static_cast<dwmcore::CImageLegacyMilBrush*>(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex])->GetImageSource() == nullptr
+			)
+		) &&
+		(
+			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CRegionGeometry::vftable ||
+			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CCombinedGeometry::vftable
+		)
 	)
 	{
 		if (!g_CDrawingContext_DrawGeometry_Org)
@@ -269,19 +276,11 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	dwmcore::CGeometry* geometry
 )
 {
-	const auto solidColorBrush = static_cast<dwmcore::CSolidColorLegacyMilBrush*>(brush);
-	const auto color = Color::scRGBTosRGB(solidColorBrush->GetRealizedColor());
-	const auto opacity = solidColorBrush->GetRealizedOpacity();
-	auto finalColor = color;
-	finalColor.a *= opacity;
-
-	// shape is nullptr or empty
 	dwmcore::CShapePtr geometryShape{};
 	if (
 		FAILED(geometry->GetShapeData(nullptr, &geometryShape)) ||
 		!geometryShape ||
-		geometryShape->IsEmpty() ||
-		opacity == 0.f
+		geometryShape->IsEmpty()
 	)
 	{
 		return S_OK;
@@ -292,13 +291,10 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	const auto currentVisual = drawingContext->GetCurrentVisualHelper();
 	const auto d2dContext = drawingContext->GetD2DContext();
 	const auto context = d2dContext->GetDeviceContext();
-	const auto matrix = drawingContext->GetWorldTransform(); 
+	const auto matrix = drawingContext->GetWorldTransform();
 	const auto currentVisualTree = drawingContext->GetCurrentVisualTree();
 	const auto desktopTree = HookHelper::vftbl_of(currentVisualTree) != dwmcore::CDesktopTree::vftable ? currentVisual->GetDesktopTree() : currentVisualTree;
-	auto desktopTreeInvalid = !desktopTree;
-	const auto extendedAmount = (g_disableBlurRendering || desktopTreeInvalid) ? 0.f : GlassKernel::GetBlurExtendedAmount();
-	const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionConctext);
-
+	
 	UINT rectanglesCount;
 	std::unique_ptr<D2D1_RECT_F[]> rectangles;
 
@@ -306,7 +302,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		drawingContext,
 		geometryShape.get(),
 		matrix,
-		extendedAmount,
 		g_drawingWorldBounds,
 		rectangles,
 		rectanglesCount,
@@ -317,7 +312,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	if (
 		occlusionConctext &&
 		occlusionConctext->GetArrayBasedCoverageSet()->IsCovered(
-			occlusionConctext->PageInPixelsRectToDeviceRect(g_drawingWorldBounds),
+			g_drawingWorldBounds,
 			drawingContext->GetD2DContextOwner()->GetCurrentZ()
 		)
 	)
@@ -349,83 +344,48 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		g_reflectionRealizer = nullptr;
 		g_buffer.Reset();
 	}
-	if (!g_brush)
+	
+	if (HookHelper::vftbl_of(brush) == dwmcore::CImageLegacyMilBrush::vftable)
 	{
-		context->CreateSolidColorBrush({}, g_brush.put());
+		const auto imageBrush = static_cast<dwmcore::CImageLegacyMilBrush*>(brush);
+		const auto opacity = imageBrush->GetOpacityValue();
+
+		if (opacity == 0.f)
+		{
+			return S_OK;
+		}
+		
+		g_reflectionInput.intensity = opacity;
+		g_reflectionInput.worldTransform = matrix;
+		g_reflectionInput.viewport = &imageBrush->GetViewport();
+		g_renderFlag.set(RenderFlag_Reflection, true);
 	}
 
 	winrt::com_ptr<ID2D1Bitmap1> sharedAtlasBitmap;
 	winrt::com_ptr<ID2D1Bitmap1> renderTargetBitmap;
-	std::unique_ptr<dwmcore::CMILMatrix> visualWorldTransform;
-	D2D1_RECT_F shapeLocalBounds;
-	if (opacity != 1.f)
+
+	if (HookHelper::vftbl_of(brush) == dwmcore::CSolidColorLegacyMilBrush::vftable)
 	{
-		visualWorldTransform = std::make_unique_for_overwrite<dwmcore::CMILMatrix>();
+		const auto solidColorBrush = static_cast<dwmcore::CSolidColorLegacyMilBrush*>(brush);
+		const auto opacity = solidColorBrush->GetRealizedOpacity();
+		auto color = Color::scRGBTosRGB(solidColorBrush->GetRealizedColor());
 
-		if (desktopTree)
+		if (color.a == 0.f || opacity == 0.f)
 		{
-			RETURN_IF_FAILED(
-				currentVisual->GetWorldTransform(
-					desktopTree,
-					3ul,
-					visualWorldTransform.get(),
-					nullptr,
-					nullptr
-				)
-			);
-			g_geometryMap[geometry] = *visualWorldTransform;
-		}
-		else
-		{
-			auto it = g_geometryMap.find(geometry);
-			if (it != g_geometryMap.end())
-			{
-				*visualWorldTransform = it->second;
-			}
-			else
-			{
-				RETURN_IF_FAILED(
-					currentVisual->GetWorldTransform(
-						currentVisualTree,
-						3ul,
-						visualWorldTransform.get(),
-						nullptr,
-						nullptr
-					)
-				);
-				g_geometryMap[geometry] = *visualWorldTransform;
-			}
-
-			desktopTreeInvalid = false;
+			return S_OK;
 		}
 
-		RETURN_IF_FAILED(geometryShape->GetTightBounds(&shapeLocalBounds, nullptr));
-
-		const auto active = (opacity == 0.5f);
-		const auto reflectionIntensity = active ? Shared::g_reflectionIntensity : Shared::g_reflectionIntensityInactive;
-		// reflection only and not parallax
+		const auto extendedAmount = (g_disableBlurRendering || !desktopTree) ? 0.f : GlassKernel::GetBlurExtendedAmount();
+		const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionConctext);
+		
+		// try render glass
 		if (
-			color.r == 0.f &&
-			color.g == 0.f &&
-			color.b == 0.f &&
-			color.a == 0.f
+			opacity == 1.f &&
+			(color.a == 0.50f || color.a == 0.25f)
 		)
 		{
-			if (
-				reflectionIntensity &&
-				!desktopTreeInvalid
-			)
-			{
-				g_reflectionInput.reflectionIntensity = reflectionIntensity;
-				g_reflectionInput.reflectionParallaxIntensity = 0.f;
-				g_reflectionInput.shapeLocalBounds = &shapeLocalBounds;
-				g_reflectionInput.worldTransform = matrix;
-				g_reflectionInput.visualWorldTransform = visualWorldTransform.get();
-				g_renderFlag.set(RenderFlag_Reflection, true);
-			}
-		}
-		else
-		{
+			const auto active = (color.a == 0.50f);
+			
 			D2D1_RECT_F shapeWorldBounds;
 			RETURN_IF_FAILED(geometryShape->GetTightBounds(&shapeWorldBounds, matrix));
 
@@ -445,7 +405,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					blurBalance,
 					afterglowBalance
 				);
-				!opaque && 
+				!opaque &&
 				extendedAmount &&
 				(
 					renderTargetBitmap = drawingContext->AcquireRenderTargetBitmap(true),
@@ -481,7 +441,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					g_glassInput.nearestNeighborFinalScale = false;
 					g_glassInput.params.optimization = Shared::g_blurOptimization;
 				}
-				
+
 				if (g_glassInput.zeroCopyAllowed)
 				{
 					winrt::com_ptr<ID2D1ColorContext> colorContext;
@@ -493,7 +453,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 						0.f,
 						colorContext.get()
 					);
-					
+
 					if (
 						FAILED(
 							d2dContext->GetPrivateCompositorDeviceContext()->CreateSharedAtlasBitmap(
@@ -507,6 +467,9 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 						g_glassInput.zeroCopyAllowed = false;
 					}
 				}
+				// temporary disable zero copy
+				// 2025/5/26
+				g_glassInput.zeroCopyAllowed = false;
 
 				g_glassInput.sourceBitmap = sharedAtlasBitmap.get() ? sharedAtlasBitmap.get() : renderTargetBitmap.get();
 				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
@@ -526,7 +489,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 			{
 				if (Shared::g_type == Shared::GlassType::Blur)
 				{
-					finalColor.a = opaque ? 1.f : glassOpacity;
+					color.a = opaque ? 1.f : glassOpacity;
 				}
 
 				#pragma warning(suppress:26813)
@@ -535,15 +498,15 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					// dwmcore!CCapturedGlassColorizationParameters::GetEffectivescRGBBlendColor (Windows 7)
 					if (opaque)
 					{
-						finalColor.r *= colorBalance;
-						finalColor.g *= colorBalance;
-						finalColor.b *= colorBalance;
-						finalColor.a = 1.f;
+						color.r *= colorBalance;
+						color.g *= colorBalance;
+						color.b *= colorBalance;
+						color.a = 1.f;
 					}
 					else
 					{
 						const auto alpha = std::max(1.f - blurBalance, 0.1f);
-						finalColor =
+						color =
 						{
 							std::clamp((color.r * colorBalance + Shared::g_afterglow.r * afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
 							std::clamp((color.g * colorBalance + Shared::g_afterglow.g * afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
@@ -552,35 +515,21 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 						};
 					}
 				}
-
-				if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), finalColor)))
-				{
-					g_brush->SetColor(finalColor);
-					drawingContext->FillShapeWithBrush(renderingShape.get(), g_brush.get());
-				}
-			}
-
-			if (
-				reflectionIntensity && 
-				!desktopTreeInvalid &&
-				(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient)
-			)
-			{
-				g_reflectionInput.reflectionIntensity = reflectionIntensity;
-				g_reflectionInput.reflectionParallaxIntensity = Shared::g_reflectionParallaxIntensity;
-				g_reflectionInput.shapeLocalBounds = &shapeLocalBounds;
-				g_reflectionInput.worldTransform = matrix;
-				g_reflectionInput.visualWorldTransform = visualWorldTransform.get();
-				g_renderFlag.set(RenderFlag_Reflection, true);
 			}
 		}
-	}
-	else
-	{
-		if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), finalColor)))
+
+		if (!g_renderFlag.any())
 		{
-			g_brush->SetColor(finalColor);
-			drawingContext->FillShapeWithBrush(renderingShape.get(), g_brush.get());
+			color.a *= opacity;
+			if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), color)))
+			{
+				if (!g_brush)
+				{
+					context->CreateSolidColorBrush({}, g_brush.put());
+				}
+				g_brush->SetColor(color);
+				drawingContext->FillShapeWithBrush(renderingShape.get(), g_brush.get());
+			}
 		}
 	}
 
@@ -638,7 +587,7 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 					ignoreAlpha ?
 					D2D1_LAYER_OPTIONS1_IGNORE_ALPHA :
 					D2D1_LAYER_OPTIONS1_NONE
-					)
+				)
 			),
 			nullptr
 		);
@@ -688,11 +637,6 @@ void GlassRenderer::Update(GlassEngine::UpdateType type)
 		Shared::g_glassOpacity = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
 		Shared::g_glassOpacityInactive = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"GlassOpacityInactive", value)) / 100.f, 0.f, 1.f);
 		
-		value = GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensity");
-		Shared::g_reflectionIntensity = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
-		Shared::g_reflectionIntensityInactive = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensityInactive", value)) / 100.f, 0.f, 1.f);
-		Shared::g_reflectionParallaxIntensity = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionParallaxIntensity", 13)) / 100.f, 0.f, 1.f);
-
 		value = GlassEngine::GetDwordFromRegistry(L"ColorizationAfterglowOverride", GlassEngine::GetDwordFromRegistry(L"ColorizationAfterglow"));
 		Shared::g_afterglow = Color::FromArgb(value);
 

@@ -312,25 +312,13 @@ namespace OpenGlass::dwmcore
 	};
 	struct CLegacyMilBrush : CResource 
 	{
-		CFloatResource* GetFloatResource() const
+		DECLSPEC_PROJECTION static float STDMETHODCALLTYPE GetOpacity(float opacity, const CFloatResource* resource)
 		{
-			CFloatResource* resource{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				resource = reinterpret_cast<CFloatResource* const*>(this)[8];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				resource = reinterpret_cast<CFloatResource* const*>(this)[9];
-			}
-			else
-			{
-				resource = reinterpret_cast<CFloatResource* const*>(this)[10];
-			}
-
-			return resource;
+			return HANDLE_PROJECTION_FUNCTION(CLegacyMilBrush::GetOpacity, opacity, resource);
 		}
+	};
+	struct CSolidColorLegacyMilBrush : CLegacyMilBrush
+	{
 		float GetOpacityValue() const
 		{
 			float opacity{};
@@ -350,13 +338,25 @@ namespace OpenGlass::dwmcore
 
 			return opacity;
 		}
-		DECLSPEC_PROJECTION static float STDMETHODCALLTYPE GetOpacity(float opacity, const CFloatResource* resource)
+		CFloatResource* GetFloatResource() const
 		{
-			return HANDLE_PROJECTION_FUNCTION(CLegacyMilBrush::GetOpacity, opacity, resource);
+			CFloatResource* resource{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[8];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[9];
+			}
+			else
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[10];
+			}
+
+			return resource;
 		}
-	};
-	struct CSolidColorLegacyMilBrush : CLegacyMilBrush
-	{
 		DECLSPEC_PROJECTION bool STDMETHODCALLTYPE IsConstantOpaque() const
 		{
 			return HANDLE_PROJECTION_FUNCTION(CSolidColorLegacyMilBrush::IsConstantOpaque);
@@ -385,6 +385,77 @@ namespace OpenGlass::dwmcore
 			return *color;
 		}
 		inline static PVOID* vftable{ nullptr };
+	};
+	struct CImageSource : CResource {};
+	struct CImageLegacyMilBrush : CLegacyMilBrush
+	{
+		inline static PVOID* vftable{ nullptr };
+
+		CImageSource* GetImageSource() const
+		{
+			CImageSource* imageSource{};
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				imageSource = reinterpret_cast<CImageSource* const*>(this)[30];
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				imageSource = reinterpret_cast<CImageSource* const*>(this)[31];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				imageSource = reinterpret_cast<CImageSource* const*>(this)[23];
+			}
+			else
+			{
+				imageSource = reinterpret_cast<CImageSource* const*>(this)[24];
+			}
+
+			return imageSource;
+		}
+		float GetOpacityValue() const
+		{
+			float opacity{};
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				opacity = reinterpret_cast<float const*>(this)[30];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				opacity = reinterpret_cast<float const*>(this)[16];
+			}
+			else
+			{
+				opacity = reinterpret_cast<float const*>(this)[18];
+			}
+
+			return opacity;
+		}
+		const D2D1_RECT_F& GetViewport() const
+		{
+			D2D1_RECT_F const* viewport{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 160);
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 168);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 104);
+			}
+			else
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 112);
+			}
+
+			return *viewport;
+		}
 	};
 
 	struct CTransform : CResource {};
@@ -558,8 +629,15 @@ namespace OpenGlass::dwmcore
 			return HANDLE_PROJECTION_FUNCTION(CGeometry::GetShapeData, size, shape);
 		}
 	};
+	struct CRegionGeometry : CGeometry
+	{
+		inline static PVOID* vftable{ nullptr };
+	};
+	struct CCombinedGeometry : CGeometry
+	{
+		inline static PVOID* vftable{ nullptr };
+	};
 	struct CGeometry2D : CGeometry {};
-	struct CImageSource : CResource {};
 	struct CDrawingContext;
 	struct COcclusionContext;
 	struct IDrawingContext
@@ -1099,10 +1177,13 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CRenderData::TryDrawCommandAsDrawList", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CGeometry::~CGeometry", 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CGeometry::GetShapeData, 0, 0),
+		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CRegionGeometry::vftable, "CRegionGeometry::`vftable'", 0, 0),
+		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CCombinedGeometry::vftable, "CCombinedGeometry::`vftable'", 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CLegacyMilBrush::GetOpacity, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CSolidColorLegacyMilBrush::IsConstantOpaque, 0, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CSolidColorLegacyMilBrush::vftable, "CSolidColorLegacyMilBrush::`vftable'", 0, 0),
+		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CImageLegacyMilBrush::vftable, "CImageLegacyMilBrush::`vftable'", 0, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CArrayBasedCoverageSet::IsCovered", 0, os::build_w11_24h2),
 
@@ -1142,6 +1223,14 @@ namespace OpenGlass::dwmcore
 	{
 		CHAR symbolName[128]{};
 		UnDecorateSymbolName(info->Name, symbolName, std::size(symbolName), UNDNAME_NAME_ONLY);
+
+		if (
+			!strcmp(symbolName, "CCombinedGeometry::vftable") &&
+			!strstr(info->Name, "CGeometry")
+		)
+		{
+			return true;
+		}
 
 		if (
 			!strcmp(symbolName, "CVisual::GetWorldTransform") &&
