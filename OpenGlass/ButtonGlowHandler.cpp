@@ -19,8 +19,39 @@ namespace OpenGlass::ButtonGlowHandler
 	static int CLOSEBUTTONGLOW = 92; //11 in windows 7
 	static int TOOLCLOSEBUTTONGLOW = 94; //47 in windows 7
 
+	bool UpdateCrossfade{ false };
+
+	void STDMETHODCALLTYPE CVisual_SetDirtyFlags_hook(uDWM::CVisual* This, int flags);
+	void STDMETHODCALLTYPE CButton_UpdateCrossfade_hook(uDWM::CButton* This);
+
+	decltype(&CVisual_SetDirtyFlags_hook) CVisual_SetDirtyFlags_orig{ nullptr };
+	decltype(&CButton_UpdateCrossfade_hook) CButton_UpdateCrossfade_orig{ nullptr };
+
+
 	HRESULT(WINAPI* CTopLevelWindow__CreateBitmapFromAtlas)(HTHEME hTheme, int iPartId, MARGINS* outMargins, void** outBitmapSource);
 	
+	void STDMETHODCALLTYPE CButton_UpdateCrossfade_hook(uDWM::CButton* This)
+	{
+		UpdateCrossfade = true;
+		CButton_UpdateCrossfade_orig(This);
+		UpdateCrossfade = false;
+	}
+
+	void STDMETHODCALLTYPE CVisual_SetDirtyFlags_hook(uDWM::CVisual* This, int flags)
+	{
+		// workaround for button glow cutoff
+		if (UpdateCrossfade)
+		{
+			uDWM::CButton* button = reinterpret_cast<uDWM::CButton*>(This);
+			if (flags == 0x8000 && *button->GetButtonState() == 3)
+			{
+				return;
+			}
+		}
+
+		CVisual_SetDirtyFlags_orig(This, flags);
+	}
+
 	//not 1 to 1 to the one in windows 7 udwm, however it achieves the same outcome whilst being simpler
 	HRESULT CTopLevelWindow__CreateButtonGlowsFromAtlas(HTHEME hTheme)
 	{
@@ -71,13 +102,17 @@ namespace OpenGlass::ButtonGlowHandler
 	{
 		if (uDWM::g_buildNumber < os::build_w11_21h2)
 		{
+			uDWM::g_projectionArray.ApplyToVariable("CVisual::SetDirtyFlags", CVisual_SetDirtyFlags_orig);
 			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateBitmapFromAtlas", CTopLevelWindow__CreateBitmapFromAtlas);
 			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateGlyphsFromAtlas", CTopLevelWindow_CreateGlyphsFromAtlas);
+			uDWM::g_projectionArray.ApplyToVariable("CButton::UpdateCrossfade", CButton_UpdateCrossfade_orig);
 
 			THROW_IF_FAILED(
 				HookHelper::Detours::Write([]()
 				{
+					HookHelper::Detours::Attach(&CVisual_SetDirtyFlags_orig, CVisual_SetDirtyFlags_hook);
 					HookHelper::Detours::Attach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);
+					HookHelper::Detours::Attach(&CButton_UpdateCrossfade_orig, CButton_UpdateCrossfade_hook);
 				})
 			);
 		}
@@ -90,7 +125,9 @@ namespace OpenGlass::ButtonGlowHandler
 			THROW_IF_FAILED(
 				HookHelper::Detours::Write([]()
 				{
+					HookHelper::Detours::Detach(&CVisual_SetDirtyFlags_orig, CVisual_SetDirtyFlags_hook);
 					HookHelper::Detours::Detach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);
+					HookHelper::Detours::Detach(&CButton_UpdateCrossfade_orig, CButton_UpdateCrossfade_hook);
 				})
 			);
 		}
