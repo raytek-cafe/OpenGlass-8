@@ -633,6 +633,10 @@ namespace OpenGlass::dwmcore
 	{
 		inline static PVOID* vftable{ nullptr };
 	};
+	struct CRectangleGeometry : CGeometry
+	{
+		inline static PVOID* vftable{ nullptr };
+	};
 	struct CCombinedGeometry : CGeometry
 	{
 		inline static PVOID* vftable{ nullptr };
@@ -1178,6 +1182,7 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CGeometry::~CGeometry", 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CGeometry::GetShapeData, 0, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CRegionGeometry::vftable, "CRegionGeometry::`vftable'", 0, 0),
+		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CRectangleGeometry::vftable, "CRectangleGeometry::`vftable'", 0, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CCombinedGeometry::vftable, "CCombinedGeometry::`vftable'", 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CLegacyMilBrush::GetOpacity, 0, 0),

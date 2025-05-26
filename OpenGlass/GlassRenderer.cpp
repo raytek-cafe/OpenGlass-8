@@ -183,6 +183,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCRenderData_TryDrawCommandAsDrawList(
 		) &&
 		(
 			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CRegionGeometry::vftable ||
+			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CRectangleGeometry::vftable ||
 			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CCombinedGeometry::vftable
 		)
 	)
