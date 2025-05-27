@@ -3,7 +3,7 @@
 This utility returns the full glass effect to the window frame, just like [glass8](http://www.msfn.org/board/forum/180-aero-glass-for-windows-8/) did.
 
 > [!NOTE]  
-> The current branch only supports the following official versions of Windows.
+> Currently only the following official versions of Windows are supported.
 > - Windows 10 20H2
 > - Windows 10 21H2
 > - Windows 10 22H2

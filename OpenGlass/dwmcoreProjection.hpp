@@ -69,23 +69,6 @@ namespace OpenGlass::dwmcore
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::GetDesktopTree);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE GetWorldTransform(
-			const CVisualTree* tree,
-			UINT walkReason,
-			CMILMatrix* matrix,
-			bool* unknown1,
-			CMILMatrix* unknown2
-		) const
-		{
-			return HANDLE_PROJECTION_FUNCTION(
-				CVisual::GetWorldTransform,
-				tree,
-				walkReason,
-				matrix,
-				unknown1,
-				unknown2
-			);
-		}
 	};
 	struct CFloatResource : CResource {};
 
@@ -544,14 +527,6 @@ namespace OpenGlass::dwmcore
 		)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CShape::Combine, shape1, matrix1, shape2, matrix2, mode, shape);
-		}
-		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE BuildFromRectFs(
-			const D2D1_RECT_F& rect,
-			UINT unused,
-			CShape** shape
-		)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CShape::BuildFromRectFs, rect, unused, shape);
 		}
 	};
 	struct CRegionShape : CShape {};
@@ -1166,7 +1141,6 @@ namespace OpenGlass::dwmcore
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CDesktopTree::vftable, "CDesktopTree::`vftable'", 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetDesktopTree, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetWorldTransform, 0, 0),
 
 		MAKE_VARIABLE_PROJECTION_TUPLE(CMILMatrix::Identity, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CMILMatrix::Multiply, 0, 0),
@@ -1175,7 +1149,6 @@ namespace OpenGlass::dwmcore
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::CopyShape, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::Combine, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::BuildFromRectFs, 0, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CRenderDataBuilder::DrawGeometry", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CRenderData::TryDrawCommandAsDrawList", 0, 0),
