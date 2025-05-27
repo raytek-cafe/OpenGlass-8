@@ -122,6 +122,10 @@ PostMessage(FindWindow(TEXT("Dwm"), nullptr), WM_DWMCOLORIZATIONCHANGED, 0, 0); 
 ### [Banner for OpenGlass](https://github.com/ALTaleX531/OpenGlass/discussions/11)
 Provided by [@aubymori](https://github.com/aubymori)  
 Wallpaper: [metalheart jawn #2](https://www.deviantart.com/kfh83/art/metalheart-jawn-2-1068250045) by [@kfh83](https://github.com/kfh83)
+### [[MS-RDPCR2]: Remote Desktop Protocol: Composited Remoting V2](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-rdpcr2)
+Specifies the Remote Desktop Protocol: Composited Remoting V2, which displays the contents of the Windows-based desktop running on one machine on a second machine connected to the first via a network.
+
+From there I can get a glimpse of how udwm and dwmcore interact in Windows 7 and how the relevant data structures are defined.
 ### [Microsoft Research Detours Package](https://github.com/microsoft/Detours)  
 Detours is a software package for monitoring and instrumenting API calls on Windows.  
 ### [VC-LTL - An elegant way to compile lighter binaries.](https://github.com/Chuyu-Team/VC-LTL5)  
