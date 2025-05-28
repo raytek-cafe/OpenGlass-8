@@ -16,7 +16,8 @@ namespace OpenGlass
 			ID2D1Bitmap1* renderTargetBitmap,
 			const D2D1_MATRIX_3X2_F& deviceTransform,
 			const D2D1_RECT_F& originalPixelRectangle,
-			float extendedAmount
+			float extendedAmount,
+			bool useSuperSample
 		);
 		void Pop();
 		void Reset();

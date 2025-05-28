@@ -21,8 +21,9 @@ This utility returns the full glass effect to the window frame, just like [glass
 2. Run `install.cmd` as administrator, this will create a scheduled task for you to run the OpenGlass host process which will inject DLL into DWM for you and also maintains that user settings are correctly loaded. 
 3. Run `startup.cmd` as administrator, this will run the host process manually.
 4. When you use it for the first time or just after updating your system, OpenGlass will try to download the symbol files and you will see its symbol downloading dialog, just be patient for about 15s. When the symbol files are ready, enjoy!
-5. When you want to stop using OpenGlass or update the version of OpenGlass, running `shutdown.cmd` will remove the effects of OpenGlass for you and exit the host process. At this time, you can either replace the OpenGlass files or continue to run `uninstall.cmd` and manually delete the remaining files to complete the uninstallation.
-6. When you experience a crash, OpenGlass is supposed to generate a large memory dump file in the `dumps` directory of the folder where it is located, please submit it to the developer if possible, this can help fix known or potential issues.
+5. If OpenGlass is unable to download symbols, you can try running the `symchk-prepare-symbols.cmd`.
+6. When you want to stop using OpenGlass or update the version of OpenGlass, running `shutdown.cmd` will remove the effects of OpenGlass for you and exit the host process. At this time, you can either replace the OpenGlass files or continue to run `uninstall.cmd` and manually delete the remaining files to complete the uninstallation.
+7. When you experience a crash, OpenGlass is supposed to generate a large memory dump file in the `dumps` directory of the folder where it is located, please submit it to the developer if possible, this can help fix known or potential issues.
 
 ## What are the DWM symbols and where to get them? <br>I see "Your DWM is incompatible" message. What to do?
 

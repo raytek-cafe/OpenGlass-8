@@ -84,7 +84,7 @@ namespace OpenGlass::GlassSafetyZone
 		dwmcore::CDrawingContext* This,
 		const D2D1_RECT_F& rectangle,
 		dwmcore::COcclusionContext* occlusionContext,
-		bool enableSuperSample,
+		bool useSuperSample,
 		T&& callback
 	);
 	HRESULT STDMETHODCALLTYPE MyCDrawingContext_DrawVisualTree_Win10(
@@ -93,7 +93,7 @@ namespace OpenGlass::GlassSafetyZone
 		const D2D1_RECT_F& rectangle,
 		dwmcore::COcclusionContext* occlusionContext,
 		int clearMode,
-		bool enableSuperSample
+		bool useSuperSample
 	);
 	HRESULT STDMETHODCALLTYPE MyCDrawingContext_DrawVisualTree_Win11(
 		dwmcore::CDrawingContext* This,
@@ -101,7 +101,7 @@ namespace OpenGlass::GlassSafetyZone
 		const D2D1_RECT_F& rectangle,
 		dwmcore::COcclusionContext* occlusionContext,
 		int clearMode,
-		bool enableSuperSample,
+		bool useSuperSample,
 		dwmcore::CVisual* visualOverride
 	);
 
@@ -701,7 +701,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 	dwmcore::CDrawingContext* This,
 	const D2D1_RECT_F& rectangle,
 	dwmcore::COcclusionContext* occlusionContext,
-	bool enableSuperSample,
+	bool useSuperSample,
 	T&& callback
 )
 {
@@ -716,8 +716,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 
 		if (
 			!occlusionContext ||
-			occlusionContext->GetFrameId() != dwmcore::GetCurrentFrameId() ||
-			enableSuperSample
+			occlusionContext->GetFrameId() != dwmcore::GetCurrentFrameId()
 		)
 		{
 			break;
@@ -781,7 +780,8 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 					renderTargetBitmap.get(),
 					This->GetDeviceTransform()->GetD2DMatrix(),
 					rectangle,
-					extendedAmount
+					extendedAmount,
+					useSuperSample
 				)
 			)
 		)
@@ -813,14 +813,14 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 	const D2D1_RECT_F& rectangle,
 	dwmcore::COcclusionContext* occlusionContext,
 	int clearMode,
-	bool enableSuperSample
+	bool useSuperSample
 )
 {
 	return MyCDrawingContext_DrawVisualTree(
 		This,
 		rectangle,
 		occlusionContext,
-		enableSuperSample,
+		useSuperSample,
 		[=](const D2D1_RECT_F& replacedRectangle)
 		{
 			return reinterpret_cast<decltype(&MyCDrawingContext_DrawVisualTree_Win10)>(g_CDrawingContext_DrawVisualTree_Org)(
@@ -829,7 +829,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 				replacedRectangle,
 				occlusionContext,
 				clearMode,
-				enableSuperSample
+				useSuperSample
 			);
 		}
 	);
@@ -840,7 +840,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 	const D2D1_RECT_F& rectangle,
 	dwmcore::COcclusionContext* occlusionContext,
 	int clearMode,
-	bool enableSuperSample,
+	bool useSuperSample,
 	dwmcore::CVisual* visualOverride
 )
 {
@@ -848,7 +848,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 		This,
 		rectangle,
 		occlusionContext,
-		enableSuperSample,
+		useSuperSample,
 		[=](const D2D1_RECT_F& replacedRectangle)
 		{
 			return reinterpret_cast<decltype(&MyCDrawingContext_DrawVisualTree_Win11)>(g_CDrawingContext_DrawVisualTree_Org)(
@@ -857,7 +857,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 				replacedRectangle,
 				occlusionContext,
 				clearMode,
-				enableSuperSample,
+				useSuperSample,
 				visualOverride
 			);
 		}

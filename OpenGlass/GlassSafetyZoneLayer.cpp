@@ -9,7 +9,8 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	ID2D1Bitmap1* renderTargetBitmap,
 	const D2D1_MATRIX_3X2_F& deviceTransform,
 	const D2D1_RECT_F& originalPixelRectangle,
-	float extendedAmount
+	float extendedAmount,
+	[[maybe_unused]] bool useSuperSample
 )
 {
 	m_renderTargetBitmap.copy_from(renderTargetBitmap);
@@ -26,19 +27,25 @@ HRESULT CGlassSafetyZoneLayer::Push(
 		targetSize.height
 	};
 
-	auto originalDeviceRectangle = RectF::TransformRect(originalPixelRectangle, deviceTransform);
+	D2D1_RECT_F originalDeviceRectangle;
 	D2D1_RECT_F extendedDeviceRectangle;
 
+	originalDeviceRectangle = RectF::TransformRect(originalPixelRectangle, deviceTransform);
 	originalDeviceRectangle.left = std::floor(originalDeviceRectangle.left);
 	originalDeviceRectangle.top = std::floor(originalDeviceRectangle.top);
 	originalDeviceRectangle.right = std::ceil(originalDeviceRectangle.right);
 	originalDeviceRectangle.bottom = std::ceil(originalDeviceRectangle.bottom);
 	RectF::IntersectUnsafe(originalDeviceRectangle, targetRect);
 
-	extendedDeviceRectangle.left = std::floor(originalDeviceRectangle.left - extendedAmount);
-	extendedDeviceRectangle.top = std::floor(originalDeviceRectangle.top - extendedAmount);
-	extendedDeviceRectangle.right = std::ceil(originalDeviceRectangle.right + extendedAmount);
-	extendedDeviceRectangle.bottom = std::ceil(originalDeviceRectangle.bottom + extendedAmount);
+	extendedDeviceRectangle.left = originalPixelRectangle.left - extendedAmount;
+	extendedDeviceRectangle.top = originalPixelRectangle.top - extendedAmount;
+	extendedDeviceRectangle.right = originalPixelRectangle.right + extendedAmount;
+	extendedDeviceRectangle.bottom = originalPixelRectangle.bottom + extendedAmount;
+	extendedDeviceRectangle = RectF::TransformRect(extendedDeviceRectangle, deviceTransform);
+	extendedDeviceRectangle.left = std::floor(extendedDeviceRectangle.left);
+	extendedDeviceRectangle.top = std::floor(extendedDeviceRectangle.top);
+	extendedDeviceRectangle.right = std::ceil(extendedDeviceRectangle.right);
+	extendedDeviceRectangle.bottom = std::ceil(extendedDeviceRectangle.bottom);
 	RectF::IntersectUnsafe(extendedDeviceRectangle, targetRect);
 
 	m_safetyZoneBounds[0] =
@@ -70,16 +77,27 @@ HRESULT CGlassSafetyZoneLayer::Push(
 		static_cast<UINT32>(extendedDeviceRectangle.bottom)
 	};
 
+	D2D1_RECT_F extendedRectangle
+	{
+		0.f,
+		0.f,
+		extendedAmount,
+		extendedAmount
+	};
+	extendedRectangle = RectF::TransformRect(extendedRectangle, deviceTransform);
+	const auto actualExtendedAmountX = wil::rect_width(extendedRectangle);
+	const auto actualExtendedAmountY = wil::rect_height(extendedRectangle);
+
 	m_safetyZoneBufferVertical.Resize(
 		D2D1::SizeU(
-			static_cast<UINT32>(std::ceil(extendedAmount)) * 2,
-			static_cast<UINT32>(std::ceil(targetSize.height + extendedAmount))
+			static_cast<UINT32>(std::ceil(actualExtendedAmountX)) * 2,
+			static_cast<UINT32>(std::ceil(targetSize.height + actualExtendedAmountY))
 		)
 	);
 	m_safetyZoneBufferHorizon.Resize(
 		D2D1::SizeU(
-			static_cast<UINT32>(std::ceil(targetSize.width + extendedAmount)),
-			static_cast<UINT32>(std::ceil(extendedAmount)) * 2
+			static_cast<UINT32>(std::ceil(targetSize.width + actualExtendedAmountX)),
+			static_cast<UINT32>(std::ceil(actualExtendedAmountY)) * 2
 		)
 	);
 

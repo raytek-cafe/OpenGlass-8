@@ -317,17 +317,12 @@ HRESULT GlassService::RunInjectionThread()
 				it++;
 			}
 		}
-		DWORD activeSessionId{ 0ul };
-		if (activeSessionId = WTSGetActiveConsoleSessionId(); activeSessionId == 0xFFFFFFFF)
-		{
-			goto wait_until_next_cycle;
-		}
 		if (g_injectionThreadStatus == ThreadStatus::Paused)
 		{
 			goto wait_until_next_cycle;
 		}
 
-		WalkDwmProcesses([&hr, activeSessionId](DWORD processId) -> bool
+		WalkDwmProcesses([&hr](DWORD processId) -> bool
 		{
 			if (g_injectionThreadStatus == ThreadStatus::Paused)
 			{
@@ -339,7 +334,22 @@ HRESULT GlassService::RunInjectionThread()
 			{
 				return true;
 			}
-			if (activeSessionId != sessionId)
+			DWORD bytesReturned{};
+			wil::unique_wtsmem_ptr<WTS_CONNECTSTATE_CLASS> buffer{};
+			if (
+				!WTSQuerySessionInformationW(
+					WTS_CURRENT_SERVER_HANDLE,
+					sessionId,
+					WTSConnectState,
+					reinterpret_cast<LPWSTR*>(&buffer),
+					&bytesReturned
+				) ||
+				!buffer ||
+				(
+					*buffer != WTSActive &&
+					*buffer != WTSConnected
+				)
+			)
 			{
 				return true;
 			}

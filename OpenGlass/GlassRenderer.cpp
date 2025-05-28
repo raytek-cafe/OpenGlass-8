@@ -428,7 +428,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 			{
 				if (
 					glassCoverageSet->IsFullyCovered(
-						occlusionConctext->PageInPixelsRectToDeviceRect(shapeWorldBounds),
+						shapeWorldBounds,
 						drawingContext->GetD2DContextOwner()->GetCurrentZ()
 					)
 				)
@@ -443,6 +443,9 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 					g_glassInput.params.optimization = Shared::g_blurOptimization;
 				}
 
+				// temporary disable zero copy
+				// 2025/5/26
+				g_glassInput.zeroCopyAllowed = false;
 				if (g_glassInput.zeroCopyAllowed)
 				{
 					winrt::com_ptr<ID2D1ColorContext> colorContext;
@@ -468,9 +471,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 						g_glassInput.zeroCopyAllowed = false;
 					}
 				}
-				// temporary disable zero copy
-				// 2025/5/26
-				g_glassInput.zeroCopyAllowed = false;
 
 				g_glassInput.sourceBitmap = sharedAtlasBitmap.get() ? sharedAtlasBitmap.get() : renderTargetBitmap.get();
 				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
