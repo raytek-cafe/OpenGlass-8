@@ -344,6 +344,10 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::SetInsetFromParent, margins);
 		}
+		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetInsetFromParentLeft(int left)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CVisual::SetInsetFromParentLeft, left);
+		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InitializeVisualTreeClone(
 			CVisual* clonedVisual,
 			UINT cloneOption
@@ -561,6 +565,8 @@ namespace OpenGlass::uDWM
 		}
 	};
 
+	struct CImage : CVisual {};
+
 	struct CBitmapSource : CBaseObject {};
 	struct CBitmapSourceArray : DynArray<CBitmapSource*> {};
 
@@ -626,7 +632,7 @@ namespace OpenGlass::uDWM
 			float opacity
 		)
 		{
-			if (g_buildNumber < os::build_w11_22h2) [[likely]]
+			if (g_buildNumber < os::build_w11_21h2) [[likely]]
 			{
 				return SetVisualStates_Win10(
 					buttonArray,
@@ -645,9 +651,21 @@ namespace OpenGlass::uDWM
 			}
 		}
 
-		float GetGlyphOpacity()
+		float* GetGlyphOpacity()
 		{
-			return reinterpret_cast<float*>(this)[101];
+			float* glyphOpacity{ nullptr };
+
+			if (g_buildNumber < os::build_w11_24h2)
+			{
+				glyphOpacity = &(reinterpret_cast<float*>(this)[101]);
+			}
+
+			else
+			{
+				glyphOpacity = &(reinterpret_cast<float*>(this)[89]);
+			}
+
+			return glyphOpacity;
 		}
 		BYTE* GetButtonState()
 		{
@@ -896,6 +914,26 @@ namespace OpenGlass::uDWM
 			return *captionColor;
 		}
 
+		UINT GetWindowDPI() const
+		{
+			UINT dpi{ 0 };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				dpi = *reinterpret_cast<UINT const*>(reinterpret_cast<ULONG_PTR>(this) + 324);
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				dpi = *reinterpret_cast<UINT const*>(reinterpret_cast<ULONG_PTR>(this) + 348);
+			}
+			else
+			{
+				dpi = reinterpret_cast<UINT const*>(this)[87];
+			}
+
+			return dpi;
+		}
+
 		BYTE GetNonClientAttribute() const
 		{
 			BYTE attribute{ 0 };
@@ -1062,6 +1100,37 @@ namespace OpenGlass::uDWM
 			else if (g_buildNumber < os::build_w11_22h2)
 			{
 				visual = reinterpret_cast<CText* const*>(this)[67];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				visual = reinterpret_cast<CText* const*>(this)[70];
+			}
+			else
+			{
+				visual = reinterpret_cast<CText* const*>(this)[65];
+			}
+
+			return visual;
+		}
+		CImage* GetIconVisual() const
+		{
+			CImage* visual{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				visual = reinterpret_cast<CImage* const*>(this)[66];
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				visual = reinterpret_cast<CImage* const*>(this)[68];
+			}
+			else if (g_buildNumber < os::build_w11_23h2)
+			{
+				visual = reinterpret_cast<CImage* const*>(this)[72];
+			}
+			else
+			{
+				visual = reinterpret_cast<CImage* const*>(this)[67];
 			}
 
 			return visual;
@@ -1485,12 +1554,96 @@ namespace OpenGlass::uDWM
 
 		CButton* GetButton(int index)
 		{
-			CButton** button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 61));
+			CButton** button = nullptr;
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 61));
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 63));
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 66));
+			}
+			else
+			{
+				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 488 + 8 * index);
+			}
+
 			if (button && *button)
 			{
 				return *button;
 			}
+
 			return nullptr;
+		}
+
+		DWORD GetFrameThickness(CWindowData* data = nullptr)
+		{
+			if (!data)
+			{
+				data = GetData();
+			}
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				return reinterpret_cast<DWORD const*>(data)[24];
+			}
+			else
+			{
+				return reinterpret_cast<DWORD const*>(data)[17];
+			}
+
+			return 0;
+		}
+		MARGINS& GetMarginsVisibleOutside(bool zoomed)
+		{
+			MARGINS* margins{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 644 : 628));
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 660 : 644));
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 676 : 660));
+			}
+			else
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 636 : 620));
+			}
+
+			return *margins;
+		}
+		MARGINS& GetBorderMargins()
+		{
+			MARGINS* margins{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 596);
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 612);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 628);
+			}
+			else
+			{
+				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 588);
+			}
+
+			return *margins;
 		}
 
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CloneVisualTreeForLivePreview_Win10(
@@ -2074,6 +2227,7 @@ namespace OpenGlass::uDWM
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetSize, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetInsetFromParent, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetInsetFromParentLeft, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetDirtyFlags, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::RenderRecursive, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::Remove, 0, 0),
@@ -2118,6 +2272,7 @@ namespace OpenGlass::uDWM
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::OnSystemBackdropUpdated, os::build_w11_21h2, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE(CTopLevelWindow::s_rgpwfWindowFrames, 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateNCAreaBackground", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateNCAreaPositionsAndSizes", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateClientBlur", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::ValidateVisual", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateWindowVisuals", 0, 0),
