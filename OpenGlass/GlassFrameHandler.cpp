@@ -638,12 +638,11 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPosit
 	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : This->GetFrameThickness() - 2);
 	int offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
 
-	auto closeButtonSize = CalculateButtonSize(cySize, 3);
+	auto closeButtonSize = loneButton ? CalculateButtonSize(cySize, 0) : CalculateButtonSize(cySize, 3);
 	auto maxButtonSize = CalculateButtonSize(cySize, 2);
 	auto minButtonSize = CalculateButtonSize(cySize, 1);
-	auto loneButtonSize = CalculateButtonSize(cySize, 0);
 
-	if (UpdateButton(3, offsetRight, offsetTop, loneButton ? loneButtonSize : closeButtonSize) && !toolWindow)
+	if (UpdateButton(3, offsetRight, offsetTop, closeButtonSize) && !toolWindow)
 	{
 		offsetRight = closeButtonSize.cx + offsetRight;
 	}
