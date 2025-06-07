@@ -127,7 +127,6 @@ namespace OpenGlass::GlassFrameHandler
 
 	SIZE CalculateButtonSize(int cySize, int buttonType);
 	HRESULT UpdateReflectionViewport(uDWM::CTopLevelWindow* window);
-	void UpdateWindowButtons(uDWM::CTopLevelWindow* window);
 }
 
 SIZE GlassFrameHandler::CalculateButtonSize(int cySize, int buttonType)
@@ -309,81 +308,6 @@ HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* windo
 	}
 
 	return S_OK;
-}
-
-void GlassFrameHandler::UpdateWindowButtons(uDWM::CTopLevelWindow* window)
-{
-	auto data = window->GetData();
-	if (!data)
-	{
-		return;
-	}
-
-	auto maximized = window->IsWindowMaximized();
-	auto toolWindow = window->IsToolWindow();
-	auto loneButton = window->IsLoneButton();
-	auto& visibleMargins = window->GetMarginsVisibleOutside(maximized);
-	auto& borderMargins = window->GetBorderMargins();
-
-	auto UpdateButton = [&](int buttonType, int offsetRight, int offsetTop, SIZE buttonSize)
-		{
-			if (auto button = window->GetButton(buttonType); button)
-			{
-				MARGINS inset = { 0x7FFFFFFF, offsetRight, offsetTop, 0x7FFFFFFF };
-
-				g_CButton_SetSize_Org(button, &buttonSize);
-				button->SetInsetFromParent(inset);
-				*button->GetGlyphOpacity() = 1.f;
-
-				return true;
-			}
-			return false;
-		};
-
-	int cySize = GetSystemMetricsForDpi(SM_CYSIZE, data->GetWindowDPI());
-
-	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : window->GetFrameThickness() - 2);
-	int offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
-
-	auto closeButtonSize = CalculateButtonSize(cySize, 3);
-	auto maxButtonSize = CalculateButtonSize(cySize, 2);
-	auto minButtonSize = CalculateButtonSize(cySize, 1);
-	auto loneButtonSize = CalculateButtonSize(cySize, 0);
-
-	if (toolWindow)
-	{
-		int cySmSize = GetSystemMetricsForDpi(SM_CYSMSIZE, data->GetWindowDPI());
-		SIZE toolButtonSize = { cySmSize , cySmSize };
-		if (borderMargins.cyTopHeight - toolButtonSize.cy - 4 > visibleMargins.cyTopHeight)
-		{
-			offsetTop = borderMargins.cyTopHeight - toolButtonSize.cy - 4;
-		}
-		UpdateButton(3, offsetRight, offsetTop, toolButtonSize);
-		return;
-	}
-
-	if (loneButton)
-	{
-		UpdateButton(3, offsetRight, offsetTop, loneButtonSize);
-		return;
-	}
-
-	if (UpdateButton(3, offsetRight, offsetTop, closeButtonSize))
-	{
-		offsetRight = closeButtonSize.cx + offsetRight;
-	}
-
-	if (UpdateButton(2, offsetRight, offsetTop, maxButtonSize))
-	{
-		offsetRight += maxButtonSize.cx;
-	}
-
-	if (UpdateButton(1, offsetRight, offsetTop, minButtonSize))
-	{
-		offsetRight += minButtonSize.cx;
-	}
-
-	UpdateButton(0, offsetRight, offsetTop, minButtonSize);
 }
 
 HRGN WINAPI GlassFrameHandler::MyCreateRoundRectRgn(int x1, int y1, int x2, int y2, int w, int h)
@@ -670,7 +594,6 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackg
 
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes(uDWM::CTopLevelWindow* This)
 {
-
 	auto hr = g_CTopLevelWindow_UpdateNCAreaPositionsAndSizes_Org(This);
 
 	if (!g_captionButtons)
@@ -678,9 +601,74 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPosit
 		return hr;
 	}
 
+	auto data = This->GetData();
+	if (!data)
+	{
+		return hr;
+	}
+
+	auto maximized = This->IsWindowMaximized();
+	auto toolWindow = This->IsToolWindow();
+	auto loneButton = This->IsLoneButton();
+
+	auto& visibleMargins = This->GetMarginsVisibleOutside(maximized);
+	auto& borderMargins = This->GetBorderMargins();
+
 	RECT rect{ 0 };
 	This->GetActualWindowRect(&rect, true, true, true);
 	int cxLeft = (rect.left < 0) ? -rect.left : This->GetFrameThickness();
+
+	auto UpdateButton = [&](int buttonType, int offsetRight, int offsetTop, SIZE buttonSize)
+		{
+			if (auto button = This->GetButton(buttonType); button)
+			{
+				MARGINS inset = { 0x7FFFFFFF, offsetRight, offsetTop, 0x7FFFFFFF };
+
+				g_CButton_SetSize_Org(button, &buttonSize);
+				button->SetInsetFromParent(inset);
+				*button->GetGlyphOpacity() = 1.f;
+
+				return true;
+			}
+			return false;
+		};
+
+	int cySize = GetSystemMetricsForDpi(SM_CYSIZE, data->GetWindowDPI());
+
+	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : This->GetFrameThickness() - 2);
+	int offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
+
+	auto closeButtonSize = CalculateButtonSize(cySize, 3);
+	auto maxButtonSize = CalculateButtonSize(cySize, 2);
+	auto minButtonSize = CalculateButtonSize(cySize, 1);
+	auto loneButtonSize = CalculateButtonSize(cySize, 0);
+
+	if (UpdateButton(3, offsetRight, offsetTop, loneButton ? loneButtonSize : closeButtonSize) && !toolWindow)
+	{
+		offsetRight = closeButtonSize.cx + offsetRight;
+	}
+
+	if (UpdateButton(2, offsetRight, offsetTop, maxButtonSize))
+	{
+		offsetRight += maxButtonSize.cx;
+	}
+
+	if (UpdateButton(1, offsetRight, offsetTop, minButtonSize))
+	{
+		offsetRight += minButtonSize.cx;
+	}
+
+	UpdateButton(0, offsetRight, offsetTop, minButtonSize);
+
+	if (toolWindow)
+	{
+		int cySmSize = GetSystemMetricsForDpi(SM_CYSMSIZE, data->GetWindowDPI());
+		SIZE toolButtonSize = { cySmSize , cySmSize };
+
+		offsetTop = (borderMargins.cyTopHeight - toolButtonSize.cy - 4 > offsetTop) ? borderMargins.cyTopHeight - toolButtonSize.cy - 4 : offsetTop;
+		UpdateButton(3, offsetRight, offsetTop, toolButtonSize);
+		offsetRight = toolButtonSize.cx + offsetRight;
+	}
 
 	if (auto iconVisual = This->GetIconVisual(); iconVisual && cxLeft > 0)
 	{
@@ -693,10 +681,9 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPosit
 		{
 			cxLeft += iconVisual->GetWidth() ? iconVisual->GetWidth() + 5 : 0;
 		}
-		textVisual->SetInsetFromParentLeft(cxLeft);
+		MARGINS inset = { cxLeft, offsetRight, visibleMargins.cyTopHeight, 0x7FFFFFFF };
+		textVisual->SetInsetFromParent(inset);
 	}
-
-	UpdateWindowButtons(This);
 
 	return hr;
 }
