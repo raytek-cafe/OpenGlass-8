@@ -1463,6 +1463,88 @@ namespace OpenGlass::uDWM
 
 			return rtlMirrored;
 		}
+		bool IsWindowMaximized()
+		{
+			bool windowMaximized{ false };
+
+			if (g_buildNumber < os::build_w10_2004)
+			{
+				windowMaximized = (reinterpret_cast<DWORD const*>(this)[146] & 0x20) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_21h2)
+			{
+				windowMaximized = (reinterpret_cast<DWORD const*>(this)[148] & 0x20) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				windowMaximized = (reinterpret_cast<DWORD const*>(this)[152] & 0x20) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				windowMaximized = (reinterpret_cast<DWORD const*>(this)[156] & 0x20) != 0;
+			}
+			else
+			{
+				windowMaximized = (reinterpret_cast<DWORD const*>(this)[146] & 0x20) != 0;
+			}
+
+			return windowMaximized;
+		}
+		bool IsToolWindow()
+		{
+			bool toolWindow{ false };
+
+			if (g_buildNumber < os::build_w10_2004)
+			{
+				toolWindow = (reinterpret_cast<DWORD const*>(this)[146] & 2) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_21h2)
+			{
+				toolWindow = (reinterpret_cast<DWORD const*>(this)[148] & 2) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				toolWindow = (reinterpret_cast<DWORD const*>(this)[152] & 2) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				toolWindow = (reinterpret_cast<DWORD const*>(this)[156] & 2) != 0;
+			}
+			else
+			{
+				toolWindow = (reinterpret_cast<DWORD const*>(this)[146] & 2) != 0;
+			}
+
+			return toolWindow;
+		}
+		bool IsLoneButton()
+		{
+			bool loneButton{ false };
+
+			if (g_buildNumber < os::build_w10_2004)
+			{
+				loneButton = (reinterpret_cast<DWORD const*>(this)[146] & 0xB00) == 0;
+			}
+			else if (g_buildNumber < os::build_w11_21h2)
+			{
+				loneButton = (reinterpret_cast<DWORD const*>(this)[148] & 0xB00) == 0;
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				loneButton = (reinterpret_cast<DWORD const*>(this)[152] & 0xB00) == 0;
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				loneButton = (reinterpret_cast<DWORD const*>(this)[156] & 0xB00) == 0;
+			}
+			else
+			{
+				loneButton = (reinterpret_cast<DWORD const*>(this)[146] & 0xB00) == 0;
+			}
+
+			return loneButton;
+		}
+
 		bool HasNonClientArea() const
 		{
 			bool hasNonClientArea{ false };
@@ -1580,7 +1662,7 @@ namespace OpenGlass::uDWM
 
 			return nullptr;
 		}
-
+		
 		DWORD GetFrameThickness(CWindowData* data = nullptr)
 		{
 			if (!data)

@@ -319,14 +319,9 @@ void GlassFrameHandler::UpdateWindowButtons(uDWM::CTopLevelWindow* window)
 		return;
 	}
 
-	HWND hwnd = data->GetHwnd();
-	if (!hwnd)
-	{
-		return;
-	}
-
-	auto maximized = IsZoomed(hwnd);
-	auto windowStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+	auto maximized = window->IsWindowMaximized();
+	auto toolWindow = window->IsToolWindow();
+	auto loneButton = window->IsLoneButton();
 	auto& visibleMargins = window->GetMarginsVisibleOutside(maximized);
 	auto& borderMargins = window->GetBorderMargins();
 
@@ -355,7 +350,7 @@ void GlassFrameHandler::UpdateWindowButtons(uDWM::CTopLevelWindow* window)
 	auto minButtonSize = CalculateButtonSize(cySize, 1);
 	auto loneButtonSize = CalculateButtonSize(cySize, 0);
 
-	if (windowStyle & WS_EX_TOOLWINDOW)
+	if (toolWindow)
 	{
 		int cySmSize = GetSystemMetricsForDpi(SM_CYSMSIZE, data->GetWindowDPI());
 		SIZE toolButtonSize = { cySmSize , cySmSize };
@@ -367,7 +362,7 @@ void GlassFrameHandler::UpdateWindowButtons(uDWM::CTopLevelWindow* window)
 		return;
 	}
 
-	if (window->GetButton(3) && !window->GetButton(2) && !window->GetButton(1) && !window->GetButton(0))
+	if (loneButton)
 	{
 		UpdateButton(3, offsetRight, offsetTop, loneButtonSize);
 		return;
