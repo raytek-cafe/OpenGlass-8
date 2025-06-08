@@ -4,14 +4,14 @@
 #include "dwmcoreProjection.hpp"
 #include "Shared.hpp"
 #include "GlassKernel.hpp"
-#include "GlassSafetyZone.hpp"
+#include "GlassIntegrity.hpp"
 #include "GlassSafetyZoneLayer.hpp"
 #include "GlassCoverageSet.hpp"
 #include "GlassRenderer.hpp"
 
 using namespace OpenGlass;
 
-namespace OpenGlass::GlassSafetyZone
+namespace OpenGlass::GlassIntegrity
 {
 	HRESULT STDMETHODCALLTYPE MyCOcclusionContext_Compute(
 		dwmcore::COcclusionContext* This,
@@ -82,9 +82,9 @@ namespace OpenGlass::GlassSafetyZone
 	template <typename T>
 	HRESULT STDMETHODCALLTYPE MyCDrawingContext_DrawVisualTree(
 		dwmcore::CDrawingContext* This,
+		dwmcore::CVisualTree* tree,
 		const D2D1_RECT_F& rectangle,
 		dwmcore::COcclusionContext* occlusionContext,
-		bool useSuperSample,
 		T&& callback
 	);
 	HRESULT STDMETHODCALLTYPE MyCDrawingContext_DrawVisualTree_Win10(
@@ -121,8 +121,7 @@ namespace OpenGlass::GlassSafetyZone
 
 	IGlassCoverageSet* g_glassCoverageSetNoRef{ nullptr };
 	dwmcore::CDrawingContext* g_drawingContextNoRef{ nullptr };
-	ID2D1Device* g_deviceNoRef{ nullptr };
-	CGlassSafetyZoneLayer g_glassSafetyZoneLayer{};
+	winrt::com_ptr<CGlassSafetyZoneLayer> g_safetyZoneLayer{};
 
 	std::unordered_map<dwmcore::COcclusionContext*, ULONGLONG> g_shrunkCoverageSetMap{};
 	void ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occlusionContext);
@@ -182,7 +181,7 @@ namespace OpenGlass::GlassSafetyZone
 	UnoccludedDirtyRegionCalculationContext g_calculationContext{};
 }
 
-void GlassSafetyZone::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occlusionContext)
+void GlassIntegrity::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occlusionContext)
 {
 	const auto frameId = occlusionContext->GetFrameId();
 	const auto extendedAmount = GlassKernel::GetBlurExtendedAmount();
@@ -212,17 +211,12 @@ void GlassSafetyZone::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occl
 	std::unordered_map<dwmcore::CZOrderedRect*, std::bitset<4>> targetOccluderSet{};
 	std::unordered_set<const dwmcore::CZOrderedRect*> visibleGlassSet{};
 
-	auto coverageSet = occlusionContext->GetArrayBasedCoverageSet();
+	const auto coverageSet = occlusionContext->GetArrayBasedCoverageSet();
 	for (const auto& zorderRect : glassCoverageSet->GetViews())
 	{
 		if (
 			!coverageSet->IsCovered(
-				D2D1::RectF(
-					zorderRect.m_transformedRect.left - extendedAmount,
-					zorderRect.m_transformedRect.top - extendedAmount,
-					zorderRect.m_transformedRect.right + extendedAmount,
-					zorderRect.m_transformedRect.bottom + extendedAmount
-				), 
+				zorderRect.m_transformedRect,
 				zorderRect.m_depth
 			)
 		)
@@ -232,14 +226,6 @@ void GlassSafetyZone::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occl
 	}
 	for (const auto& zorderRect : visibleGlassSet)
 	{
-		D2D1_RECT_F actualGlassRect
-		{
-			zorderRect->m_transformedRect.left - extendedAmount,
-			zorderRect->m_transformedRect.top - extendedAmount,
-			zorderRect->m_transformedRect.right + extendedAmount,
-			zorderRect->m_transformedRect.bottom + extendedAmount
-		};
-
 		for (auto& occluder : coverageSet->GetOccluderArray()->views())
 		{
 			if (occluder.m_depth >= zorderRect->m_depth)
@@ -251,23 +237,23 @@ void GlassSafetyZone::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occl
 				!wil::rect_is_empty(occluder.m_transformedRect) &&
 				std::fabs(wil::rect_height(occluder.m_transformedRect) * wil::rect_width(occluder.m_transformedRect)) > 1.f &&
 
-				RectF::DoesIntersectUnsafe(occluder.m_transformedRect, actualGlassRect)
+				RectF::DoesIntersectUnsafe(occluder.m_transformedRect, zorderRect->m_transformedRect)
 			)
 			{
 				std::bitset<4> sides{};
-				if (occluder.m_transformedRect.left > actualGlassRect.left)
+				if (occluder.m_transformedRect.left > zorderRect->m_transformedRect.left)
 				{
 					sides.set(ShrinkSide_Left, true);
 				}
-				if (occluder.m_transformedRect.top > actualGlassRect.top)
+				if (occluder.m_transformedRect.top > zorderRect->m_transformedRect.top)
 				{
 					sides.set(ShrinkSide_Top, true);
 				}
-				if (occluder.m_transformedRect.right < actualGlassRect.right)
+				if (occluder.m_transformedRect.right < zorderRect->m_transformedRect.right)
 				{
 					sides.set(ShrinkSide_Right, true);
 				}
-				if (occluder.m_transformedRect.bottom < actualGlassRect.bottom)
+				if (occluder.m_transformedRect.bottom < zorderRect->m_transformedRect.bottom)
 				{
 					sides.set(ShrinkSide_Bottom, true);
 				}
@@ -310,7 +296,7 @@ void GlassSafetyZone::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occl
 	}
 }
 
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_Compute(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_Compute(
 	dwmcore::COcclusionContext* This,
 	const dwmcore::CVisualTree* visualTree,
 	const DWM::span<D2D1_RECT_F>& rectangles,
@@ -322,9 +308,9 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_Compute(
 	if (!g_COcclusionContext_DrawGeometry_Org)
 	{
 		g_COcclusionContext_DrawGeometry_Org_Address = reinterpret_cast<decltype(g_COcclusionContext_DrawGeometry_Org_Address)>(&HookHelper::vftbl_of(This)[4]);
-		g_COcclusionContext_DrawGeometry_Org = HookHelper::WritePointer(g_COcclusionContext_DrawGeometry_Org_Address, MyCOcclusionContext_DrawGeometry);
+		HookHelper::WritePointer(g_COcclusionContext_DrawGeometry_Org_Address, MyCOcclusionContext_DrawGeometry, &g_COcclusionContext_DrawGeometry_Org);
 	}
-	if (auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This); glassCoverageSet)
+	if (const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This); glassCoverageSet)
 	{
 		glassCoverageSet->Clear();
 	}
@@ -334,7 +320,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_Compute(
 		rectangles.length
 	)
 	{
-		auto extendedRectangles = std::make_unique_for_overwrite<D2D1_RECT_F[]>(rectangles.length);
+		const auto extendedRectangles = std::make_unique_for_overwrite<D2D1_RECT_F[]>(rectangles.length);
 		memcpy_s(
 			extendedRectangles.get(),
 			rectangles.length * sizeof(D2D1_RECT_F),
@@ -370,13 +356,13 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_Compute(
 
 	return hr;
 }
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_DrawGeometry(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_DrawGeometry(
 	dwmcore::IDrawingContext* This,
 	dwmcore::CLegacyMilBrush* brush,
 	dwmcore::CGeometry* geometry
 )
 {
-	auto hr = g_COcclusionContext_DrawGeometry_Org(
+	const auto hr = g_COcclusionContext_DrawGeometry_Org(
 		This,
 		brush,
 		geometry
@@ -432,7 +418,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_DrawGeometry(
 		{
 			return hr;
 		}
-		auto rectangles = std::make_unique_for_overwrite<D2D1_RECT_F[]>(count);
+		const auto rectangles = std::make_unique_for_overwrite<D2D1_RECT_F[]>(count);
 		if (!geometryShape->GetRectangles(rectangles.get(), count))
 		{
 			return hr;
@@ -455,7 +441,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_DrawGeometry(
 	)
 	{
 		const auto occlusionContext = This->GetOcclusionContext();
-		if (auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionContext, true); glassCoverageSet)
+		if (const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionContext, true); glassCoverageSet)
 		{
 			D2D1_RECT_F bounds{};
 			RETURN_IF_FAILED(geometryShape->GetTightBounds(&bounds, occlusionContext->GetWorldTransform()));
@@ -464,12 +450,10 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_DrawGeometry(
 				std::fabs(wil::rect_height(bounds) * wil::rect_width(bounds)) > 1.f
 			)
 			{
-				RETURN_IF_FAILED(
-					glassCoverageSet->Add(
-						bounds,
-						occlusionContext->GetCurrentZ(),
-						occlusionContext->GetDeviceTransform()
-					)
+				glassCoverageSet->Add(
+					bounds,
+					occlusionContext->GetCurrentZ(),
+					occlusionContext->GetDeviceTransform()
 				);
 			}
 		}
@@ -478,13 +462,13 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_DrawGeometry(
 	return hr;
 }
 
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_SetDeviceTransform(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_SetDeviceTransform(
 	dwmcore::COcclusionContext* This,
 	const dwmcore::CMILMatrix* matrix
 )
 {
 	if (
-		auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This);
+		const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This);
 		glassCoverageSet
 	)
 	{
@@ -494,7 +478,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_SetDeviceTransfor
 	return g_COcclusionContext_SetDeviceTransform_Org(This, matrix);
 }
 
-void STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_Destructor(dwmcore::COcclusionContext* This)
+void STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_Destructor(dwmcore::COcclusionContext* This)
 {
 	GlassCoverageSetFactory::Remove(This);
 	g_shrunkCoverageSetMap.erase(This);
@@ -502,7 +486,7 @@ void STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_Destructor(dwmcore::
 }
 
 
-bool STDMETHODCALLTYPE GlassSafetyZone::MyCArrayBasedCoverageSet_IsCovered(
+bool STDMETHODCALLTYPE GlassIntegrity::MyCArrayBasedCoverageSet_IsCovered(
 	dwmcore::CArrayBasedCoverageSet* This,
 	const D2D1_RECT_F& coverage,
 	int depth
@@ -511,7 +495,7 @@ bool STDMETHODCALLTYPE GlassSafetyZone::MyCArrayBasedCoverageSet_IsCovered(
 	const auto extendedAmount = GlassKernel::GetBlurExtendedAmount();
 	auto covered = g_CArrayBasedCoverageSet_IsCovered_Org(This, coverage, depth);
 
-	auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This->GetOcclusionContext());
+	const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This->GetOcclusionContext());
 	if (
 		g_calculationContext.IsActive() &&
 		extendedAmount &&
@@ -543,7 +527,7 @@ bool STDMETHODCALLTYPE GlassSafetyZone::MyCArrayBasedCoverageSet_IsCovered(
 
 	return covered;
 }
-bool STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_IsOccluded(
+bool STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_IsOccluded(
 	dwmcore::COcclusionContext* This,
 	const D2D1_RECT_F& coverage,
 	int depth,
@@ -558,7 +542,7 @@ bool STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_IsOccluded(
 		ignoreDeviceTransform
 	);
 
-	auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This);
+	const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(This);
 	if (
 		g_calculationContext.IsActive() &&
 		extendedAmount &&
@@ -582,7 +566,7 @@ bool STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_IsOccluded(
 
 	return occluded;
 }
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_PageInPixelsRectToDeviceRect(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_PageInPixelsRectToDeviceRect(
 	dwmcore::COcclusionContext* This,
 	const D2D1_RECT_F& src,
 	D2D1_RECT_F* dst
@@ -599,7 +583,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCOcclusionContext_PageInPixelsRectT
 		dst
 	);
 }
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDirtyRegion_GetUnOccludedDirtyRect(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDirtyRegion_GetUnOccludedDirtyRect(
 	dwmcore::CDirtyRegion* This,
 	D2D1_RECT_F* dirtyRect,
 	int i,
@@ -609,12 +593,12 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDirtyRegion_GetUnOccludedDirtyRect
 	dwmcore::COcclusionContext* occlusionContext
 )
 {
-	auto context = occlusionContext ? occlusionContext : This->GetOcclusionContext();
-	auto calculationScope = EnterUnoccludedDirtyRegionCalculationContext(
+	const auto context = occlusionContext ? occlusionContext : This->GetOcclusionContext();
+	const auto calculationScope = EnterUnoccludedDirtyRegionCalculationContext(
 		&g_calculationContext,
 		context->GetFrameId() == dwmcore::GetCurrentFrameId() ? context : nullptr
 	);
-	auto hr = g_CDirtyRegion_GetUnOccludedDirtyRect_Org(
+	const auto hr = g_CDirtyRegion_GetUnOccludedDirtyRect_Org(
 		This,
 		dirtyRect,
 		i,
@@ -634,7 +618,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDirtyRegion_GetUnOccludedDirtyRect
 
 	return hr;
 }
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDirtyRegion_GetOptimizedRect(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDirtyRegion_GetOptimizedRect(
 	dwmcore::CDirtyRegion* This,
 	D2D1_RECT_F* dirtyRect,
 	int i,
@@ -646,12 +630,12 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDirtyRegion_GetOptimizedRect(
 	dwmcore::COcclusionContext* occlusionContext
 )
 {
-	auto context = occlusionContext ? occlusionContext : This->GetOcclusionContext();
-	auto calculationScope = EnterUnoccludedDirtyRegionCalculationContext(
+	const auto context = occlusionContext ? occlusionContext : This->GetOcclusionContext();
+	const auto calculationScope = EnterUnoccludedDirtyRegionCalculationContext(
 		&g_calculationContext,
 		context->GetFrameId() == dwmcore::GetCurrentFrameId() ? context : nullptr
 	);
-	auto hr = g_CDirtyRegion_GetOptimizedRect_Org(
+	const auto hr = g_CDirtyRegion_GetOptimizedRect_Org(
 		This,
 		dirtyRect,
 		i,
@@ -665,7 +649,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDirtyRegion_GetOptimizedRect(
 
 	return hr;
 }
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCTreeDirty_GetOptimizedRect(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCTreeDirty_GetOptimizedRect(
 	dwmcore::CTreeDirty* This,
 	D2D1_RECT_F* dirtyRect,
 	UINT i,
@@ -677,11 +661,11 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCTreeDirty_GetOptimizedRect(
 	const DWM::span<dwmcore::CVisual>& visuals
 )
 {
-	auto calculationScope = EnterUnoccludedDirtyRegionCalculationContext(
+	const auto calculationScope = EnterUnoccludedDirtyRegionCalculationContext(
 		&g_calculationContext,
 		occlusionContext
 	);
-	auto hr = g_CTreeDirty_GetOptimizedRect_Org(
+	const auto hr = g_CTreeDirty_GetOptimizedRect_Org(
 		This,
 		dirtyRect,
 		i,
@@ -697,11 +681,11 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCTreeDirty_GetOptimizedRect(
 }
 
 template <typename T>
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 	dwmcore::CDrawingContext* This,
+	dwmcore::CVisualTree* tree,
 	const D2D1_RECT_F& rectangle,
 	dwmcore::COcclusionContext* occlusionContext,
-	bool useSuperSample,
 	T&& callback
 )
 {
@@ -709,7 +693,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 
 	do
 	{
-		if (GlassKernel::IsInCVIHierarchy())
+		if (HookHelper::vftbl_of(tree) != dwmcore::CDesktopTree::vftable)
 		{
 			break;
 		}
@@ -745,23 +729,28 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 			break;
 		}
 
-		const auto renderTargetBitmap = This->AcquireRenderTargetBitmap(extendedAmount > 0.f);
+		RETURN_IF_FAILED(This->ApplyRenderStateInternal(false));
+		const auto d2dContext = This->GetD2DContext();
+		const auto renderTargetBitmap = Util::GetTargetBitmapFromDeviceContext(d2dContext->GetDeviceContext());
 		if (!renderTargetBitmap)
 		{
 			break;
 		}
 
-		const auto context = This->GetD2DContext()->GetDeviceContext();
-		winrt::com_ptr<ID2D1Device> device{ nullptr };
-		context->GetDevice(device.put());
-		// device lost
-		if (g_deviceNoRef != device.get())
+		if (renderTargetBitmap->GetPixelFormat().alphaMode != D2D1_ALPHA_MODE_IGNORE)
 		{
-			g_deviceNoRef = device.get();
-			g_glassSafetyZoneLayer.Reset();
+			break;
 		}
 
-		if (g_glassSafetyZoneLayer.GetOwner())
+		const auto context = This->GetD2DContext()->GetDeviceContext();
+
+		auto safetyZoneLayer = g_safetyZoneLayer;
+		if (!safetyZoneLayer)
+		{
+			safetyZoneLayer = winrt::make_self<CGlassSafetyZoneLayer>();
+			g_safetyZoneLayer = safetyZoneLayer;
+		}
+		if (safetyZoneLayer->GetOwner()) [[unlikely]]
 		{
 			break;
 		}
@@ -775,13 +764,12 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 		};
 		if (
 			FAILED(
-				g_glassSafetyZoneLayer.Push(
+				safetyZoneLayer->Push(
 					context,
 					renderTargetBitmap.get(),
 					This->GetDeviceTransform()->GetD2DMatrix(),
 					rectangle,
-					extendedAmount,
-					useSuperSample
+					extendedAmount
 				)
 			)
 		)
@@ -790,24 +778,20 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree(
 		}
 
 		ShrinkOccluderGlassAboved(occlusionContext);
-		const auto status = GlassRenderer::ControlBlurRendering(false);
 		hr = callback(extendedPixelRectangle);
-		GlassRenderer::ControlBlurRendering(status);
 
-		This->FlushD2D();
-		g_glassSafetyZoneLayer.Pop();
+		LOG_IF_FAILED(This->FlushD2D());
+		safetyZoneLayer->Pop();
 
 		return hr;
 	}
 	while (false);
 
-	const auto status = GlassRenderer::ControlBlurRendering(true);
 	hr = callback(rectangle);
-	GlassRenderer::ControlBlurRendering(status);
 
 	return hr;
 }
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win10(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree_Win10(
 	dwmcore::CDrawingContext* This,
 	dwmcore::CVisualTree* tree,
 	const D2D1_RECT_F& rectangle,
@@ -818,9 +802,9 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 {
 	return MyCDrawingContext_DrawVisualTree(
 		This,
+		tree,
 		rectangle,
 		occlusionContext,
-		useSuperSample,
 		[=](const D2D1_RECT_F& replacedRectangle)
 		{
 			return reinterpret_cast<decltype(&MyCDrawingContext_DrawVisualTree_Win10)>(g_CDrawingContext_DrawVisualTree_Org)(
@@ -834,7 +818,7 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 		}
 	);
 }
-HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win11(
+HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree_Win11(
 	dwmcore::CDrawingContext* This,
 	dwmcore::CVisualTree* tree,
 	const D2D1_RECT_F& rectangle,
@@ -846,9 +830,9 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 {
 	return MyCDrawingContext_DrawVisualTree(
 		This,
+		tree,
 		rectangle,
 		occlusionContext,
-		useSuperSample,
 		[=](const D2D1_RECT_F& replacedRectangle)
 		{
 			return reinterpret_cast<decltype(&MyCDrawingContext_DrawVisualTree_Win11)>(g_CDrawingContext_DrawVisualTree_Org)(
@@ -864,7 +848,12 @@ HRESULT STDMETHODCALLTYPE GlassSafetyZone::MyCDrawingContext_DrawVisualTree_Win1
 	);
 }
 
-void GlassSafetyZone::Update([[maybe_unused]] GlassEngine::UpdateType type)
+void GlassIntegrity::DestroyDeviceResources()
+{
+	g_safetyZoneLayer = nullptr;
+}
+
+void GlassIntegrity::Update([[maybe_unused]] GlassEngine::UpdateType type)
 {
 	if (Shared::IsGlassFullyOpaque())
 	{
@@ -872,7 +861,7 @@ void GlassSafetyZone::Update([[maybe_unused]] GlassEngine::UpdateType type)
 	}
 }
 
-void GlassSafetyZone::Startup()
+void GlassIntegrity::Startup()
 {
 	dwmcore::g_projectionArray.ApplyToVariable("COcclusionContext::Compute", g_COcclusionContext_Compute_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("COcclusionContext::SetDeviceTransform", g_COcclusionContext_SetDeviceTransform_Org);
@@ -925,7 +914,7 @@ void GlassSafetyZone::Startup()
 	);
 }
 
-void GlassSafetyZone::Shutdown()
+void GlassIntegrity::Shutdown()
 {
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
@@ -964,7 +953,7 @@ void GlassSafetyZone::Shutdown()
 		})
 	);
 
-	Sleep(1);
+	Sleep(20);
 
 	if (g_COcclusionContext_DrawGeometry_Org)
 	{
@@ -973,5 +962,5 @@ void GlassSafetyZone::Shutdown()
 
 	GlassCoverageSetFactory::Shutdown();
 	g_shrunkCoverageSetMap.clear();
-	g_glassSafetyZoneLayer.Reset();
+	DestroyDeviceResources();
 }

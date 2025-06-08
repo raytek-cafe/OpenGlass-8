@@ -3,8 +3,10 @@
 #include "cpprt.hpp"
 #include "GlassEngine.hpp"
 
-namespace OpenGlass::GlassSafetyZone
+namespace OpenGlass::GlassIntegrity
 {
+	void DestroyDeviceResources();
+
 	void Update(GlassEngine::UpdateType type);
 	void Startup();
 	void Shutdown();
