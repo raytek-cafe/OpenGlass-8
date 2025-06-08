@@ -72,8 +72,9 @@ You can change the settings of OpenGlass via editing the Windows registry.
 ### Theme settings
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
+| CaptionButtons | DWORD | Changes caption buttons sizes and the opacity of the button glyphs.<ul><li>0x0=Windows 10 style (default)</li><li>0x1=Windows Vista style</li><li>0x2=Windows 7 style</li><li>0x3=Windows 8 style</li></ul> |
 | CenterCaption | DWORD | Controls how title bar text is aligned.<ul><li>0x0=Keeps it on the left (default)</li><li>0x1=Centers it between the titlebar icon and the titlebar buttons</li></ul> |
-| TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <ul><li>0x0=No glow effect</li><li>0x1=Glow effect loaded from atlas (default)</li><li>0x2=Glow effect loaded from atlas and theme opacity is respected</li><li>0x3=Composited glow effect using your theme settings HIWORD of the value specifies glow size (0=theme default)</li></ul> |
+| TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <ul><li>0x0=No glow effect</li><li>0x1=Glow effect loaded from atlas (default)</li><li>0x2=Glow effect loaded from atlas and theme opacity is respected</li><li>0x3=Composited glow effect using your theme settings HIWORD of the value specifies glow size (0=theme default)</li></ul |
 | CustomThemeAtlas | String | path to PNG file with theme resource (bitmap must have exactly the same layout as msstyle theme you are using!) |
 | DisableModernBorders | DWORD | Disable modern rounded window borders. <ul><li>0x0=Enable modern borders</li><li>0x1=Disable modern borders</li></ul><br>ℹ️ Only valid in Win11 |
 

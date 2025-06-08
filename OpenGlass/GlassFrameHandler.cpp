@@ -25,6 +25,7 @@ namespace OpenGlass::GlassFrameHandler
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10(uDWM::CTopLevelWindow* This, bool windowFramesOnly, bool unused1, bool unused2, uDWM::CTopLevelWindow** clonedWindow);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11(uDWM::CTopLevelWindow* This, bool windowFramesOnly, uDWM::CTopLevelWindow** clonedWindow);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateNCAreaBackground(uDWM::CTopLevelWindow* This);
+	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes(uDWM::CTopLevelWindow* This);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_UpdateClientBlur(uDWM::CTopLevelWindow* This);
 	HRESULT STDMETHODCALLTYPE MyCButton_CloneVisualTree(uDWM::CButton* This, uDWM::CButton** clonedVisual, UINT cloneOption);
 	void STDMETHODCALLTYPE MyCButton_SetSize(uDWM::CButton* This, const SIZE* size);
@@ -48,6 +49,7 @@ namespace OpenGlass::GlassFrameHandler
 	decltype(&MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage) g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org{ nullptr };
 	PVOID g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateNCAreaBackground) g_CTopLevelWindow_UpdateNCAreaBackground_Org{ nullptr };
+	decltype(&MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes) g_CTopLevelWindow_UpdateNCAreaPositionsAndSizes_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateClientBlur) g_CTopLevelWindow_UpdateClientBlur_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_ValidateVisual) g_CTopLevelWindow_ValidateVisual_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_Destructor) g_CTopLevelWindow_Destructor_Org{ nullptr };
@@ -121,8 +123,68 @@ namespace OpenGlass::GlassFrameHandler
 	bool g_systemBackdrop{ false };
 	std::optional<bool> g_redirectFirstCreateRectRgnCall{};
 	bool g_windowFramesOnly{ false };
+	enum CaptionButtons : UINT
+	{
+		Disabled = 0,
+		WindowsVista,
+		Windows7,
+		Windows8
+	} g_captionButtons{ 0 };
 
+	SIZE CalculateButtonSize(int cySize, int buttonType);
 	HRESULT UpdateReflectionViewport(uDWM::CTopLevelWindow* window);
+}
+
+SIZE GlassFrameHandler::CalculateButtonSize(int cySize, int buttonType)
+{
+	enum
+	{
+		LoneButton = 0,
+		MinButton,
+		MaxButton,
+		CloseButton,
+	};
+
+	auto [heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio] = std::make_tuple(0.f, 0.f, 0.f, 0.f, 0.f);
+
+	switch (g_captionButtons)
+	{
+	case CaptionButtons::WindowsVista:
+		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
+			std::make_tuple(0.94736844f, 2.3157895f, 2.3157895f, 1.3157895f, 1.3684211f);
+		break;
+	case CaptionButtons::Windows7:
+	default:
+		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
+			std::make_tuple(0.95238096f, 2.3333333f, 2.3333333f, 1.2857143f, 1.3809524f);
+		break;
+	case CaptionButtons::Windows8:
+		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
+			std::make_tuple(0.95454544f, 1.6363636f, 2.2272727f, 1.2272727f, 1.3181819f);
+		break;
+	}
+
+	SIZE buttonSize = { 0, static_cast<LONG>(std::round(static_cast<float>(cySize) * heightRatio)) };
+
+	switch (buttonType)
+	{
+	case CloseButton:
+		buttonSize.cx = static_cast<LONG>(std::round(static_cast<float>(cySize) * closeWidthRatio));
+		break;
+	case MaxButton:
+		buttonSize.cx = static_cast<LONG>(std::round(static_cast<float>(cySize) * maxWidthRatio));
+		break;
+	case MinButton:
+		buttonSize.cx = static_cast<LONG>(std::round(static_cast<float>(cySize) * minWidthRatio));
+		break;
+	case LoneButton:
+		buttonSize.cx = static_cast<LONG>(std::round(static_cast<float>(cySize) * loneWidthRatio));
+		break;
+	default:
+		break;
+	}
+
+	return buttonSize;
 }
 
 HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* window)
@@ -560,6 +622,101 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackg
 	return hr;
 }
 
+HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes(uDWM::CTopLevelWindow* This)
+{
+	auto hr = g_CTopLevelWindow_UpdateNCAreaPositionsAndSizes_Org(This);
+
+	if (!g_captionButtons)
+	{
+		return hr;
+	}
+
+	auto data = This->GetData();
+	if (!data)
+	{
+		return hr;
+	}
+
+	auto maximized = This->IsWindowMaximized();
+	auto toolWindow = This->IsToolWindow();
+	auto loneButton = This->IsLoneButton();
+
+	auto& visibleMargins = This->GetMarginsVisibleOutside(maximized);
+	auto& borderMargins = This->GetBorderMargins();
+
+	RECT rect{ 0 };
+	This->GetActualWindowRect(&rect, true, true, true);
+	int cxLeft = (rect.left < 0) ? -rect.left : This->GetFrameThickness();
+
+	auto UpdateButton = [&](int buttonType, int offsetRight, int offsetTop, SIZE buttonSize)
+		{
+			if (auto button = This->GetButton(buttonType); button)
+			{
+				MARGINS inset = { 0x7FFFFFFF, offsetRight, offsetTop, 0x7FFFFFFF };
+
+				g_CButton_SetSize_Org(button, &buttonSize);
+				button->SetInsetFromParent(inset);
+				*button->GetGlyphOpacity() = 1.f;
+
+				return true;
+			}
+			return false;
+		};
+
+	int cySize = GetSystemMetricsForDpi(SM_CYSIZE, data->GetWindowDPI());
+
+	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : This->GetFrameThickness() - 2);
+	int offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
+
+	auto closeButtonSize = loneButton ? CalculateButtonSize(cySize, 0) : CalculateButtonSize(cySize, 3);
+	auto maxButtonSize = CalculateButtonSize(cySize, 2);
+	auto minButtonSize = CalculateButtonSize(cySize, 1);
+
+	if (UpdateButton(3, offsetRight, offsetTop, closeButtonSize) && !toolWindow)
+	{
+		offsetRight = closeButtonSize.cx + offsetRight;
+	}
+
+	if (UpdateButton(2, offsetRight, offsetTop, maxButtonSize))
+	{
+		offsetRight += maxButtonSize.cx;
+	}
+
+	if (UpdateButton(1, offsetRight, offsetTop, minButtonSize))
+	{
+		offsetRight += minButtonSize.cx;
+	}
+
+	UpdateButton(0, offsetRight, offsetTop, minButtonSize);
+
+	if (toolWindow)
+	{
+		int cySmSize = GetSystemMetricsForDpi(SM_CYSMSIZE, data->GetWindowDPI());
+		SIZE toolButtonSize = { cySmSize , cySmSize };
+
+		offsetTop = (borderMargins.cyTopHeight - toolButtonSize.cy - 4 > offsetTop) ? borderMargins.cyTopHeight - toolButtonSize.cy - 4 : offsetTop;
+		UpdateButton(3, offsetRight, offsetTop, toolButtonSize);
+		offsetRight = toolButtonSize.cx + offsetRight;
+	}
+
+	if (auto iconVisual = This->GetIconVisual(); iconVisual && cxLeft > 0)
+	{
+		iconVisual->SetInsetFromParentLeft(cxLeft);
+	}
+
+	if (auto textVisual = This->GetTextVisual(); textVisual)
+	{
+		if (auto iconVisual = This->GetIconVisual(); iconVisual && cxLeft > 0)
+		{
+			cxLeft += iconVisual->GetWidth() ? iconVisual->GetWidth() + 5 : 0;
+		}
+		MARGINS inset = { cxLeft, offsetRight, visibleMargins.cyTopHeight, 0x7FFFFFFF };
+		textVisual->SetInsetFromParent(inset);
+	}
+
+	return hr;
+}
+
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateClientBlur(uDWM::CTopLevelWindow* This)
 {
 	const auto hr = g_CTopLevelWindow_UpdateClientBlur_Org(This);
@@ -658,7 +815,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCButton_CloneVisualTree(uDWM::CBu
 		(*clonedVisual)->SetVisualStates(
 			This->GetGlyphBitmapArray(),
 			This->GetButtonBitmapArray(),
-			This->GetGlyphOpacity()
+			*This->GetGlyphOpacity()
 		)
 	);
 
@@ -818,6 +975,7 @@ void GlassFrameHandler::Update(GlassEngine::UpdateType type)
 	if (type & GlassEngine::UpdateType::Theme)
 	{
 		Shared::g_disableModernBorders = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"DisableModernBorders", FALSE));
+		g_captionButtons = static_cast<CaptionButtons>(GlassEngine::GetDwordFromRegistry(L"CaptionButtons", 0));
 	}
 }
 
@@ -827,6 +985,7 @@ void GlassFrameHandler::Startup()
 	uDWM::g_projectionArray.ApplyToVariable("ResourceHelper::CreateGeometryFromHRGN", g_ResourceHelper_CreateGeometryFromHRGN_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelAtlasedRectsVisual::ShouldCloneAtlasImage", g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateNCAreaBackground", g_CTopLevelWindow_UpdateNCAreaBackground_Org);
+	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateNCAreaPositionsAndSizes", g_CTopLevelWindow_UpdateNCAreaPositionsAndSizes_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateClientBlur", g_CTopLevelWindow_UpdateClientBlur_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::ValidateVisual", g_CTopLevelWindow_ValidateVisual_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::~CTopLevelWindow", g_CTopLevelWindow_Destructor_Org);
@@ -996,6 +1155,7 @@ void GlassFrameHandler::Startup()
 			HookHelper::Detours::Attach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
 			HookHelper::Detours::Attach(&g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org, MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
+			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateNCAreaPositionsAndSizes_Org, MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateClientBlur_Org, MyCTopLevelWindow_UpdateClientBlur);
 			
 			if (uDWM::g_buildNumber <= os::build_w11_21h2)
@@ -1027,6 +1187,7 @@ void GlassFrameHandler::Shutdown()
 			HookHelper::Detours::Detach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
 			HookHelper::Detours::Detach(&g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org, MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
+			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateNCAreaPositionsAndSizes_Org, MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateClientBlur_Org, MyCTopLevelWindow_UpdateClientBlur);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_Destructor_Org, MyCTopLevelWindow_Destructor);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
