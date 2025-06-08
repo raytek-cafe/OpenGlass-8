@@ -31,7 +31,7 @@ HRESULT STDMETHODCALLTYPE CAeroEffect::Build(
 	{
 		RETURN_IF_FAILED(Initialize(context));
 	}
-	const auto params = static_cast<const AeroParams*>(additionalParams);
+	const auto params = static_cast<const CAeroParams*>(additionalParams);
 
 	RETURN_IF_FAILED(
 		m_customBlurEffect->Build(

@@ -3,7 +3,7 @@
 
 namespace OpenGlass
 {
-	struct BlurParams : CustomBlurParams
+	struct CBlurParams : CCustomBlurParams
 	{
 		D2D1_COLOR_F color;
 		float colorBalance;

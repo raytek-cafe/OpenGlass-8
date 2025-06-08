@@ -4,6 +4,8 @@
 
 namespace OpenGlass::CaptionTextHandler
 {
+	void DestroyDeviceResources();
+	
 	void Update(GlassEngine::UpdateType type);
 	void Startup();
 	void Shutdown();

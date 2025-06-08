@@ -44,7 +44,7 @@ HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
 	{
 		RETURN_IF_FAILED(Initialize(context));
 	}
-	const auto params = static_cast<const BlurParams*>(additionalParams);
+	const auto params = static_cast<const CBlurParams*>(additionalParams);
 
 	RETURN_IF_FAILED(
 		m_customBlurEffect->Build(

@@ -195,6 +195,184 @@ namespace OpenGlass::Util
 		return HIWORD(fileInfo->dwFileVersionLS);
 	}
 
+	inline winrt::com_ptr<ID2D1Bitmap1> GetTargetBitmapFromDeviceContext(
+		ID2D1DeviceContext* context
+	)
+	{
+		winrt::com_ptr<ID2D1Bitmap1> targetBitmap{ nullptr };
+
+		winrt::com_ptr<ID2D1Image> targetImage{ nullptr };
+		context->GetTarget(targetImage.put());
+		if (!targetImage)
+		{
+			return targetBitmap;
+		}
+
+		LOG_IF_FAILED(targetImage->QueryInterface(targetBitmap.put()));
+
+		return targetBitmap;
+	}
+
+	inline HRESULT DrawNineGridBitmap(
+		ID2D1DeviceContext* context,
+		ID2D1Bitmap1* bitmap,
+		const D2D1_RECT_F& destinationRect,
+		const MARGINS& margins,
+		float opacity
+	)
+	{
+		const auto primitiveBlend = context->GetPrimitiveBlend();
+		context->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+		context->PushAxisAlignedClip(destinationRect, D2D1_ANTIALIAS_MODE_ALIASED);
+		const auto restoreBlendMode = wil::scope_exit([&] 
+		{
+			context->PopAxisAlignedClip();
+			context->SetPrimitiveBlend(primitiveBlend);
+		});
+
+		const auto destinationWidth = wil::rect_width(destinationRect);
+		const auto destinationHeight = wil::rect_height(destinationRect);
+
+		if (destinationWidth <= 0.f || destinationHeight <= 0.f)
+		{
+			return S_OK; // Nothing to draw for non-positive destination size
+		}
+
+		const auto bitmapSize = bitmap->GetSize();
+
+		// Source margin sizes from input MARGINS, converted to float
+		// Assuming margins members (cxLeftWidth etc.) are non-negative as is typical.
+		D2D1_RECT_F srcMargins
+		{
+			static_cast<float>(margins.cxLeftWidth),
+			static_cast<float>(margins.cyTopHeight),
+			static_cast<float>(margins.cxRightWidth),
+			static_cast<float>(margins.cyBottomHeight)
+		};
+
+		// Source center part dimensions from bitmap
+		const auto totalSrcHorizontalMargins = srcMargins.left + srcMargins.right;
+		const auto totalSrcVerticalMargins = srcMargins.top + srcMargins.bottom;
+		const auto srcCenterPartWidth = std::max(0.f, bitmapSize.width - totalSrcHorizontalMargins);
+		const auto srcCenterPartHeight = std::max(0.f, bitmapSize.height - totalSrcVerticalMargins);
+
+		// Initialize effective destination dimensions for margins and center parts
+		D2D1_RECT_F destMargins = srcMargins;
+
+		auto destCenterPartWidth = destinationWidth - totalSrcHorizontalMargins;
+		auto destCenterPartHeight = destinationHeight - totalSrcVerticalMargins;
+
+		// Adjust horizontal destination parts if calculated center width is negative
+		if (destCenterPartWidth < 0.f)
+		{
+			destCenterPartWidth = 0.f; // Center part cannot be negative
+			
+			const auto ratio = destinationWidth / totalSrcHorizontalMargins;
+			destMargins.left *= ratio;
+			destMargins.left = std::round(destMargins.left);
+			destMargins.right = destinationWidth - destMargins.left;
+		}
+
+		// Adjust vertical destination parts if calculated center height is negative
+		if (destCenterPartHeight < 0.f)
+		{
+			destCenterPartHeight = 0.f; // Center part cannot be negative
+
+			const auto ratio = destinationHeight / totalSrcVerticalMargins;
+			destMargins.top *= ratio;
+			destMargins.top = std::round(destMargins.top);
+			destMargins.bottom = destinationHeight - destMargins.top;
+		}
+
+		// Top-Left
+		context->DrawBitmap(
+			bitmap,
+			D2D1::RectF(destinationRect.left, destinationRect.top, destinationRect.left + destMargins.left, destinationRect.top + destMargins.top),
+			opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+			D2D1::RectF(0.f, 0.f, srcMargins.left, srcMargins.top)
+		);
+
+		if (destCenterPartWidth)
+		{
+			// Top-Center
+			context->DrawBitmap(
+				bitmap,
+				D2D1::RectF(destinationRect.left + destMargins.left, destinationRect.top, destinationRect.left + destMargins.left + destCenterPartWidth, destinationRect.top + destMargins.top),
+				opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+				D2D1::RectF(srcMargins.left, 0.f, srcMargins.left + srcCenterPartWidth, srcMargins.top)
+			);
+		}
+
+		// Top-Right
+		context->DrawBitmap(
+			bitmap,
+			D2D1::RectF(destinationRect.right - destMargins.right, destinationRect.top, destinationRect.right, destinationRect.top + destMargins.top),
+			opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+			D2D1::RectF(bitmapSize.width - srcMargins.right, 0.f, bitmapSize.width, srcMargins.top)
+		);
+
+		if (destCenterPartHeight)
+		{
+			// Middle-Left
+			context->DrawBitmap(
+				bitmap,
+				D2D1::RectF(destinationRect.left, destinationRect.top + destMargins.top, destinationRect.left + destMargins.left, destinationRect.top + destMargins.top + destCenterPartHeight),
+				opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+				D2D1::RectF(0.f, srcMargins.top, srcMargins.left, srcMargins.top + srcCenterPartHeight)
+			);
+		}
+
+		if (destCenterPartWidth && destCenterPartHeight)
+		{
+			// Middle-Center
+			context->DrawBitmap(
+				bitmap,
+				D2D1::RectF(destinationRect.left + destMargins.left, destinationRect.top + destMargins.top, destinationRect.left + destMargins.left + destCenterPartWidth, destinationRect.top + destMargins.top + destCenterPartHeight),
+				opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+				D2D1::RectF(srcMargins.left, srcMargins.top, srcMargins.left + srcCenterPartWidth, srcMargins.top + srcCenterPartHeight)
+			);
+		}
+
+		if (destCenterPartHeight)
+		{
+			// Middle-Right
+			context->DrawBitmap(
+				bitmap,
+				D2D1::RectF(destinationRect.right - destMargins.right, destinationRect.top + destMargins.top, destinationRect.right, destinationRect.top + destMargins.top + destCenterPartHeight),
+				opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+				D2D1::RectF(bitmapSize.width - srcMargins.right, srcMargins.top, bitmapSize.width, srcMargins.top + srcCenterPartHeight)
+			);
+		}
+
+		// Bottom-Left
+		context->DrawBitmap(
+			bitmap,
+			D2D1::RectF(destinationRect.left, destinationRect.bottom - destMargins.bottom, destinationRect.left + destMargins.left, destinationRect.bottom),
+			opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+			D2D1::RectF(0.f, bitmapSize.height - srcMargins.bottom, srcMargins.left, bitmapSize.height)
+		);
+
+		if (destCenterPartWidth)
+		{
+			// Bottom-Center
+			context->DrawBitmap(
+				bitmap,
+				D2D1::RectF(destinationRect.left + destMargins.left, destinationRect.bottom - destMargins.bottom, destinationRect.left + destMargins.left + destCenterPartWidth, destinationRect.bottom),
+				opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+				D2D1::RectF(srcMargins.left, bitmapSize.height - srcMargins.bottom, srcMargins.left + srcCenterPartWidth, bitmapSize.height)
+			);
+		}
+
+		// Bottom-Right
+		context->DrawBitmap(
+			bitmap,
+			D2D1::RectF(destinationRect.right - destMargins.right, destinationRect.bottom - destMargins.bottom, destinationRect.right, destinationRect.bottom),
+			opacity, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
+			D2D1::RectF(bitmapSize.width - srcMargins.right, bitmapSize.height - srcMargins.bottom, bitmapSize.width, bitmapSize.height)
+		);
+
+		return S_OK;
+	}
 	inline HRESULT DrawNineGridBitmap(
 		HDC hdc,
 		HBITMAP bitmap,
@@ -210,307 +388,194 @@ namespace OpenGlass::Util
 		RETURN_LAST_ERROR_IF(GetObjectW(bitmap, sizeof(bmp), &bmp) == 0);
 
 		SelectObject(compatibleDC.get(), bitmap);
-		
-		POINT pt{};
-		RETURN_IF_WIN32_BOOL_FALSE(OffsetViewportOrgEx(hdc, destinationRect.left, destinationRect.top, &pt));
-		const auto cleanUp = wil::scope_exit([hdc, &pt]
-		{
-			SetViewportOrgEx(hdc, pt.x, pt.y, nullptr);
-		});
 
 		const auto destinationWidth = wil::rect_width(destinationRect);
 		const auto destinationHeight = wil::rect_height(destinationRect);
 
-		if (opacity == 255)
+		if (destinationWidth <= 0 || destinationHeight <= 0)
 		{
-			// left, top
-			StretchBlt(
-				hdc,
-				0,
-				0,
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				compatibleDC.get(),
-				0,
-				0,
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				SRCCOPY
-			);
-			// right, top
-			StretchBlt(
-				hdc,
-				destinationWidth - margins.cxRightWidth,
-				0,
-				margins.cxRightWidth,
-				margins.cyTopHeight,
-				compatibleDC.get(),
-				bmp.bmWidth - margins.cxRightWidth,
-				0,
-				margins.cxRightWidth,
-				margins.cyTopHeight,
-				SRCCOPY
-			);
-			// left, bottom
-			StretchBlt(
-				hdc,
-				0,
-				destinationHeight - margins.cyBottomHeight,
-				margins.cxLeftWidth,
-				margins.cyBottomHeight,
-				compatibleDC.get(),
-				0,
-				bmp.bmHeight - margins.cyBottomHeight,
-				margins.cxLeftWidth,
-				margins.cyBottomHeight,
-				SRCCOPY
-			);
-			// right, bottom
-			StretchBlt(
-				hdc,
-				destinationWidth - margins.cxRightWidth,
-				destinationHeight - margins.cyBottomHeight,
-				margins.cxRightWidth,
-				margins.cyBottomHeight,
-				compatibleDC.get(),
-				bmp.bmWidth - margins.cxRightWidth,
-				bmp.bmHeight - margins.cyBottomHeight,
-				margins.cxRightWidth,
-				margins.cyBottomHeight,
-				SRCCOPY
-			);
+			return S_OK; // Nothing to draw for non-positive destination size
+		}
+
+		// Source center part dimensions from bitmap
+		const auto totalSrcHorizontalMargins = margins.cxLeftWidth + margins.cxRightWidth;
+		const auto totalSrcVerticalMargins = margins.cyTopHeight + margins.cyBottomHeight;
+		const auto srcCenterPartWidth = std::max(0l, bmp.bmWidth - totalSrcHorizontalMargins);
+		const auto srcCenterPartHeight = std::max(0l, bmp.bmHeight - totalSrcVerticalMargins);
+
+		// Calculate effective destination dimensions for margins and center parts
+		MARGINS destMargins = margins;
+
+		int destCenterPartWidth = destinationWidth - totalSrcHorizontalMargins;
+		int destCenterPartHeight = destinationHeight - totalSrcVerticalMargins;
+
+		// Adjust horizontal destination parts if calculated center width is negative
+		if (destCenterPartWidth < 0)
+		{
+			destCenterPartWidth = 0; // Center part cannot be negative
+
+			const auto ratio = static_cast<float>(destinationWidth) / static_cast<float>(totalSrcHorizontalMargins);
+			destMargins.cxLeftWidth = static_cast<int>(destMargins.cxLeftWidth * ratio);
+			destMargins.cxRightWidth = destinationWidth - destMargins.cxLeftWidth;
+		}
+
+		// Adjust vertical destination parts if calculated center height is negative
+		if (destCenterPartHeight < 0)
+		{
+			destCenterPartHeight = 0; // Center part cannot be negative
+
+			const auto ratio = static_cast<float>(destinationHeight) / static_cast<float>(totalSrcVerticalMargins);
+			destMargins.cyTopHeight = static_cast<int>(destMargins.cyTopHeight * ratio);
+			destMargins.cyBottomHeight = destinationHeight - destMargins.cyTopHeight;
+		}
+
+		BLENDFUNCTION bf
+		{
+			AC_SRC_OVER,
+			0,
+			static_cast<BYTE>(opacity),
+			AC_SRC_ALPHA
+		};
+		// left, top
+		GdiAlphaBlend(
+			hdc,
+			destinationRect.left,
+			destinationRect.top,
+			destMargins.cxLeftWidth, 
+			destMargins.cyTopHeight,
+			compatibleDC.get(),
+			0, 
+			0, 
+			margins.cxLeftWidth, 
+			margins.cyTopHeight,
+			bf
+		);
+		// right, top
+		GdiAlphaBlend(
+			hdc,
+			destinationRect.right - destMargins.cxRightWidth,
+			destinationRect.top,
+			destMargins.cxRightWidth, 
+			destMargins.cyTopHeight,
+			compatibleDC.get(),
+			bmp.bmWidth - margins.cxRightWidth, 
+			0, 
+			margins.cxRightWidth, 
+			margins.cyTopHeight,
+			bf
+		);
+		// left, bottom
+		GdiAlphaBlend(
+			hdc,
+			destinationRect.left,
+			destinationRect.bottom - destMargins.cyBottomHeight,
+			destMargins.cxLeftWidth, 
+			destMargins.cyBottomHeight,
+			compatibleDC.get(),
+			0, 
+			bmp.bmHeight - margins.cyBottomHeight, 
+			margins.cxLeftWidth, 
+			margins.cyBottomHeight,
+			bf
+		);
+		// right, bottom
+		GdiAlphaBlend(
+			hdc,
+			destinationRect.right - destMargins.cxRightWidth,
+			destinationRect.bottom - destMargins.cyBottomHeight,
+			destMargins.cxRightWidth, 
+			destMargins.cyBottomHeight,
+			compatibleDC.get(),
+			bmp.bmWidth - margins.cxRightWidth, 
+			bmp.bmHeight - margins.cyBottomHeight, 
+			margins.cxRightWidth, 
+			margins.cyBottomHeight,
+			bf
+		);
+		if (destCenterPartWidth)
+		{
 			// center, top
-			StretchBlt(
+			GdiAlphaBlend(
 				hdc,
-				margins.cxLeftWidth,
-				0,
-				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				margins.cyTopHeight,
+				destinationRect.left + destMargins.cxLeftWidth,
+				destinationRect.top,
+				destCenterPartWidth, 
+				destMargins.cyTopHeight,
 				compatibleDC.get(),
-				margins.cxLeftWidth,
-				0,
-				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cxLeftWidth, 
+				0, 
+				srcCenterPartWidth, 
 				margins.cyTopHeight,
-				SRCCOPY
-			);
-			// left, center
-			StretchBlt(
-				hdc,
-				0,
-				margins.cyTopHeight,
-				margins.cxLeftWidth,
-				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				compatibleDC.get(),
-				0,
-				margins.cyTopHeight,
-				margins.cxLeftWidth,
-				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				SRCCOPY
-			);
-			// right, center
-			StretchBlt(
-				hdc,
-				destinationWidth - margins.cxRightWidth,
-				margins.cyTopHeight,
-				margins.cxRightWidth,
-				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				compatibleDC.get(),
-				bmp.bmWidth - margins.cxRightWidth,
-				margins.cyTopHeight,
-				margins.cxRightWidth,
-				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				SRCCOPY
-			);
-			// center, bottom
-			StretchBlt(
-				hdc,
-				margins.cxLeftWidth,
-				destinationHeight - margins.cyBottomHeight,
-				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				margins.cyBottomHeight,
-				compatibleDC.get(),
-				margins.cxLeftWidth,
-				bmp.bmHeight - margins.cyBottomHeight,
-				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				margins.cyBottomHeight,
-				SRCCOPY
-			);
-			// center, center
-			StretchBlt(
-				hdc,
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				compatibleDC.get(),
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				SRCCOPY
+				bf
 			);
 		}
-		else
+		if (destCenterPartHeight)
 		{
-			BLENDFUNCTION bf
-			{
-				AC_SRC_OVER,
-				0,
-				static_cast<BYTE>(opacity),
-				AC_SRC_ALPHA
-			};
-			BP_PAINTPARAMS paintParams
-			{
-				sizeof(BP_PAINTPARAMS),
-				0,
-				nullptr,
-				&bf
-			};
-			HDC bufferedDC;
-			RECT targetRect
-			{
-				0,
-				0,
-				destinationWidth,
-				destinationHeight
-			};
-			const auto paintBuffer = BeginBufferedPaint(
-				hdc, 
-				&targetRect,
-				BPBF_TOPDOWNDIB, 
-				&paintParams,
-				&bufferedDC
-			);
-			RETURN_LAST_ERROR_IF_NULL(paintBuffer);
-
-			// left, top
-			StretchBlt(
-				bufferedDC,
-				0,
-				0,
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				compatibleDC.get(),
-				0,
-				0,
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				SRCCOPY
-			);
-			// right, top
-			StretchBlt(
-				bufferedDC,
-				destinationWidth - margins.cxRightWidth,
-				0,
-				margins.cxRightWidth,
-				margins.cyTopHeight,
-				compatibleDC.get(),
-				bmp.bmWidth - margins.cxRightWidth,
-				0,
-				margins.cxRightWidth,
-				margins.cyTopHeight,
-				SRCCOPY
-			);
-			// left, bottom
-			StretchBlt(
-				bufferedDC,
-				0,
-				destinationHeight - margins.cyBottomHeight,
-				margins.cxLeftWidth,
-				margins.cyBottomHeight,
-				compatibleDC.get(),
-				0,
-				bmp.bmHeight - margins.cyBottomHeight,
-				margins.cxLeftWidth,
-				margins.cyBottomHeight,
-				SRCCOPY
-			);
-			// right, bottom
-			StretchBlt(
-				bufferedDC,
-				destinationWidth - margins.cxRightWidth,
-				destinationHeight - margins.cyBottomHeight,
-				margins.cxRightWidth,
-				margins.cyBottomHeight,
-				compatibleDC.get(),
-				bmp.bmWidth - margins.cxRightWidth,
-				bmp.bmHeight - margins.cyBottomHeight,
-				margins.cxRightWidth,
-				margins.cyBottomHeight,
-				SRCCOPY
-			);
-			// center, top
-			StretchBlt(
-				bufferedDC,
-				margins.cxLeftWidth,
-				0,
-				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				margins.cyTopHeight,
-				compatibleDC.get(),
-				margins.cxLeftWidth,
-				0,
-				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				margins.cyTopHeight,
-				SRCCOPY
-			);
 			// left, center
-			StretchBlt(
-				bufferedDC,
-				0,
-				margins.cyTopHeight,
-				margins.cxLeftWidth,
-				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+			GdiAlphaBlend(
+				hdc,
+				destinationRect.left,
+				destinationRect.top + destMargins.cyTopHeight,
+				destMargins.cxLeftWidth, 
+				destCenterPartHeight,
 				compatibleDC.get(),
-				0,
-				margins.cyTopHeight,
-				margins.cxLeftWidth,
-				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				SRCCOPY
+				0, 
+				margins.cyTopHeight, 
+				margins.cxLeftWidth, 
+				srcCenterPartHeight,
+				bf
 			);
+		}
+		if (destCenterPartHeight)
+		{
 			// right, center
-			StretchBlt(
-				bufferedDC,
-				destinationWidth - margins.cxRightWidth,
-				margins.cyTopHeight,
-				margins.cxRightWidth,
-				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+			GdiAlphaBlend(
+				hdc,
+				destinationRect.right - destMargins.cxRightWidth,
+				destinationRect.top + destMargins.cyTopHeight,
+				destMargins.cxRightWidth, 
+				destCenterPartHeight,
 				compatibleDC.get(),
-				bmp.bmWidth - margins.cxRightWidth,
-				margins.cyTopHeight,
-				margins.cxRightWidth,
-				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				SRCCOPY
+				bmp.bmWidth - margins.cxRightWidth, 
+				margins.cyTopHeight, 
+				margins.cxRightWidth, 
+				srcCenterPartHeight,
+				bf
 			);
+		}
+		if (destCenterPartWidth)
+		{
 			// center, bottom
-			StretchBlt(
-				bufferedDC,
-				margins.cxLeftWidth,
-				destinationHeight - margins.cyBottomHeight,
-				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				margins.cyBottomHeight,
+			GdiAlphaBlend(
+				hdc,
+				destinationRect.left + destMargins.cxLeftWidth,
+				destinationRect.bottom - destMargins.cyBottomHeight,
+				destCenterPartWidth, 
+				destMargins.cyBottomHeight,
 				compatibleDC.get(),
-				margins.cxLeftWidth,
-				bmp.bmHeight - margins.cyBottomHeight,
-				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
+				margins.cxLeftWidth, 
+				bmp.bmHeight - margins.cyBottomHeight, 
+				srcCenterPartWidth, 
 				margins.cyBottomHeight,
-				SRCCOPY
+				bf
 			);
+		}
+		if (destCenterPartWidth && destCenterPartHeight)
+		{
 			// center, center
-			StretchBlt(
-				bufferedDC,
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				destinationWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				destinationHeight - margins.cyTopHeight - margins.cyBottomHeight,
+			GdiAlphaBlend(
+				hdc,
+				destinationRect.left + destMargins.cxLeftWidth,
+				destinationRect.top + destMargins.cyTopHeight,
+				destCenterPartWidth, 
+				destCenterPartHeight,
 				compatibleDC.get(),
-				margins.cxLeftWidth,
-				margins.cyTopHeight,
-				bmp.bmWidth - margins.cxLeftWidth - margins.cxRightWidth,
-				bmp.bmHeight - margins.cyTopHeight - margins.cyBottomHeight,
-				SRCCOPY
+				margins.cxLeftWidth, 
+				margins.cyTopHeight, 
+				srcCenterPartWidth, 
+				srcCenterPartHeight,
+				bf
 			);
-
-			RETURN_IF_FAILED(EndBufferedPaint(paintBuffer, TRUE));
 		}
 
 		return S_OK;

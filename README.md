@@ -23,7 +23,8 @@ This utility returns the full glass effect to the window frame, just like [glass
 4. When you use it for the first time or just after updating your system, OpenGlass will try to download the symbol files and you will see its symbol downloading dialog, just be patient for about 15s. When the symbol files are ready, enjoy!
 5. If OpenGlass is unable to download symbols, you can try running the `symchk-prepare-symbols.cmd`.
 6. When you want to stop using OpenGlass or update the version of OpenGlass, running `shutdown.cmd` will remove the effects of OpenGlass for you and exit the host process. At this time, you can either replace the OpenGlass files or continue to run `uninstall.cmd` and manually delete the remaining files to complete the uninstallation.
-7. When you experience a crash, OpenGlass is supposed to generate a large memory dump file in the `dumps` directory of the folder where it is located, please submit it to the developer if possible, this can help fix known or potential issues.
+7. When your desktop freezes, you can try pressing <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> to force the DWM process to terminate and generate a crash dump.
+8. When you experience a crash, OpenGlass is supposed to generate a large memory dump file in the `dumps` directory of the folder where it is located, please submit it to the developer if possible, this can help fix known or potential issues.
 
 ## What are the DWM symbols and where to get them? <br>I see "Your DWM is incompatible" message. What to do?
 
@@ -51,7 +52,7 @@ You can change the settings of OpenGlass via editing the Windows registry.
 | ColorizationAfterglow<br>ColorizationColorBalance<br>ColorizationAfterglowBalance<br>ColorizationBlurBalance | DWORD | Composition parameters for aero shader effect.<br><br>ℹ️ Only used when `GlassType`=0x1 |
 | ColorizationAfterglowOverride<br>ColorizationColorBalanceOverride<br>ColorizationAfterglowBalanceOverride<br>ColorizationBlurBalanceOverride | DWORD | Same as above, but OpenGlass prefers to use these. |
 | GlassOpacity<br>GlassOpacityInactive | DWORD | The intensity of the color (0-100%).<br><br>ℹ️ Only used when `GlassType`=0x0 |
-| ColorizationColorCaption<br>ColorizationColorCaptionInactive | DWORD | Color used for drawing window titles. Format is 0xBBGGRR.<br><br>ℹ️ Only valid in Win10 |
+| ColorizationColorCaption<br>ColorizationColorCaptionInactive | DWORD | Color used for drawing window titles. Format is 0xBBGGRR. |
 | ColorizationOpaqueBlend | DWORD | Controls the transparency of glass effect. |
 | ColorizationOpaqueBlendColor | DWORD | ARGB base color used for opaque blending, alpha value is ignored. |
 
@@ -71,19 +72,20 @@ You can change the settings of OpenGlass via editing the Windows registry.
 ### Theme settings
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
-| CenterCaption | DWORD | Controls how title bar text is aligned.<ul><li>0x0=Keeps it on the left (default)</li><li>0x1=Centers it between the titlebar icon and the titlebar buttons</li><li>0x2=Centers the Win8 way</li></ul><br>ℹ️ Only valid in Win10 |
-| TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <ul><li>0x0=No glow effect</li><li>0x1=Glow effect loaded from atlas (default)</li><li>0x2=Glow effect loaded from atlas and theme opacity is respected</li><li>0x3=Composited glow effect using your theme settings HIWORD of the value specifies glow size (0=theme default)</li></ul><br>ℹ️ Only valid in Win10 |
+| CenterCaption | DWORD | Controls how title bar text is aligned.<ul><li>0x0=Keeps it on the left (default)</li><li>0x1=Centers it between the titlebar icon and the titlebar buttons</li></ul> |
+| TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <ul><li>0x0=No glow effect</li><li>0x1=Glow effect loaded from atlas (default)</li><li>0x2=Glow effect loaded from atlas and theme opacity is respected</li><li>0x3=Composited glow effect using your theme settings HIWORD of the value specifies glow size (0=theme default)</li></ul> |
 | CustomThemeAtlas | String | path to PNG file with theme resource (bitmap must have exactly the same layout as msstyle theme you are using!) |
 | DisableModernBorders | DWORD | Disable modern rounded window borders. <ul><li>0x0=Enable modern borders</li><li>0x1=Disable modern borders</li></ul><br>ℹ️ Only valid in Win11 |
 
 ### Advanced settings
 
 The following registry items are located only in `HKLM\Software\Microsoft\Windows\DWM`, you should NOT change the settings in this section unless you know what you are doing.
+
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
-| DisableGlassOnBattery  | DWORD | <ul><li>0x1=When energy saver is on then the glass effect will be opaque to decrease energy consumption (default)</li><li>0x0=glass effect won't be opaque on energy saver</li></ul> |
-| DisableMemoryDump  | DWORD | <ul><li>0x0=Generates a memory dump file when DWM crashes (default)</li><li>0x1=No memory dump files</li></ul> |
-| DisabledHooks  | DWORD | Controls which module's hooks are disabled, which will also control the availability of features. <ul><li>0x0=No hooks are disabled (default)</li><li>0x1=Disables hooks for `CaptionTextHandler.cpp`</li></ul> |
+| DisableGlassOnBattery | DWORD | <ul><li>0x1=When energy saver is on then the glass effect will be opaque to decrease energy consumption (default)</li><li>0x0=glass effect won't be opaque on energy saver</li></ul> |
+| DisableMemoryDump | DWORD | <ul><li>0x0=Generates a memory dump file when DWM crashes (default)</li><li>0x1=No memory dump files</li></ul> |
+| DisabledHooks | DWORD | Controls which module's hooks are disabled, which will also control the availability of features. <ul><li>0x0=No hooks are disabled (default)</li><li>0x1=Disables hooks for `CaptionTextHandler.cpp`</li></ul> |
 
 ## What are the custom theme atlas files?
 When Desktop Windows Manager wants to draw frame controls (such as minimize/maximize/close buttons, frame shadow etc.), it uses images which are stored in your current theme. Normally, you would need to edit your theme and install UxTheme patch to be able to change the appearance of windows frames. OpenGlass comes with a feature that you can change these images directly without editing the theme. Just provide custom *.png image, point to it with CustomThemeAtlas registry settings and restart DWM.EXE process. The windows frames will be drawn using your custom image now. Just beware that the layout of theme resource depends on the current system theme. If you do not keep this layout, your frames will be rendered incorrectly.

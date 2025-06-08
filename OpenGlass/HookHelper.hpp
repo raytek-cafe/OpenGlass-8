@@ -41,8 +41,8 @@ namespace OpenGlass::HookHelper
 		});
 	}
 	void PatchInstructions(void* memory, const UCHAR* data, size_t length);
-	PVOID WritePointerInternal(PVOID* pointerAddress, PVOID value);
-	template <typename T1, typename T2> FORCEINLINE T2 WritePointer(T1 address, T2 value) { return reinterpret_cast<T2>(WritePointerInternal(reinterpret_cast<PVOID*>(address), reinterpret_cast<PVOID>(value))); }
+	void WritePointerInternal(PVOID* pointerAddress, PVOID value, PVOID* originalValue = nullptr);
+	template <typename T1, typename T2> FORCEINLINE void WritePointer(T1 address, T2 value, T2* originalValue = nullptr) { WritePointerInternal(reinterpret_cast<PVOID*>(address), reinterpret_cast<PVOID>(value), reinterpret_cast<PVOID*>(originalValue)); }
 	
 	HMODULE GetProcessModule(HANDLE processHandle, std::wstring_view dllPath);
 

@@ -128,6 +128,13 @@ namespace OpenGlass::DWM
 		double x;
 		double y;
 	};
+	struct MilRectF
+	{
+		float x;
+		float y;
+		float width;
+		float height;
+	};
 	struct MilRectD
 	{
 		double left;

@@ -8,9 +8,11 @@
 // i have to apologize to all other contributors since i completely refactor this part of the code
 namespace OpenGlass
 {
-	struct CustomBlurParams
+	struct CCustomBlurParams
 	{
 		float blurAmount;
+		float extraScaleAmount;
+		D2D1_SCALE_INTERPOLATION_MODE prescaleInteroplation;
 		D2D1_GAUSSIANBLUR_OPTIMIZATION optimization;
 	};
 
@@ -18,9 +20,10 @@ namespace OpenGlass
 	{
 		bool m_initialized{ false };
 
-		bool m_blurNothing{ false };
 		float m_blurAmount{ 0.f };
+		float m_extraScaleAmount{ 1.f };
 		D2D1_GAUSSIANBLUR_OPTIMIZATION m_optimization{ D2D1_GAUSSIANBLUR_OPTIMIZATION_BALANCED };
+		D2D1_SCALE_INTERPOLATION_MODE m_prescaleInteroplation{ D2D1_SCALE_INTERPOLATION_MODE_FORCE_DWORD };
 		D2D1_VECTOR_2F m_prescaleAmount{};
 		D2D1_POINT_2F m_offset{};
 

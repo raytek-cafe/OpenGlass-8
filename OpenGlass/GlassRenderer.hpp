@@ -4,8 +4,8 @@
 #include "GlassEngine.hpp"
 
 namespace OpenGlass::GlassRenderer
-{	
-	bool ControlBlurRendering(bool disable);
+{
+	void DestroyDeviceResources();
 
 	void Update(GlassEngine::UpdateType type);
 	void Startup();

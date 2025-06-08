@@ -6,8 +6,8 @@
 using namespace OpenGlass;
 const float CCustomBlurEffect::k_optimizations[16]
 {
-	8.f, 6.f, 1.5f, 2.5f, D2D1_SCALE_INTERPOLATION_MODE_NEAREST_NEIGHBOR, 
-	8.f, 6.f, 1.5f, 2.5f, D2D1_SCALE_INTERPOLATION_MODE_LINEAR, 
+	8.f, 6.f, 1.5f, 2.5f, D2D1_SCALE_INTERPOLATION_MODE_LINEAR,
+	8.f, 6.f, 1.5f, 2.5f, D2D1_SCALE_INTERPOLATION_MODE_MULTI_SAMPLE_LINEAR,
 	12.f, 6.f, 2.f, 3.f, D2D1_SCALE_INTERPOLATION_MODE_MULTI_SAMPLE_LINEAR,
 	0.f
 };
@@ -19,13 +19,12 @@ float CCustomBlurEffect::DetermineOutputScale(
 	float outputScale{ 1.f };
 	if (size > 1.0)
 	{
-		const auto k = m_blurAmount <= k_optimizations[5 * m_optimization + 2] ? 1.f : 0.5f;
+		const auto k = m_blurAmount <= k_optimizations[5 * static_cast<int>(m_optimization) + 2] ? 1.f : 0.5f;
 		outputScale = k * std::max(
 			0.1f,
 			std::min(
 				1.f,
-				#pragma warning(suppress:33011)
-				k_optimizations[5 * m_optimization] / (m_blurAmount + k_optimizations[5 * m_optimization + 1])
+				k_optimizations[5 * static_cast<int>(m_optimization)] / (m_blurAmount + k_optimizations[5 * static_cast<int>(m_optimization) + 1])
 			)
 		);
 		if (outputScale * size < 1.f)
@@ -96,6 +95,12 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 			D2D1_BORDER_MODE_HARD
 		)
 	);
+	RETURN_IF_FAILED(
+		m_cropAlignEffect->SetValue(
+			D2D1_PROPERTY_CACHED,
+			TRUE
+		)
+	);
 	m_cropAlignEffect->SetInputEffect(0, m_scaleDownEffect.get());
 
 	RETURN_IF_FAILED(
@@ -143,16 +148,15 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageR
 	);
 	m_prescaleAmount = 
 	{
-		DetermineOutputScale(wil::rect_width(imageRectangle)),
-		DetermineOutputScale(wil::rect_height(imageRectangle))
+		DetermineOutputScale(wil::rect_width(imageRectangle)) * m_extraScaleAmount,
+		DetermineOutputScale(wil::rect_height(imageRectangle)) * m_extraScaleAmount
 	};
 
 	D2D1_VECTOR_2F finalBlurAmount{ m_blurAmount, m_blurAmount };
 	auto finalPrescaleAmount = m_prescaleAmount;
 
 	m_offset = {};
-	#pragma warning(suppress:33011)
-	if (m_prescaleAmount.x != 1.f && finalBlurAmount.x > k_optimizations[5 * m_optimization + 2])
+	if (m_prescaleAmount.x != 1.f && finalBlurAmount.x > k_optimizations[5 * static_cast<int>(m_optimization) + 2])
 	{
 		if (m_prescaleAmount.x <= 0.5f)
 		{
@@ -160,8 +164,7 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageR
 			m_offset.x = 0.25f;
 		}
 	}
-	#pragma warning(suppress:33011)
-	if (m_prescaleAmount.y != 1.f && finalBlurAmount.y > k_optimizations[5 * m_optimization + 2])
+	if (m_prescaleAmount.y != 1.f && finalBlurAmount.y > k_optimizations[5 * static_cast<int>(m_optimization) + 2])
 	{
 		if (m_prescaleAmount.y <= 0.5f)
 		{
@@ -173,7 +176,11 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageR
 	RETURN_IF_FAILED(
 		m_scaleDownEffect->SetValue(
 			D2D1_SCALE_PROP_INTERPOLATION_MODE,
-			static_cast<D2D1_SCALE_PROP>(k_optimizations[5 * m_optimization + 4])
+			static_cast<D2D1_SCALE_PROP>(
+				m_prescaleInteroplation == D2D1_SCALE_INTERPOLATION_MODE_FORCE_DWORD ?
+				k_optimizations[5 * m_optimization + 4] :
+				m_prescaleInteroplation
+			)
 		)
 	);
 	RETURN_IF_FAILED(
@@ -267,13 +274,15 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 	bool recalculateParams{ true };
 	do
 	{
-		const auto params = static_cast<const CustomBlurParams*>(additionalParams);
+		const auto params = static_cast<const CCustomBlurParams*>(additionalParams);
 		const auto blurAmount = params->blurAmount;
 		const auto optimization = params->optimization;
+		const auto prescaleInteroplation = params->prescaleInteroplation;
+		const auto extraScaleAmount = params->extraScaleAmount;
 
 		if (params->blurAmount == 0.f)
 		{
-			m_blurNothing = true;
+			m_blurAmount = 0.f;
 			RETURN_IF_FAILED(
 				m_cropInputEffect->SetValue(
 					D2D1_CROP_PROP_RECT,
@@ -282,19 +291,25 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 			);
 			return S_OK;
 		}
-		else
-		{
-			m_blurNothing = false;
-		}
 
 		if (m_blurAmount != blurAmount)
 		{
 			m_blurAmount = blurAmount;
 			break;
 		}
+		if (m_extraScaleAmount != extraScaleAmount)
+		{
+			m_extraScaleAmount = extraScaleAmount;
+			break;
+		}
 		if (m_optimization != optimization)
 		{
 			m_optimization = optimization;
+			break;
+		}
+		if (m_prescaleInteroplation != prescaleInteroplation)
+		{
+			m_prescaleInteroplation = prescaleInteroplation;
 			break;
 		}
 
@@ -322,7 +337,7 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 
 D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CCustomBlurEffect::GetOutputMatrix() const
 {
-	if (m_blurNothing)
+	if (m_blurAmount == 0.f)
 	{
 		return D2D1::IdentityMatrix();
 	}
@@ -337,7 +352,7 @@ D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CCustomBlurEffect::GetOutputMatrix() const
 
 void STDMETHODCALLTYPE CCustomBlurEffect::GetOutput(ID2D1Image** output) const
 {
-	if (m_blurNothing)
+	if (m_blurAmount == 0.f)
 	{
 		m_cropInputEffect->GetOutput(output);
 	}

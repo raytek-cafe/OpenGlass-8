@@ -4,7 +4,7 @@
 
 namespace OpenGlass
 {
-	struct AeroParams : BlurParams
+	struct CAeroParams : CBlurParams
 	{
 		D2D1_COLOR_F afterglow;
 		float afterglowBalance;

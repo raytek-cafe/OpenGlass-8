@@ -256,7 +256,7 @@
     <ClInclude Include="GlassFrameHandler.hpp" />
     <ClInclude Include="GlassKernel.hpp" />
     <ClInclude Include="GlassReflectionBrush.hpp" />
-    <ClInclude Include="GlassSafetyZone.hpp" />
+    <ClInclude Include="GlassIntegrity.hpp" />
     <ClInclude Include="GlassSafetyZoneLayer.hpp" />
     <ClInclude Include="module.hpp" />
     <ClInclude Include="ProjectionHelper.hpp" />
@@ -294,7 +294,7 @@
     <ClCompile Include="GlassFrameHandler.cpp" />
     <ClCompile Include="GlassKernel.cpp" />
     <ClCompile Include="GlassReflectionBrush.cpp" />
-    <ClCompile Include="GlassSafetyZone.cpp" />
+    <ClCompile Include="GlassIntegrity.cpp" />
     <ClCompile Include="GlassRenderer.cpp" />
     <ClCompile Include="GlassSafetyZoneLayer.cpp" />
     <ClCompile Include="module.cpp" />

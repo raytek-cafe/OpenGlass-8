@@ -4,7 +4,7 @@
 
 namespace OpenGlass
 {
-	class CGlassSafetyZoneLayer
+	class CGlassSafetyZoneLayer : public winrt::implements<CGlassSafetyZoneLayer, IUnknown, winrt::non_agile, winrt::no_weak_ref>
 	{
 		CD2DBuffer m_safetyZoneBufferVertical{};
 		CD2DBuffer m_safetyZoneBufferHorizon{};
@@ -16,8 +16,7 @@ namespace OpenGlass
 			ID2D1Bitmap1* renderTargetBitmap,
 			const D2D1_MATRIX_3X2_F& deviceTransform,
 			const D2D1_RECT_F& originalPixelRectangle,
-			float extendedAmount,
-			bool useSuperSample
+			float extendedAmount
 		);
 		void Pop();
 		void Reset();

@@ -363,10 +363,10 @@ HRESULT CustomThemeAtlasLoader::LoadTextGlowFromThemeAtlas()
 		)
 	);
 
-	BITMAPINFO bitmapInfo
+	Shared::g_textGlowBitmapInfo =
 	{ 
 		{
-			sizeof(bitmapInfo.bmiHeader), 
+			sizeof(Shared::g_textGlowBitmapInfo.bmiHeader),
 			wil::rect_width(textGlowAtlasRect), 
 			-wil::rect_height(textGlowAtlasRect), 
 			1, 
@@ -374,26 +374,25 @@ HRESULT CustomThemeAtlasLoader::LoadTextGlowFromThemeAtlas()
 			BI_RGB
 		}
 	};
-	PVOID pvBits{};
 	Shared::g_textGlowBitmap.reset(
 		CreateDIBSection(
 			nullptr,
-			&bitmapInfo,
+			&Shared::g_textGlowBitmapInfo,
 			DIB_RGB_COLORS,
-			&pvBits,
+			&Shared::g_textGlowBitmapPixels,
 			nullptr,
 			0
 		)
 	);
 	RETURN_LAST_ERROR_IF_NULL(Shared::g_textGlowBitmap);
 
-	WICRect copyRect{ textGlowAtlasRect.left, textGlowAtlasRect.top, bitmapInfo.bmiHeader.biWidth, -bitmapInfo.bmiHeader.biHeight };
+	WICRect copyRect{ textGlowAtlasRect.left, textGlowAtlasRect.top, Shared::g_textGlowBitmapInfo.bmiHeader.biWidth, -Shared::g_textGlowBitmapInfo.bmiHeader.biHeight };
 	RETURN_IF_FAILED(
 		wicConverter->CopyPixels(
 			&copyRect,
-			bitmapInfo.bmiHeader.biWidth * 4,
-			bitmapInfo.bmiHeader.biWidth * std::abs(bitmapInfo.bmiHeader.biHeight) * 4,
-			reinterpret_cast<BYTE*>(pvBits)
+			Shared::g_textGlowBitmapInfo.bmiHeader.biWidth * 4,
+			Shared::g_textGlowBitmapInfo.bmiHeader.biWidth * std::abs(Shared::g_textGlowBitmapInfo.bmiHeader.biHeight) * 4,
+			reinterpret_cast<BYTE*>(Shared::g_textGlowBitmapPixels)
 		)
 	);
 
@@ -409,16 +408,6 @@ void CustomThemeAtlasLoader::LoadTheme(LPCWSTR themeAtlasPath, LPCWSTR themeAtla
 		LoadThemeAtlasLayout(themeAtlasLayoutPath);
 		LoadTextGlowFromThemeAtlas();
 	}
-
-	int value;
-
-	value = 100;
-	MyGetThemeInt(g_themeHandle.get(), 46, 1, TMT_OPACITY, &value);
-	Shared::g_textOpacity = value / 100.f;
-
-	value = 100;
-	MyGetThemeInt(g_themeHandle.get(), 46, 2, TMT_OPACITY, &value);
-	Shared::g_textOpacityInactive = value / 100.f;
 }
 
 void CustomThemeAtlasLoader::Update(GlassEngine::UpdateType type)

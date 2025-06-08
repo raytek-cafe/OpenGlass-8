@@ -14,6 +14,12 @@ namespace OpenGlass::GlassFrameHandler
 	HRGN WINAPI MyCreateRectRgn(int x1, int y1, int x2, int y2);
 	HRGN WINAPI MyExtCreateRegion(const XFORM* lpx, DWORD nCount, const RGNDATA* lpData);
 
+	HRESULT STDMETHODCALLTYPE MyCGlassColorizationParameters_AdjustWindowColorization(
+		uDWM::CGlassColorizationParameters* This,
+		uDWM::GpCC* colorUnused,
+		float opacity,
+		BYTE flag
+	);
 	HRESULT STDMETHODCALLTYPE MyResourceHelper_CreateGeometryFromHRGN(HRGN hrgn, uDWM::CRgnGeometryProxy** geometry);
 	bool STDMETHODCALLTYPE MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage(uDWM::CTopLevelAtlasedRectsVisual* This, const uDWM::CAtlasedImage* atlasedImage, UINT cloneOptions);
 	HRESULT STDMETHODCALLTYPE MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10(uDWM::CTopLevelWindow* This, bool windowFramesOnly, bool unused1, bool unused2, uDWM::CTopLevelWindow** clonedWindow);
@@ -37,10 +43,10 @@ namespace OpenGlass::GlassFrameHandler
 	decltype(&MyCreateRectRgn) g_CreateRectRgn_Org{ nullptr };
 	decltype(&MyExtCreateRegion) g_ExtCreateRegion_Org{ nullptr };
 
+	decltype(&MyCGlassColorizationParameters_AdjustWindowColorization) g_CGlassColorizationParameters_AdjustWindowColorization_Org{ nullptr };
 	decltype(&MyResourceHelper_CreateGeometryFromHRGN) g_ResourceHelper_CreateGeometryFromHRGN_Org{ nullptr };
 	decltype(&MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage) g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org{ nullptr };
-	decltype(&MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10) g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org{ nullptr };
-	decltype(&MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11) g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org{ nullptr };
+	PVOID g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateNCAreaBackground) g_CTopLevelWindow_UpdateNCAreaBackground_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_UpdateClientBlur) g_CTopLevelWindow_UpdateClientBlur_Org{ nullptr };
 	decltype(&MyCTopLevelWindow_ValidateVisual) g_CTopLevelWindow_ValidateVisual_Org{ nullptr };
@@ -148,7 +154,8 @@ HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* windo
 						legacyVisual->GetLocalToParentVisualOffset(desktop),
 						Shared::g_reflectionParallaxIntensity,
 						window->IsRTLMirrored(),
-						legacyVisual->GetTransformParent()->GetWidth()
+						legacyVisual->GetWidth(),
+						legacyVisual->GetScale()
 					),
 					D2D1::RectF(),
 					nullptr,
@@ -190,7 +197,8 @@ HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* windo
 						clientBlurVisual->GetLocalToParentVisualOffset(desktop),
 						Shared::g_reflectionParallaxIntensity,
 						window->IsRTLMirrored(),
-						clientBlurVisual->GetTransformParent()->GetWidth()
+						clientBlurVisual->GetWidth(),
+						clientBlurVisual->GetScale()
 					),
 					D2D1::RectF(),
 					nullptr,
@@ -227,7 +235,8 @@ HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* windo
 						accentVisual->GetLocalToParentVisualOffset(desktop),
 						Shared::g_reflectionParallaxIntensity,
 						window->IsRTLMirrored(),
-						accentVisual->GetTransformParent()->GetWidth()
+						accentVisual->GetWidth(),
+						accentVisual->GetScale()
 					),
 					D2D1::RectF(),
 					nullptr,
@@ -335,6 +344,26 @@ HRGN WINAPI GlassFrameHandler::MyExtCreateRegion(const XFORM* lpx, DWORD nCount,
 	return g_ExtCreateRegion_Org(lpx, nCount, lpData);
 }
 
+HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCGlassColorizationParameters_AdjustWindowColorization(
+	uDWM::CGlassColorizationParameters* This,
+	[[maybe_unused]] uDWM::GpCC* colorUnused,
+	[[maybe_unused]] float opacity,
+	BYTE flag
+)
+{
+	const auto active = (flag & 1) != 0;
+
+	This->color = Color::ToArgb(GlassKernel::CalculateWindowColorization(active));
+	This->afterglow = 0;
+	This->colorBalance = 100;
+	This->afterglowBalance = 0;
+	This->blurBalance = 0;
+	This->windowColorization = TRUE;
+	This->glassAttribute = 0;
+
+	return S_OK;
+}
+
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyResourceHelper_CreateGeometryFromHRGN(HRGN hrgn, uDWM::CRgnGeometryProxy** geometry)
 {
 	if (g_combinedRgn)
@@ -385,7 +414,7 @@ bool STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelAtlasedRectsVisual_ShouldCl
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10(uDWM::CTopLevelWindow* This, bool windowFramesOnly, bool unused1, bool unused2, uDWM::CTopLevelWindow** clonedWindow)
 {
 	g_windowFramesOnly = windowFramesOnly;
-	auto hr = g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org(This, windowFramesOnly, unused1, unused2, clonedWindow);
+	const auto hr = reinterpret_cast<decltype(&MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10)>(g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org)(This, windowFramesOnly, unused1, unused2, clonedWindow);
 	g_windowFramesOnly = !windowFramesOnly;
 
 	for (int i = 0; i < 4; i++)
@@ -406,7 +435,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_CloneVisualTreeFo
 HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11(uDWM::CTopLevelWindow* This, bool windowFramesOnly, uDWM::CTopLevelWindow** clonedWindow)
 {
 	g_windowFramesOnly = windowFramesOnly;
-	auto hr = g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org(This, windowFramesOnly, clonedWindow);
+	const auto hr = reinterpret_cast<decltype(&MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11)>(g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org)(This, windowFramesOnly, clonedWindow);
 	g_windowFramesOnly = !windowFramesOnly;
 
 	return hr;
@@ -477,7 +506,8 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackg
 									legacyVisual->GetLocalToParentVisualOffset(This->GetTransformParent()),
 									Shared::g_reflectionParallaxIntensity,
 									This->IsRTLMirrored(),
-									legacyVisual->GetTransformParent()->GetWidth()
+									legacyVisual->GetWidth(),
+									legacyVisual->GetScale()
 								),
 								D2D1::RectF(),
 								nullptr,
@@ -570,7 +600,8 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateClientBlur(
 						clientBlurVisual->GetLocalToParentVisualOffset(This->GetTransformParent()),
 						Shared::g_reflectionParallaxIntensity,
 						This->IsRTLMirrored(),
-						clientBlurVisual->GetTransformParent()->GetWidth()
+						clientBlurVisual->GetWidth(),
+						clientBlurVisual->GetScale()
 					),
 					D2D1::RectF(),
 					nullptr,
@@ -792,12 +823,14 @@ void GlassFrameHandler::Update(GlassEngine::UpdateType type)
 
 void GlassFrameHandler::Startup()
 {
+	uDWM::g_projectionArray.ApplyToVariable("CGlassColorizationParameters::AdjustWindowColorization", g_CGlassColorizationParameters_AdjustWindowColorization_Org);
 	uDWM::g_projectionArray.ApplyToVariable("ResourceHelper::CreateGeometryFromHRGN", g_ResourceHelper_CreateGeometryFromHRGN_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelAtlasedRectsVisual::ShouldCloneAtlasImage", g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateNCAreaBackground", g_CTopLevelWindow_UpdateNCAreaBackground_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateClientBlur", g_CTopLevelWindow_UpdateClientBlur_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::ValidateVisual", g_CTopLevelWindow_ValidateVisual_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::~CTopLevelWindow", g_CTopLevelWindow_Destructor_Org);
+	uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CloneVisualTreeForLivePreview", g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org);
 	uDWM::g_projectionArray.ApplyToVariable("SetMargin", g_SetMargin_Org);
 	
 	PVOID CVisual_SetSize_Org{ nullptr };
@@ -809,22 +842,13 @@ void GlassFrameHandler::Startup()
 		if (vf == CVisual_SetSize_Org)
 		{
 			g_CButton_SetSize_Org_Address = reinterpret_cast<decltype(g_CButton_SetSize_Org_Address)>(&vf);
-			g_CButton_SetSize_Org = HookHelper::WritePointer(g_CButton_SetSize_Org_Address, MyCButton_SetSize);
+			HookHelper::WritePointer(g_CButton_SetSize_Org_Address, MyCButton_SetSize, &g_CButton_SetSize_Org);
 		}
 		if (vf == CAtlasedRectsVisual_CloneVisualTree_Org && uDWM::g_buildNumber <= os::build_w11_21h2)
 		{
 			g_CButton_CloneVisualTree_Org_Address = reinterpret_cast<decltype(g_CButton_CloneVisualTree_Org_Address)>(&vf);
-			g_CButton_CloneVisualTree_Org = HookHelper::WritePointer(g_CButton_CloneVisualTree_Org_Address, MyCButton_CloneVisualTree);
+			HookHelper::WritePointer(g_CButton_CloneVisualTree_Org_Address, MyCButton_CloneVisualTree, &g_CButton_CloneVisualTree_Org);
 		}
-	}
-	
-	if (uDWM::g_buildNumber <= os::build_w11_21h2)
-	{
-		uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CloneVisualTreeForLivePreview", g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org);
-	}
-	else
-	{
-		uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CloneVisualTreeForLivePreview", g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org);
 	}
 
 
@@ -882,7 +906,7 @@ void GlassFrameHandler::Startup()
 		CTopLevelWindow_UpdateWindowVisuals_Instructions = CTopLevelWindow_UpdateWindowVisuals_Instructions_Previous;
 		if (uDWM::g_buildNumber < os::build_w11_24h2)
 		{
-			i = 300'000;
+			i = 450'000;
 			do
 			{
 				g_callCTopLevelWindow_IsShadowNCAreaPart_inlined_replacedInstructions[1] = g_callCTopLevelWindow_IsShadowNCAreaPart_inlined_Instructions[1] = CTopLevelWindow_UpdateWindowVisuals_Instructions[1];
@@ -968,6 +992,7 @@ void GlassFrameHandler::Startup()
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
+			HookHelper::Detours::Attach(&g_CGlassColorizationParameters_AdjustWindowColorization_Org, MyCGlassColorizationParameters_AdjustWindowColorization);
 			HookHelper::Detours::Attach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
 			HookHelper::Detours::Attach(&g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org, MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
@@ -975,11 +1000,11 @@ void GlassFrameHandler::Startup()
 			
 			if (uDWM::g_buildNumber <= os::build_w11_21h2)
 			{
-				HookHelper::Detours::Attach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
+				HookHelper::Detours::Attach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
 			}
 			else
 			{
-				HookHelper::Detours::Attach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11);
+				HookHelper::Detours::Attach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11);
 			}
 
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_Destructor_Org, MyCTopLevelWindow_Destructor);
@@ -998,6 +1023,7 @@ void GlassFrameHandler::Shutdown()
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
+			HookHelper::Detours::Detach(&g_CGlassColorizationParameters_AdjustWindowColorization_Org, MyCGlassColorizationParameters_AdjustWindowColorization);
 			HookHelper::Detours::Detach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
 			HookHelper::Detours::Detach(&g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org, MyCTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_UpdateNCAreaBackground_Org, MyCTopLevelWindow_UpdateNCAreaBackground);
@@ -1007,11 +1033,11 @@ void GlassFrameHandler::Shutdown()
 
 			if (uDWM::g_buildNumber <= os::build_w11_21h2)
 			{
-				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win10_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
+				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
 			}
 			else
 			{
-				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Win11_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11);
+				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11);
 			}
 
 			if (uDWM::g_buildNumber >= os::build_w11_21h2)

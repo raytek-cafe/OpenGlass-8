@@ -7,7 +7,7 @@
 #include "GlassFrameHandler.hpp"
 #include "GlassReflectionHandler.hpp"
 #include "GlassRenderer.hpp"
-#include "GlassSafetyZone.hpp"
+#include "GlassIntegrity.hpp"
 #include "CustomThemeAtlasLoader.hpp"
 #include "GlassService.hpp"
 
@@ -31,7 +31,7 @@ HKEY GlassEngine::GetPersonalizeKey()
 void GlassEngine::LoadRegistry(bool redrawNow)
 {
 	GlassService::RequestBuffer content{ GlassService::RequestType::OpenUserRegistry };
-	auto hr = GlassService::SendRequest(content);
+	const auto hr = GlassService::SendRequest(content);
 	if (SUCCEEDED(hr))
 	{
 		g_dwmKey.reset(content.dwmKey);
@@ -66,12 +66,12 @@ void GlassEngine::Update(UpdateType type, bool redrawNow)
 		GlassFrameHandler::Update(type);
 		GlassReflectionHandler::Update(type);
 		GlassRenderer::Update(type);
-		GlassSafetyZone::Update(type);
+		GlassIntegrity::Update(type);
 	}
 	if (redrawNow)
 	{
 		GlassKernel::RedrawAllTopLevelWindow();
-		DwmFlush();
+		//DwmFlush();
 	}
 }
 
@@ -86,12 +86,12 @@ void GlassEngine::Startup()
 	GlassFrameHandler::Startup();
 	GlassReflectionHandler::Startup();
 	GlassRenderer::Startup();
-	GlassSafetyZone::Startup();
+	GlassIntegrity::Startup();
 }
 void GlassEngine::Shutdown()
 {
 	const auto lock = wil::EnterCriticalSection(uDWM::CDesktopManager::s_csDwmInstance);
-	GlassSafetyZone::Shutdown();
+	GlassIntegrity::Shutdown();
 	GlassRenderer::Shutdown();
 	GlassReflectionHandler::Shutdown();
 	GlassFrameHandler::Shutdown();

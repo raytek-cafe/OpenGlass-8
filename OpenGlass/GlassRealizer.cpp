@@ -39,7 +39,7 @@ bool CGlassRealizer::EnsureGlassEffect(Shared::GlassType type)
 
 HRESULT CGlassRealizer::Render(
 	ID2D1DeviceContext* context,
-	const GlassInput& input
+	const CGlassInput& input
 )
 {
 	if (m_glassType != input.params.type)
@@ -75,19 +75,33 @@ HRESULT CGlassRealizer::Render(
 		std::ceil(input.drawingWorldBounds->right),
 		std::ceil(input.drawingWorldBounds->bottom)
 	};
-	const D2D1_RECT_F imageBounds
-	{
-		0.f,
-		0.f,
-		targetSize.width,
-		targetSize.height
-	};
 
-	if (!input.zeroCopyAllowed)
+	winrt::com_ptr<ID2D1PrivateCompositorDeviceContext> compositorDeviceContext{};
+	winrt::com_ptr<ID2D1Bitmap1> sharedAtlasBitmap{};
+	
+	if (
+		const auto bitmapProperties = D2D1::BitmapProperties1(
+			input.sourceBitmap->GetOptions(),
+			input.sourceBitmap->GetPixelFormat()
+		);
+		SUCCEEDED(context->QueryInterface(compositorDeviceContext.put()))
+	)
 	{
-		input.buffer->Resize(input.sourceBitmap->GetPixelSize());
+		LOG_IF_FAILED(
+			compositorDeviceContext->CreateSharedAtlasBitmap(
+				input.sourceBitmap,
+				&bitmapProperties,
+				sharedAtlasBitmap.put()
+			)
+		);
+	}
+
+	const auto buffer = input.buffer;
+	if (!sharedAtlasBitmap)
+	{
+		buffer->Reserve(input.sourceBitmap->GetPixelSize());
 		RETURN_IF_FAILED(
-			input.buffer->CopyFrom(
+			buffer->CopyFrom(
 				context,
 				D2D1::Point2U(
 					static_cast<UINT32>(alignedDrawingWorldBounds.left),
@@ -112,7 +126,7 @@ HRESULT CGlassRealizer::Render(
 	RETURN_IF_FAILED(
 		m_glassEffect->Build(
 			context,
-			input.zeroCopyAllowed ? input.sourceBitmap : input.buffer->GetCompatibleD2DBitmap(context, input.sourceBitmap),
+			sharedAtlasBitmap ? sharedAtlasBitmap.get() : buffer->GetCompatibleD2DBitmap(context, input.sourceBitmap),
 			alignedDrawingWorldBounds,
 			static_cast<const void*>(&input.params)
 		)
@@ -127,13 +141,13 @@ HRESULT CGlassRealizer::Render(
 	context->SetTransform(outputMatrix);
 
 	D2D1InvertMatrix(&outputMatrix);
-	const auto offset = m_glassEffect->GetOutputOffset();
 
-	for (auto rectangle : input.rectangles)
+	const auto offset = m_glassEffect->GetOutputOffset();
+	for (auto subRectangle : input.rectangles)
 	{
-		if (RectF::IntersectUnsafe(rectangle, alignedDrawingWorldBounds))
+		if (RectF::IntersectUnsafe(subRectangle, alignedDrawingWorldBounds))
 		{
-			auto transformedSubRectangle = RectF::TransformRect(rectangle, outputMatrix);
+			auto transformedSubRectangle = RectF::TransformRect(subRectangle, outputMatrix);
 
 			context->DrawImage(
 				outputImage.get(),
@@ -147,7 +161,7 @@ HRESULT CGlassRealizer::Render(
 					transformedSubRectangle.right + offset.x,
 					transformedSubRectangle.bottom + offset.y
 				),
-				input.nearestNeighborFinalScale ? D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR : D2D1_INTERPOLATION_MODE_LINEAR,
+				input.drawImageInterpolationMode,
 				D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
 			);
 		}

@@ -6,11 +6,13 @@
 
 namespace OpenGlass
 {
-	struct ReflectionInput
+	struct CReflectionInput
 	{
 		float intensity;
-		const dwmcore::CMILMatrix* worldTransform;
 		const D2D1_RECT_F* viewport;
+		const dwmcore::CMILMatrix* worldTransform;
+
+		std::span<D2D1_RECT_F> rectangles;
 	};
 
 	class CReflectionRealizer : public winrt::implements<CReflectionRealizer, IUnknown, winrt::non_agile, winrt::no_weak_ref>
@@ -21,7 +23,7 @@ namespace OpenGlass
 	public:
 		HRESULT Render(
 			ID2D1DeviceContext* context,
-			const ReflectionInput& input
+			const CReflectionInput& input
 		);
 		void Reset()
 		{

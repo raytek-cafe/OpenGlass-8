@@ -43,7 +43,8 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent_UpdateAccentPolicy(
 	if (
 		policy->AccentState != 1 &&
 		policy->AccentState != 3 &&
-		policy->AccentState != 4
+		policy->AccentState != 4 &&
+		policy->AccentState != 5
 	)
 	{
 		return g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
@@ -142,7 +143,8 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
 						visual->GetLocalToParentVisualOffset(window->GetTransformParent()),
 						Shared::g_reflectionParallaxIntensity,
 						window->IsRTLMirrored(),
-						visual->GetTransformParent()->GetWidth()
+						visual->GetWidth(),
+						visual->GetScale()
 					),
 					D2D1::RectF(),
 					nullptr,

@@ -9,8 +9,7 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	ID2D1Bitmap1* renderTargetBitmap,
 	const D2D1_MATRIX_3X2_F& deviceTransform,
 	const D2D1_RECT_F& originalPixelRectangle,
-	float extendedAmount,
-	[[maybe_unused]] bool useSuperSample
+	float extendedAmount
 )
 {
 	m_renderTargetBitmap.copy_from(renderTargetBitmap);

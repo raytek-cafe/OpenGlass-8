@@ -4,6 +4,7 @@
 #include "GlassKernel.hpp"
 #include "uDWMProjection.hpp"
 #include "dwmcoreProjection.hpp"
+#include "dcompPrivates.hpp"
 #include "CustomThemeAtlasLoader.hpp"
 
 using namespace OpenGlass;
@@ -31,36 +32,91 @@ namespace OpenGlass::CaptionTextHandler
 		IWICBitmap** ppIBitmap
 	);
 	HRESULT STDMETHODCALLTYPE MyCText_ValidateResources(uDWM::CText* This);
-	HRESULT STDMETHODCALLTYPE MyCText_SetSize(uDWM::CText* This, const SIZE* size);
 	HRESULT STDMETHODCALLTYPE MyCText_InitializeVisualTreeClone(uDWM::CText* This, uDWM::CText* clonedVisual, UINT cloneOption);
 	HRESULT STDMETHODCALLTYPE MyCText_scalar_deleting_destructor(uDWM::CText* This, BYTE flag);
 	HRESULT STDMETHODCALLTYPE MyCChannel_MatrixTransformUpdate(dwmcore::CChannel* This, UINT handleId, MilMatrix3x2D* matrix);
+
+	void STDMETHODCALLTYPE MyID2D1DeviceContext_DrawTextLayout(
+		ID2D1DeviceContext* This,
+		D2D1_POINT_2F origin,
+		IDWriteTextLayout* textLayout,
+		ID2D1Brush* defaultFillBrush,
+		D2D1_DRAW_TEXT_OPTIONS options
+	);
+	HRESULT STDMETHODCALLTYPE MyICompositionGraphicsDevice_CreateDrawingSurface(
+		abi::ICompositionGraphicsDevice* This,
+		abi::Size sizePixels,
+		abi::DirectXPixelFormat pixelFormat,
+		abi::DirectXAlphaMode alphaMode,
+		abi::ICompositionDrawingSurface** result
+	);
+	HRESULT STDMETHODCALLTYPE MyICompositionSurfaceBrush2_put_Offset(
+		abi::ICompositionSurfaceBrush2* This,
+		abi::Vector2 value
+	);
+	HRESULT STDMETHODCALLTYPE MyCDWriteText_ValidateVisual(uDWM::CDWriteText* This);
+	HRESULT STDMETHODCALLTYPE MyCDWriteText_UpdateOffset(uDWM::CDWriteText* This);
+	HRESULT STDMETHODCALLTYPE MyCDWriteText_SetSize(uDWM::CDWriteText* This, const SIZE* size);
+	HRESULT STDMETHODCALLTYPE MyCDWriteText_InitializeVisualTreeClone(uDWM::CDWriteText* This, uDWM::CDWriteText* clonedVisual, UINT cloneOption);
+	HRESULT STDMETHODCALLTYPE MyCDWriteText_scalar_deleting_destructor(uDWM::CDWriteText* This, BYTE flag);
 
 	decltype(&MyDrawTextW) g_DrawTextW_Org{ nullptr };
 	decltype(&MyCreateBitmap) g_CreateBitmap_Org{ nullptr };
 	decltype(&MyIWICImagingFactory2_CreateBitmapFromHBITMAP) g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org{ nullptr };
 	decltype(&MyCText_ValidateResources) g_CText_ValidateResources_Org{ nullptr };
-	decltype(&MyCText_SetSize) g_CText_SetSize_Org{ nullptr };
 	decltype(&MyCText_InitializeVisualTreeClone) g_CText_InitializeVisualTreeClone_Org{ nullptr };
 	decltype(&MyCText_scalar_deleting_destructor) g_CText_scalar_deleting_destructor_Org{ nullptr };
+	decltype(&MyCText_scalar_deleting_destructor)* g_CText_scalar_deleting_destructor_Org_Address{ nullptr };
 	decltype(&MyCChannel_MatrixTransformUpdate) g_CChannel_MatrixTransformUpdate_Org{ nullptr };
 	PVOID* g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address{ nullptr };
 
-	uDWM::CText* g_textVisual{ nullptr };
+	decltype(&MyID2D1DeviceContext_DrawTextLayout) g_ID2D1DeviceContext_DrawTextLayout_Org{ nullptr };
+	decltype(&MyID2D1DeviceContext_DrawTextLayout)* g_ID2D1DeviceContext_DrawTextLayout_Org_Address{ nullptr };
+	decltype(&MyICompositionGraphicsDevice_CreateDrawingSurface) g_ICompositionGraphicsDevice_CreateDrawingSurface_Org{ nullptr };
+	decltype(&MyICompositionGraphicsDevice_CreateDrawingSurface)* g_ICompositionGraphicsDevice_CreateDrawingSurface_Org_Address{ nullptr };
+	decltype(&MyICompositionSurfaceBrush2_put_Offset) g_ICompositionSurfaceBrush2_put_Offset_Org{ nullptr };
+	decltype(&MyICompositionSurfaceBrush2_put_Offset)* g_ICompositionSurfaceBrush2_put_Offset_Org_Address{ nullptr };
+	decltype(&MyCDWriteText_ValidateVisual) g_CDWriteText_ValidateVisual_Org{ nullptr };
+	decltype(&MyCDWriteText_UpdateOffset) g_CDWriteText_UpdateOffset_Org{ nullptr };
+	decltype(&MyCDWriteText_UpdateOffset)* g_CDWriteText_UpdateOffset_Org_Address{ nullptr };
+	decltype(&MyCDWriteText_SetSize) g_CDWriteText_SetSize_Org{ nullptr };
+	decltype(&MyCDWriteText_SetSize)* g_CDWriteText_SetSize_Org_Address{ nullptr };
+	decltype(&MyCDWriteText_InitializeVisualTreeClone) g_CDWriteText_InitializeVisualTreeClone_Org{ nullptr };
+	decltype(&MyCDWriteText_scalar_deleting_destructor) g_CDWriteText_scalar_deleting_destructor_Org{ nullptr };
+	decltype(&MyCDWriteText_scalar_deleting_destructor)* g_CDWriteText_scalar_deleting_destructor_Org_Address{ nullptr };
+
+
+	static union
+	{
+		uDWM::CText* g_textVisual;
+		uDWM::CDWriteText* g_dwriteTextVisual;
+	};
 	bool g_active{ false };
 
 	// original sizes, no glow included
-	SIZE g_textSize{};
+	static union
+	{
+		SIZE g_textSize;
+		abi::Size g_textSizeF;
+	};
 	COLORREF g_captionActiveColor{};
 	COLORREF g_captionInactiveColor{};
 	MARGINS g_contentMargins{}, g_sizingMargins{};
-	std::unordered_map<uDWM::CText*, bool> g_textVisualStateMap{};
+	std::unordered_map<uDWM::CVisual*, bool> g_textVisualStateMap{};
+	winrt::com_ptr<ID2D1Bitmap1> g_textGlowD2DBitmap{};
+	winrt::com_ptr<ID2D1Effect> g_textGlowEffect{};
+	winrt::com_ptr<ID2D1Effect> g_textMorphologyEffect{};
+
+	float g_textOpacity{};
+	float g_textOpacityInactive{};
+	COLORREF g_textGlowColor{};
 
 	int g_textGlowSize{};
-	BOOL g_centerCaption{ FALSE };
+	int g_textGlowIntensity{};
+	bool g_centerCaption{ false };
 	bool g_disableTextHooks{ false };
 
-	void CalculateRealizedTextGlowSize(int textGlowMode);
+	void CalculateRealizedTextGlowParams(int textGlowMode);
 }
 
 int WINAPI CaptionTextHandler::MyDrawTextW(
@@ -79,12 +135,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 
 	if ((format & DT_CALCRECT))
 	{
-		result = g_DrawTextW_Org(hdc, lpchText, cchText, lprc, format);
-
-		g_textSize.cx = wil::rect_width(*lprc);
-		g_textSize.cy = wil::rect_height(*lprc);
-
-		return result;
+		return g_DrawTextW_Org(hdc, lpchText, cchText, lprc, format);
 	}
 	// clear the background, so the text can be shown transparent
 	// with this hack, we don't need to hook FillRect any more
@@ -96,9 +147,8 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 
 	OffsetRect(lprc, g_textGlowSize, g_textGlowSize);
 	
-	auto textColor = GetTextColor(hdc);
-	auto textColorOverride = g_active ? g_captionActiveColor : g_captionInactiveColor;
-	auto useThemeColor = textColorOverride == 0xFFFFFFFE;
+	const auto textColor = GetTextColor(hdc);
+	const auto textColorOverride = g_active ? g_captionActiveColor : g_captionInactiveColor;
 	DTTOPTS options
 	{
 		sizeof(DTTOPTS),
@@ -117,11 +167,6 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 		drawTextCallback,
 		(LPARAM)&result
 	};
-	if (useThemeColor)
-	{
-		options.dwFlags &= ~DTT_TEXTCOLOR;
-		options.crText = 0;
-	}
 	if (LOWORD(Shared::g_textGlowMode) == 3)
 	{
 		options.iGlowSize = g_textGlowSize;
@@ -130,8 +175,8 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 
 	if (Shared::g_textGlowMode == 1 || Shared::g_textGlowMode == 2)
 	{
-		const auto opacity = Shared::g_textGlowMode == 2 ? static_cast<int>((g_active ? Shared::g_textOpacity : Shared::g_textOpacityInactive) * 255.f) : 255;
-		RECT glowDrawRect
+		const auto opacity = Shared::g_textGlowMode == 2 ? static_cast<int>((g_active ? g_textOpacity : g_textOpacityInactive) * 255.f) : 255;
+		const RECT glowDrawRect
 		{
 			lprc->left - g_contentMargins.cxLeftWidth,
 			lprc->top - g_contentMargins.cyTopHeight,
@@ -153,8 +198,8 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 			DrawThemeTextEx(
 				hTheme.get(), 
 				hdc, 
-				useThemeColor ? WP_CAPTION : 0,
-				useThemeColor ? (g_active ? CS_ACTIVE : CS_INACTIVE) : 0,
+				0,
+				0,
 				lpchText, 
 				cchText, 
 				format, 
@@ -185,13 +230,14 @@ HBITMAP WINAPI CaptionTextHandler::MyCreateBitmap(
 	[[maybe_unused]] const void* lpBits
 )
 {
-	if (nWidth == 1 && nHeight == 1)
+	if (!g_textVisual)
 	{
 		return g_CreateBitmap_Org(nWidth, nHeight, nPlanes, nBitCount, lpBits);
 	}
 
-	nWidth = g_textSize.cx + g_textGlowSize * 2;
-	nHeight = g_textSize.cy + g_textGlowSize * 2;
+	g_textSize = { nWidth, nHeight };
+	nWidth += g_textGlowSize * 2;
+	nHeight += g_textGlowSize * 2;
 
 	PVOID bits{ nullptr };
 	BITMAPINFO bitmapInfo{ {sizeof(bitmapInfo.bmiHeader), nWidth, -nHeight, 1, 32, BI_RGB} };
@@ -219,35 +265,30 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyIWICImagingFactory2_CreateBitmap
 
 HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCText_ValidateResources(uDWM::CText* This)
 {
-	// redraw the text to get the width and height
-	This->SetDirtyFlags(0x1000);
+	if (g_centerCaption)
+	{
+		// update alignment transform
+		This->SetDirtyFlags(0x8000);
+		// redraw the text to get the width and height
+		This->SetDirtyFlags(0x1000);
+	}
+	if (!g_CText_scalar_deleting_destructor_Org)
+	{
+		g_CText_scalar_deleting_destructor_Org_Address = HookHelper::vftbl_of<decltype(g_CText_scalar_deleting_destructor_Org)>(This);
+		HookHelper::WritePointer(
+			g_CText_scalar_deleting_destructor_Org_Address, 
+			MyCText_scalar_deleting_destructor,
+			&g_CText_scalar_deleting_destructor_Org
+		);
+	}
 	if (const auto window = uDWM::TryGetWindowFromVisual(This); window && window->GetData())
 	{
 		g_textVisualStateMap[This] = window->TreatAsActiveWindow();
 	}
 	g_active = g_textVisualStateMap[This];
 	g_textVisual = This;
-	auto hr = g_CText_ValidateResources_Org(This);
+	const auto hr = g_CText_ValidateResources_Org(This);
 	g_textVisual = nullptr;
-	g_textSize = {};
-
-	return hr;
-}
-HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCText_SetSize(uDWM::CText* This, const SIZE* size)
-{
-	if (!g_centerCaption)
-	{
-		return g_CText_SetSize_Org(This, size);
-	}
-
-	auto oldWidth = This->GetWidth();
-	auto hr = g_CText_SetSize_Org(This, size);
-
-	// update align transform
-	if (oldWidth != size->cx)
-	{
-		This->SetDirtyFlags(0x8000);
-	}
 
 	return hr;
 }
@@ -266,41 +307,366 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCChannel_MatrixTransformUpdate(d
 	if (g_textVisual)
 	{
 		matrix->DX -= static_cast<DOUBLE>(g_textGlowSize);
+		matrix->DY -= static_cast<DOUBLE>(g_textGlowSize);
+
 		if (g_centerCaption)
 		{
-			auto offset = std::floor(
-				std::min(
-					static_cast<DOUBLE>(
-						(
-							g_centerCaption == 2 ?
-							g_textVisual->GetTransformParent()->GetWidth() :
-							g_textVisual->GetWidth()
-						) - g_textSize.cx
-					) / 2.
-					-
-					(
-						g_centerCaption == 2 ?
-						static_cast<DOUBLE>(g_textVisual->GetX()) :
-						0.
-					),
-					static_cast<DOUBLE>(g_textVisual->GetWidth()) - 
-					static_cast<DOUBLE>(g_textSize.cx)
-				)
-			);
+			const auto offset = std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.);
 			matrix->DX += g_textVisual->IsRTL() ? -offset : offset;
 		}
-		matrix->DY = std::floor(
-			static_cast<DOUBLE>(
-				g_textVisual->GetHeight() -
-				(g_textSize.cy + g_textGlowSize * 2)
-			) / 2.
-		);
 	}
 
 	return g_CChannel_MatrixTransformUpdate_Org(This, handleId, matrix);
 }
 
-void CaptionTextHandler::CalculateRealizedTextGlowSize(int textGlowMode)
+void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
+	ID2D1DeviceContext* This,
+	D2D1_POINT_2F origin,
+	IDWriteTextLayout* textLayout,
+	ID2D1Brush* defaultFillBrush,
+	D2D1_DRAW_TEXT_OPTIONS options
+)
+{
+	if (!g_textGlowSize || !g_dwriteTextVisual)
+	{
+		return g_ID2D1DeviceContext_DrawTextLayout_Org(
+			This,
+			origin,
+			textLayout,
+			defaultFillBrush,
+			options
+		);
+	}
+
+	winrt::com_ptr<ID2D1SolidColorBrush> solidColorBrush{};
+	if (FAILED(defaultFillBrush->QueryInterface(solidColorBrush.put())))
+	{
+		return g_ID2D1DeviceContext_DrawTextLayout_Org(
+			This,
+			origin,
+			textLayout,
+			defaultFillBrush,
+			options
+		);
+	}
+	const auto color = solidColorBrush->GetColor();
+	const auto cleanup = wil::scope_exit([&]
+	{
+		solidColorBrush->SetColor(color);
+	});
+
+	const auto textColorOverride = g_active ? g_captionActiveColor : g_captionInactiveColor;
+	if (textColorOverride != 0xFFFFFFFF)
+	{
+		solidColorBrush->SetColor(Color::FromAbgr(textColorOverride));
+	}
+
+	origin.x += g_textGlowSize;
+	origin.y += g_textGlowSize;
+
+	DWRITE_TEXT_METRICS metrics{};
+	THROW_IF_FAILED(
+		textLayout->GetMetrics(
+			&metrics
+		)
+	);
+
+	if (LOWORD(Shared::g_textGlowMode) == 3 && g_textGlowIntensity)
+	{
+		winrt::com_ptr<ID2D1BitmapRenderTarget> bitmapRT{};
+		THROW_IF_FAILED(
+			This->CreateCompatibleRenderTarget(
+				D2D1::SizeF(
+					std::ceil(metrics.left + metrics.width) + static_cast<float>(g_textGlowSize * 2),
+					std::ceil(metrics.top + metrics.height) + static_cast<float>(g_textGlowSize * 2)
+				),
+				bitmapRT.put()
+			)
+		);
+
+		bitmapRT->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+		bitmapRT->BeginDraw();
+		bitmapRT->Clear();
+		bitmapRT->DrawTextLayout(
+			D2D1::Point2F(),
+			textLayout,
+			defaultFillBrush,
+			options
+		);
+		THROW_IF_FAILED(bitmapRT->EndDraw());
+
+		winrt::com_ptr<ID2D1Bitmap> bitmap{};
+		THROW_IF_FAILED(bitmapRT->GetBitmap(bitmap.put()));
+
+		if (!g_textMorphologyEffect)
+		{
+			THROW_IF_FAILED(
+				This->CreateEffect(
+					CLSID_D2D1Morphology,
+					g_textMorphologyEffect.put()
+				)
+			);
+			THROW_IF_FAILED(
+				g_textMorphologyEffect->SetValue(
+					D2D1_MORPHOLOGY_PROP_MODE,
+					D2D1_MORPHOLOGY_MODE_DILATE
+				)
+			);
+			THROW_IF_FAILED(
+				g_textMorphologyEffect->SetValue(
+					D2D1_MORPHOLOGY_PROP_WIDTH,
+					3
+				)
+			);
+			THROW_IF_FAILED(
+				g_textMorphologyEffect->SetValue(
+					D2D1_MORPHOLOGY_PROP_HEIGHT,
+					3
+				)
+			);
+		}
+		if (!g_textGlowEffect)
+		{
+			THROW_IF_FAILED(
+				This->CreateEffect(
+					CLSID_D2D1Shadow,
+					g_textGlowEffect.put()
+				)
+			);
+			THROW_IF_FAILED(
+				g_textGlowEffect->SetValue(
+					D2D1_SHADOW_PROP_OPTIMIZATION,
+					D2D1_GAUSSIANBLUR_OPTIMIZATION_SPEED
+				)
+			);
+			g_textGlowEffect->SetInputEffect(0, g_textMorphologyEffect.get());
+		}
+		THROW_IF_FAILED(
+			g_textGlowEffect->SetValue(
+				D2D1_SHADOW_PROP_COLOR,
+				Color::FromAbgr(g_textGlowColor | (std::min(g_textGlowIntensity, 255) << 24), false)
+			)
+		);
+		THROW_IF_FAILED(
+			g_textGlowEffect->SetValue(
+				D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION,
+				(static_cast<float>(g_textGlowSize) - 0.5f) / 3.f
+			)
+		);
+		g_textMorphologyEffect->SetInput(0, bitmap.get());
+
+		This->DrawImage(
+			g_textGlowEffect.get(),
+			&origin,
+			nullptr,
+			D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR,
+			D2D1_COMPOSITE_MODE_SOURCE_COPY
+		);
+		This->DrawImage(
+			bitmap.get(),
+			&origin,
+			nullptr,
+			D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR
+		);
+		return;
+	}
+	if (Shared::g_textGlowMode == 1 || Shared::g_textGlowMode == 2)
+	{
+		if (!g_textGlowD2DBitmap)
+		{
+			THROW_IF_FAILED(
+				This->CreateBitmap(
+					D2D1::SizeU(
+						Shared::g_textGlowBitmapInfo.bmiHeader.biWidth,
+						-Shared::g_textGlowBitmapInfo.bmiHeader.biHeight
+					),
+					Shared::g_textGlowBitmapPixels,
+					Shared::g_textGlowBitmapInfo.bmiHeader.biWidth * 4,
+					D2D1::BitmapProperties1(
+						D2D1_BITMAP_OPTIONS_NONE,
+						D2D1::PixelFormat(
+							DXGI_FORMAT_B8G8R8A8_UNORM,
+							D2D1_ALPHA_MODE_PREMULTIPLIED
+						)
+					),
+					g_textGlowD2DBitmap.put()
+				)
+			);
+		}
+		THROW_IF_FAILED(
+			Util::DrawNineGridBitmap(
+				This,
+				g_textGlowD2DBitmap.get(),
+				D2D1::RectF(
+					std::floor(origin.x + metrics.left) - static_cast<float>(g_contentMargins.cxLeftWidth),
+					std::floor(origin.y + metrics.top) - static_cast<float>(g_contentMargins.cyTopHeight),
+					std::ceil(origin.x + metrics.left + metrics.width) + static_cast<float>(g_contentMargins.cxRightWidth),
+					std::ceil(origin.y + metrics.top + metrics.height) + static_cast<float>(g_contentMargins.cyBottomHeight)
+				),
+				g_sizingMargins,
+				Shared::g_textGlowMode == 2 ? (g_active ? g_textOpacity : g_textOpacityInactive) : 1.f
+			)
+		);
+	}
+
+	return g_ID2D1DeviceContext_DrawTextLayout_Org(
+		This,
+		origin,
+		textLayout,
+		defaultFillBrush,
+		options
+	);
+}
+
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyICompositionGraphicsDevice_CreateDrawingSurface(
+	abi::ICompositionGraphicsDevice* This,
+	abi::Size sizePixels,
+	abi::DirectXPixelFormat pixelFormat,
+	abi::DirectXAlphaMode alphaMode,
+	abi::ICompositionDrawingSurface** result
+)
+{
+	if (g_dwriteTextVisual)
+	{
+		g_textSizeF = sizePixels;
+		sizePixels.Width += g_textGlowSize * 2;
+		sizePixels.Height += g_textGlowSize * 2;
+	}
+	return g_ICompositionGraphicsDevice_CreateDrawingSurface_Org(
+		This,
+		sizePixels,
+		pixelFormat,
+		alphaMode,
+		result
+	);
+}
+
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyICompositionSurfaceBrush2_put_Offset(
+	abi::ICompositionSurfaceBrush2* This,
+	abi::Vector2 value
+)
+{
+	if (g_dwriteTextVisual)
+	{
+		if (g_centerCaption)
+		{
+			const auto offset = std::round((static_cast<float>(g_dwriteTextVisual->GetWidth()) - g_textSizeF.Width) / 2.f);
+			value.X += g_dwriteTextVisual->GetTextInterface()->IsRTL() ? -offset : offset;
+		}
+	}
+	return g_ICompositionSurfaceBrush2_put_Offset_Org(
+		This,
+		value
+	);
+}
+
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_ValidateVisual(uDWM::CDWriteText* This)
+{
+	// if CDWriteText only updates its offset, it won't do anything
+	// let's make it redraw to ensure the glow
+	if (This->GetDirtyFlags() & 8)
+	{
+		This->SetDirtyFlags(2);
+	}
+	if (!g_CDWriteText_scalar_deleting_destructor_Org)
+	{
+		g_CDWriteText_scalar_deleting_destructor_Org_Address = HookHelper::vftbl_of<decltype(g_CDWriteText_scalar_deleting_destructor_Org)>(This);
+		HookHelper::WritePointer(
+			g_CDWriteText_scalar_deleting_destructor_Org_Address,
+			MyCDWriteText_scalar_deleting_destructor,
+			&g_CDWriteText_scalar_deleting_destructor_Org
+		);
+	}
+	if (!g_CDWriteText_UpdateOffset_Org)
+	{
+		PVOID CVisual_UpdateOffset_Org{ nullptr };
+		PVOID CSpriteVisual_SetSize_Org{ nullptr };
+		uDWM::g_projectionArray.ApplyToVariable("CVisual::UpdateOffset", CVisual_UpdateOffset_Org);
+		uDWM::g_projectionArray.ApplyToVariable("CSpriteVisual::SetSize", CSpriteVisual_SetSize_Org);
+
+		for (auto& vf : std::span{ HookHelper::vftbl_of(This), 32})
+		{
+			if (vf == CVisual_UpdateOffset_Org)
+			{
+				g_CDWriteText_UpdateOffset_Org_Address = reinterpret_cast<decltype(g_CDWriteText_UpdateOffset_Org_Address)>(&vf);
+				HookHelper::WritePointer(
+					g_CDWriteText_UpdateOffset_Org_Address, 
+					MyCDWriteText_UpdateOffset,
+					&g_CDWriteText_UpdateOffset_Org
+				);
+			}
+			if (vf == CSpriteVisual_SetSize_Org)
+			{
+				g_CDWriteText_SetSize_Org_Address = reinterpret_cast<decltype(g_CDWriteText_SetSize_Org_Address)>(&vf);
+				HookHelper::WritePointer(
+					g_CDWriteText_SetSize_Org_Address,
+					MyCDWriteText_SetSize,
+					&g_CDWriteText_SetSize_Org
+				);
+			}
+		}
+	}
+	g_dwriteTextVisual = This;
+	const auto hr = g_CDWriteText_ValidateVisual_Org(This);
+	g_dwriteTextVisual = nullptr;
+
+	return hr;
+}
+
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_UpdateOffset(uDWM::CDWriteText* This)
+{
+	if (!g_textGlowSize)
+	{
+		return g_CDWriteText_UpdateOffset_Org(This);
+	}
+
+	// SpriteVisual will crop what exceeds its bounding rectangle, 
+	// here we make it offset x minus the size of the glow, 
+	// and add it back later in the ICompositionSurfaceBrush2::put_Offset method
+	// 
+	// This gives us enough space to render the glow.
+	auto& offset = const_cast<POINT&>(This->GetOffset());
+	const auto textGlowSize = (This->GetTextInterface()->IsRTL() ? -1 : 1) * g_textGlowSize;
+	offset.x -= textGlowSize;
+	offset.y -= g_textGlowSize;
+	const auto hr = g_CDWriteText_UpdateOffset_Org(This);
+	offset.x += textGlowSize;
+	offset.y += g_textGlowSize;
+
+	return hr;
+}
+
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_SetSize(uDWM::CDWriteText* This, const SIZE* size)
+{
+	if (!g_textGlowSize)
+	{
+		return g_CDWriteText_SetSize_Org(This, size);
+	}
+
+	const auto hr = g_CDWriteText_SetSize_Org(This, size);
+	// SpriteVisual will crop what exceeds its bounding rectangle, 
+	// expand it to ensure enough space to render the glow.
+	This->GetVisualProxy()->SetSize(
+		static_cast<double>(size->cx + g_textGlowSize * 2),
+		static_cast<double>(size->cy + g_textGlowSize * 2)
+	);
+
+	return hr;
+}
+
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_InitializeVisualTreeClone(uDWM::CDWriteText* This, uDWM::CDWriteText* clonedVisual, UINT cloneOption)
+{
+	g_textVisualStateMap[clonedVisual] = g_textVisualStateMap[This];
+	return g_CDWriteText_InitializeVisualTreeClone_Org(This, clonedVisual, cloneOption);
+}
+
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_scalar_deleting_destructor(uDWM::CDWriteText* This, BYTE flag)
+{
+	g_textVisualStateMap.erase(This);
+	return g_CDWriteText_scalar_deleting_destructor_Org(This, flag);
+}
+
+void CaptionTextHandler::CalculateRealizedTextGlowParams(int textGlowMode)
 {
 	if (textGlowMode == 0)
 	{
@@ -309,57 +675,61 @@ void CaptionTextHandler::CalculateRealizedTextGlowSize(int textGlowMode)
 	else if (textGlowMode == 1 || textGlowMode == 2)
 	{
 		const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
-		if (themeHandle)
-		{
-			CustomThemeAtlasLoader::MyGetThemeMargins(
-				themeHandle,
-				nullptr,
-				45,
-				0,
-				TMT_SIZINGMARGINS,
-				nullptr,
-				&g_sizingMargins
-			);
-			CustomThemeAtlasLoader::MyGetThemeMargins(
-				themeHandle,
-				nullptr,
-				45,
-				0,
-				TMT_CONTENTMARGINS,
-				nullptr,
-				&g_contentMargins
-			);
-			g_textGlowSize = std::max(
-				{
-					g_contentMargins.cxLeftWidth,
-					g_contentMargins.cxRightWidth,
-					g_contentMargins.cyTopHeight,
-					g_contentMargins.cyBottomHeight
-				}
-			);
-		}
-		else
-		{
-			g_sizingMargins = {};
-			g_contentMargins = {};
-		}
+		
+		CustomThemeAtlasLoader::MyGetThemeMargins(
+			themeHandle,
+			nullptr,
+			45,
+			0,
+			TMT_SIZINGMARGINS,
+			nullptr,
+			&g_sizingMargins
+		);
+		CustomThemeAtlasLoader::MyGetThemeMargins(
+			themeHandle,
+			nullptr,
+			45,
+			0,
+			TMT_CONTENTMARGINS,
+			nullptr,
+			&g_contentMargins
+		);
+		g_textGlowSize = std::max(
+			{
+				g_contentMargins.cxLeftWidth,
+				g_contentMargins.cxRightWidth,
+				g_contentMargins.cyTopHeight,
+				g_contentMargins.cyBottomHeight
+			}
+		);
 	}
 	else
 	{
-		g_textGlowSize = HIWORD(textGlowMode);
-		if (!g_textGlowSize)
+		wil::unique_htheme themeHandle{ OpenThemeData(nullptr, L"CompositedWindow::Window") };
+		
+		if (g_textGlowSize = HIWORD(textGlowMode); !g_textGlowSize)
 		{
-			wil::unique_htheme themeHandle{ OpenThemeData(nullptr, L"CompositedWindow::Window") };
-			if (themeHandle)
-			{
-				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle.get(), 0, 0, TMT_TEXTGLOWSIZE, &g_textGlowSize);
-			}
-			else
-			{
-				g_textGlowSize = 12;
-			}
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle.get(), 0, 0, TMT_TEXTGLOWSIZE, &g_textGlowSize);
 		}
+		CustomThemeAtlasLoader::MyGetThemeInt(themeHandle.get(), 0, 0, TMT_GLOWINTENSITY, &g_textGlowIntensity);
+		GetThemeColor(themeHandle.get(), 0, 0, TMT_GLOWCOLOR, &g_textGlowColor);
+
+		// debug
+		g_textGlowIntensity = 305;
+		g_textGlowColor = 0xFFFFFF;
 	}
+}
+
+void CaptionTextHandler::DestroyDeviceResources()
+{
+	if (uDWM::g_buildNumber < os::build_w11_22h2)
+	{
+		return;
+	}
+
+	g_textGlowD2DBitmap = nullptr;
+	g_textGlowEffect = nullptr;
+	g_textMorphologyEffect = nullptr;
 }
 
 void CaptionTextHandler::Update(GlassEngine::UpdateType type)
@@ -369,18 +739,28 @@ void CaptionTextHandler::Update(GlassEngine::UpdateType type)
 		return;
 	}
 
-	if (uDWM::g_buildNumber >= os::build_w11_22h2)
-	{
-		return;
-	}
-
 	if (type & GlassEngine::UpdateType::Theme)
 	{
-		CalculateRealizedTextGlowSize(Shared::g_textGlowMode);
+		g_textGlowD2DBitmap = nullptr;
+
+		const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
+		if (themeHandle)
+		{
+			int value;
+			
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 1, TMT_OPACITY, &value);
+			g_textOpacity = value / 100.f;
+
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 2, TMT_OPACITY, &value);
+			g_textOpacityInactive = value / 100.f;
+		}
+		CalculateRealizedTextGlowParams(Shared::g_textGlowMode);
 	}
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
-		g_centerCaption = std::clamp(static_cast<int>(GlassEngine::GetDwordFromRegistry(L"CenterCaption", FALSE)), 0, 2);
+		g_centerCaption = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"CenterCaption", FALSE));
 		g_captionActiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaption", 0xFFFFFFFF);
 		g_captionInactiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionInactive", g_captionActiveColor);
 	}
@@ -401,43 +781,96 @@ void CaptionTextHandler::Startup()
 		return;
 	}
 
-	if (uDWM::g_buildNumber >= os::build_w11_22h2)
+	if (uDWM::g_buildNumber < os::build_w11_22h2)
 	{
-		return;
+		wil::unique_hmodule wincodecsMoudle{ LoadLibraryExW(L"WindowsCodecs.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32) };
+		THROW_LAST_ERROR_IF_NULL(wincodecsMoudle);
+		const auto WICCreateImagingFactory_Proxy_fn = reinterpret_cast<HRESULT(WINAPI*)(UINT, IWICImagingFactory2**)>(
+			GetProcAddress(wincodecsMoudle.get(), "WICCreateImagingFactory_Proxy")
+		);
+		THROW_LAST_ERROR_IF_NULL(WICCreateImagingFactory_Proxy_fn);
+		winrt::com_ptr<IWICImagingFactory2> wicFactory{ nullptr };
+		THROW_IF_FAILED(WICCreateImagingFactory_Proxy_fn(WINCODEC_SDK_VERSION2, wicFactory.put()));
+		g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address = &HookHelper::vftbl_of(wicFactory.get())[21];
+		HookHelper::WritePointer(
+			g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address,
+			MyIWICImagingFactory2_CreateBitmapFromHBITMAP,
+			&g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org
+		);
+		g_DrawTextW_Org = reinterpret_cast<decltype(g_DrawTextW_Org)>(HookHelper::WriteIAT(uDWM::g_moduleHandle, "user32.dll", "DrawTextW", MyDrawTextW));
+		g_CreateBitmap_Org = reinterpret_cast<decltype(g_CreateBitmap_Org)>(HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "CreateBitmap", MyCreateBitmap));
+
+		dwmcore::g_projectionArray.ApplyToVariable("CChannel::MatrixTransformUpdate", g_CChannel_MatrixTransformUpdate_Org);
+		uDWM::g_projectionArray.ApplyToVariable("CText::ValidateResources", g_CText_ValidateResources_Org);
+		uDWM::g_projectionArray.ApplyToVariable("CText::InitializeVisualTreeClone", g_CText_InitializeVisualTreeClone_Org);
+		
+		THROW_IF_FAILED(
+			HookHelper::Detours::Write([]()
+			{
+				HookHelper::Detours::Attach(&g_CChannel_MatrixTransformUpdate_Org, MyCChannel_MatrixTransformUpdate);
+				HookHelper::Detours::Attach(&g_CText_ValidateResources_Org, MyCText_ValidateResources);
+				HookHelper::Detours::Attach(&g_CText_InitializeVisualTreeClone_Org, MyCText_InitializeVisualTreeClone);
+			})
+		);
 	}
+	else
+	{
+		winrt::com_ptr<ID2D1DeviceContext> context{};
+		THROW_IF_FAILED(
+			uDWM::CDesktopManager::GetInstance()->GetD2DDevice()->CreateDeviceContext(
+				D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
+				context.put()
+			)
+		);
 
-	dwmcore::g_projectionArray.ApplyToVariable("CChannel::MatrixTransformUpdate", g_CChannel_MatrixTransformUpdate_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CText::ValidateResources", g_CText_ValidateResources_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CText::SetSize", g_CText_SetSize_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CText::InitializeVisualTreeClone", g_CText_InitializeVisualTreeClone_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CText::`scalar deleting destructor'", g_CText_scalar_deleting_destructor_Org);
+		g_ID2D1DeviceContext_DrawTextLayout_Org_Address = &HookHelper::vftbl_of<decltype(g_ID2D1DeviceContext_DrawTextLayout_Org)>(context.get())[28];
+		HookHelper::WritePointer(
+			g_ID2D1DeviceContext_DrawTextLayout_Org_Address,
+			MyID2D1DeviceContext_DrawTextLayout,
+			&g_ID2D1DeviceContext_DrawTextLayout_Org
+		);
 
-	wil::unique_hmodule wincodecsMoudle{ LoadLibraryExW(L"WindowsCodecs.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32) };
-	THROW_LAST_ERROR_IF_NULL(wincodecsMoudle);
-	const auto WICCreateImagingFactory_Proxy_fn = reinterpret_cast<HRESULT(WINAPI*)(UINT, IWICImagingFactory2**)>(
-		GetProcAddress(wincodecsMoudle.get(), "WICCreateImagingFactory_Proxy")
-	);
-	THROW_LAST_ERROR_IF_NULL(WICCreateImagingFactory_Proxy_fn);
-	winrt::com_ptr<IWICImagingFactory2> wicFactory{ nullptr };
-	THROW_IF_FAILED(WICCreateImagingFactory_Proxy_fn(WINCODEC_SDK_VERSION2, wicFactory.put()));
-	g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address = &HookHelper::vftbl_of(wicFactory.get())[21];
-	g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org = HookHelper::WritePointer(
-		g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address,
-		MyIWICImagingFactory2_CreateBitmapFromHBITMAP
-	);
-	g_DrawTextW_Org = reinterpret_cast<decltype(g_DrawTextW_Org)>(HookHelper::WriteIAT(uDWM::g_moduleHandle, "user32.dll", "DrawTextW", MyDrawTextW));
-	g_CreateBitmap_Org = reinterpret_cast<decltype(g_CreateBitmap_Org)>(HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "CreateBitmap", MyCreateBitmap));
+		winrt::com_ptr<IDCompositionDesktopDevicePartner> dcompDevicePartner{ nullptr };
+		THROW_IF_FAILED(uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(dcompDevicePartner.put()));
+		winrt::com_ptr<abi::ICompositionGraphicsDevice> graphicsDevice{ nullptr };
 
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
-		{
-			HookHelper::Detours::Attach(&g_CChannel_MatrixTransformUpdate_Org, MyCChannel_MatrixTransformUpdate);
-			HookHelper::Detours::Attach(&g_CText_ValidateResources_Org, MyCText_ValidateResources);
-			HookHelper::Detours::Attach(&g_CText_SetSize_Org, MyCText_SetSize);
-			HookHelper::Detours::Attach(&g_CText_InitializeVisualTreeClone_Org, MyCText_InitializeVisualTreeClone);
-			HookHelper::Detours::Attach(&g_CText_scalar_deleting_destructor_Org, MyCText_scalar_deleting_destructor);
-		})
-	);
+		const auto compositor = dcompDevicePartner.as<abi::ICompositor>();
+
+		THROW_IF_FAILED(
+			compositor.as<abi::ICompositorInterop>()->CreateGraphicsDevice(
+				uDWM::CDesktopManager::GetInstance()->GetD2DDevice(),
+				graphicsDevice.put()
+			)
+		);
+
+		g_ICompositionGraphicsDevice_CreateDrawingSurface_Org_Address = &HookHelper::vftbl_of<decltype(g_ICompositionGraphicsDevice_CreateDrawingSurface_Org)>(graphicsDevice.get())[6];
+		HookHelper::WritePointer(
+			g_ICompositionGraphicsDevice_CreateDrawingSurface_Org_Address,
+			MyICompositionGraphicsDevice_CreateDrawingSurface,
+			&g_ICompositionGraphicsDevice_CreateDrawingSurface_Org
+		);
+
+		winrt::com_ptr<abi::ICompositionSurfaceBrush> surfaceBrush{ nullptr };
+		THROW_IF_FAILED(compositor->CreateSurfaceBrush(surfaceBrush.put()));
+
+		g_ICompositionSurfaceBrush2_put_Offset_Org_Address = &HookHelper::vftbl_of<decltype(g_ICompositionSurfaceBrush2_put_Offset_Org)>(surfaceBrush.as<abi::ICompositionSurfaceBrush2>().get())[11];
+		HookHelper::WritePointer(
+			g_ICompositionSurfaceBrush2_put_Offset_Org_Address,
+			MyICompositionSurfaceBrush2_put_Offset,
+			&g_ICompositionSurfaceBrush2_put_Offset_Org
+		);
+
+		uDWM::g_projectionArray.ApplyToVariable("CDWriteText::ValidateVisual", g_CDWriteText_ValidateVisual_Org);
+		uDWM::g_projectionArray.ApplyToVariable("CDWriteText::InitializeVisualTreeClone", g_CDWriteText_InitializeVisualTreeClone_Org);
+
+		THROW_IF_FAILED(
+			HookHelper::Detours::Write([]()
+			{
+				HookHelper::Detours::Attach(&g_CDWriteText_ValidateVisual_Org, MyCDWriteText_ValidateVisual);
+				HookHelper::Detours::Attach(&g_CDWriteText_InitializeVisualTreeClone_Org, MyCDWriteText_InitializeVisualTreeClone);
+			})
+		);
+	}
 }
 void CaptionTextHandler::Shutdown()
 {
@@ -446,32 +879,85 @@ void CaptionTextHandler::Shutdown()
 		return;
 	}
 
-	if (uDWM::g_buildNumber >= os::build_w11_22h2)
+	if (uDWM::g_buildNumber < os::build_w11_22h2)
 	{
-		return;
+		if (g_CText_scalar_deleting_destructor_Org)
+		{
+			HookHelper::WritePointer(
+				g_CText_scalar_deleting_destructor_Org_Address,
+				g_CText_scalar_deleting_destructor_Org
+			);
+		}
+
+		THROW_IF_FAILED(
+			HookHelper::Detours::Write([]()
+			{
+				HookHelper::Detours::Detach(&g_CChannel_MatrixTransformUpdate_Org, MyCChannel_MatrixTransformUpdate);
+				HookHelper::Detours::Detach(&g_CText_ValidateResources_Org, MyCText_ValidateResources);
+				HookHelper::Detours::Detach(&g_CText_InitializeVisualTreeClone_Org, MyCText_InitializeVisualTreeClone);
+			})
+		);
+
+		Sleep(20);
+
+		HookHelper::WritePointer(
+			g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address,
+			g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org
+		);
+		HookHelper::WriteIAT(uDWM::g_moduleHandle, "user32.dll", "DrawTextW", g_DrawTextW_Org);
+		HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "CreateBitmap", g_CreateBitmap_Org);
+
+		g_textVisual = nullptr;
+	}
+	else
+	{
+		if (g_CDWriteText_scalar_deleting_destructor_Org)
+		{
+			HookHelper::WritePointer(
+				g_CDWriteText_scalar_deleting_destructor_Org_Address,
+				g_CDWriteText_scalar_deleting_destructor_Org
+			);
+		}
+		if (g_CDWriteText_UpdateOffset_Org)
+		{
+			HookHelper::WritePointer(
+				g_CDWriteText_UpdateOffset_Org_Address,
+				g_CDWriteText_UpdateOffset_Org
+			);
+		}
+		if (g_CDWriteText_SetSize_Org)
+		{
+			HookHelper::WritePointer(
+				g_CDWriteText_SetSize_Org_Address,
+				g_CDWriteText_SetSize_Org
+			);
+		}
+
+		THROW_IF_FAILED(
+			HookHelper::Detours::Write([]()
+			{
+				HookHelper::Detours::Detach(&g_CDWriteText_ValidateVisual_Org, MyCDWriteText_ValidateVisual);
+				HookHelper::Detours::Detach(&g_CDWriteText_InitializeVisualTreeClone_Org, MyCDWriteText_InitializeVisualTreeClone);
+			})
+		);
+
+		HookHelper::WritePointer(
+			g_ID2D1DeviceContext_DrawTextLayout_Org_Address,
+			g_ID2D1DeviceContext_DrawTextLayout_Org
+		);
+		HookHelper::WritePointer(
+			g_ICompositionGraphicsDevice_CreateDrawingSurface_Org_Address,
+			g_ICompositionGraphicsDevice_CreateDrawingSurface_Org
+		);
+		HookHelper::WritePointer(
+			g_ICompositionSurfaceBrush2_put_Offset_Org_Address,
+			g_ICompositionSurfaceBrush2_put_Offset_Org
+		);
+
+		g_dwriteTextVisual = nullptr;
+		DestroyDeviceResources();
 	}
 
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
-		{
-			HookHelper::Detours::Detach(&g_CChannel_MatrixTransformUpdate_Org, MyCChannel_MatrixTransformUpdate);
-			HookHelper::Detours::Detach(&g_CText_ValidateResources_Org, MyCText_ValidateResources);
-			HookHelper::Detours::Detach(&g_CText_SetSize_Org, MyCText_SetSize);
-			HookHelper::Detours::Detach(&g_CText_InitializeVisualTreeClone_Org, MyCText_InitializeVisualTreeClone);
-			HookHelper::Detours::Detach(&g_CText_scalar_deleting_destructor_Org, MyCText_scalar_deleting_destructor);
-		})
-	);
-
-	Sleep(1);
-
-	HookHelper::WritePointer(
-		g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address,
-		g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org
-	);
-	HookHelper::WriteIAT(uDWM::g_moduleHandle, "user32.dll", "DrawTextW", g_DrawTextW_Org);
-	HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "CreateBitmap", g_CreateBitmap_Org);
-
-	g_textVisualStateMap.clear();
-	g_textVisual = nullptr;
 	g_textSize = {};
+	g_textVisualStateMap.clear();
 }

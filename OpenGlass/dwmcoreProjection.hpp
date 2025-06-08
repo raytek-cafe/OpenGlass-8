@@ -65,6 +65,10 @@ namespace OpenGlass::dwmcore
 	};
 	struct CVisual : CResource 
 	{
+		DECLSPEC_PROJECTION HWND STDMETHODCALLTYPE GetTopLevelWindow() const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CVisual::GetTopLevelWindow);
+		}
 		DECLSPEC_PROJECTION CDesktopTree* STDMETHODCALLTYPE GetDesktopTree() const
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::GetDesktopTree);
@@ -416,6 +420,25 @@ namespace OpenGlass::dwmcore
 
 			return opacity;
 		}
+		CFloatResource* GetFloatResource() const
+		{
+			CFloatResource* resource{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[16];
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[9];
+			}
+			else
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[10];
+			}
+
+			return resource;
+		}
 		const D2D1_RECT_F& GetViewport() const
 		{
 			D2D1_RECT_F const* viewport{ nullptr };
@@ -435,6 +458,29 @@ namespace OpenGlass::dwmcore
 			else
 			{
 				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 112);
+			}
+
+			return *viewport;
+		}
+		const D2D1_RECT_F& GetViewbox() const
+		{
+			D2D1_RECT_F const* viewport{ nullptr };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 184);
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 192);
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 120);
+			}
+			else
+			{
+				viewport = reinterpret_cast<D2D1_RECT_F*>(reinterpret_cast<ULONG_PTR>(this) + 128);
 			}
 
 			return *viewport;
@@ -658,7 +704,20 @@ namespace OpenGlass::dwmcore
 		}
 	};
 
-	struct RenderTargetInfo;
+	enum class DisplayId : UINT
+	{
+		All = 0xFFFFFFFD,
+		Invalid = 0xFFFFFFFE,
+		None = 0xFFFFFFFF
+	};
+	struct RenderTargetInfo
+	{
+		LUID luid;
+		DisplayId displayId;
+		UINT unknown;
+		float luminance;
+		bool isProtected;
+	};
 	struct ID2DContextOwner
 	{
 		UINT STDMETHODCALLTYPE GetCurrentZ() const
@@ -684,10 +743,6 @@ namespace OpenGlass::dwmcore
 
 	struct CD2DContext : CResource
 	{
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE EnsureBeginDraw()
-		{
-			return HANDLE_PROJECTION_FUNCTION(CD2DContext::EnsureBeginDraw);
-		}
 		ID2D1DeviceContext* GetDeviceContext() const
 		{
 			ID2D1DeviceContext* context{ nullptr };
@@ -887,6 +942,10 @@ namespace OpenGlass::dwmcore
 			return deviceTransform;
 		}
 
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE ApplyRenderStateInternal(bool unknown)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::ApplyRenderStateInternal, unknown);
+		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE PushTransformInternal(CVisual* visual, const CMILMatrix* matrix, bool unknown1, bool unknown2)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::PushTransformInternal, visual, matrix, unknown1, unknown2);
@@ -921,36 +980,6 @@ namespace OpenGlass::dwmcore
 			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::GetCurrentVisual);
 		}
 
-		winrt::com_ptr<ID2D1Bitmap1> AcquireRenderTargetBitmap(bool flush)
-		{
-			winrt::com_ptr<ID2D1Bitmap1> renderTargetBitmap{ nullptr };
-			const auto d2dContext = GetD2DContext();
-			// ensure deferred target bitmap in position
-			d2dContext->EnsureBeginDraw();
-			const auto context = d2dContext->GetDeviceContext();
-			if (!context)
-			{
-				return renderTargetBitmap;
-			}
-			{
-				winrt::com_ptr<ID2D1Image> targetImage{ nullptr };
-				context->GetTarget(targetImage.put());
-				if (!targetImage)
-				{
-					return renderTargetBitmap;
-				}
-				if (FAILED(targetImage->QueryInterface(renderTargetBitmap.put())))
-				{
-					return renderTargetBitmap;
-				}
-			}
-			if (flush)
-			{
-				FlushD2D();
-			}
-
-			return renderTargetBitmap;
-		}
 		CVisual* GetCurrentVisualHelper() const
 		{
 			return (os::buildNumber >= os::build_w11_24h2 ? this : reinterpret_cast<dwmcore::CDrawingContext*>(GetD2DContextOwner()))->GetCurrentVisual();
@@ -1103,16 +1132,30 @@ namespace OpenGlass::dwmcore
 	struct CTreeDirty {};
 	struct COverlayContext : CResource {};
 	struct CWindowOcclusionInfo : CResource {};
-	struct CWindowNode : CResource {};
-	struct RenderTargetInfo;
+	struct CWindowNode : CResource
+	{
+		DECLSPEC_PROJECTION HWND STDMETHODCALLTYPE GetHwnd() const
+		{
+			return HANDLE_PROJECTION_FUNCTION(CWindowNode::GetHwnd);
+		}
+	};
 	struct CCachedVisualImage : CResource
 	{
 		struct CCachedTarget : CResource
 		{
-
+			CCachedVisualImage* GetCachedVisualImage() const
+			{
+				return *reinterpret_cast<CCachedVisualImage* const*>(this);
+			}
 		};
+
+		CVisual* GetRootVisual() const
+		{
+			return reinterpret_cast<CVisual* const*>(this)[17];
+		}
 	};
 	struct CDrawListCache : CResource {};
+	struct CDrawListEntryBuilder : CResource {};
 
 	DECLSPEC_PROJECTION ULONGLONG STDMETHODCALLTYPE GetCurrentFrameId()
 	{
@@ -1140,6 +1183,7 @@ namespace OpenGlass::dwmcore
 
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CDesktopTree::vftable, "CDesktopTree::`vftable'", 0, 0),
 
+		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetTopLevelWindow, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetDesktopTree, 0, 0),
 
 		MAKE_VARIABLE_PROJECTION_TUPLE(CMILMatrix::Identity, 0, 0),
@@ -1152,7 +1196,7 @@ namespace OpenGlass::dwmcore
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CRenderDataBuilder::DrawGeometry", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CRenderData::TryDrawCommandAsDrawList", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CGeometry::~CGeometry", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CRenderData::DrawImageResource_FillMode", 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CGeometry::GetShapeData, 0, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CRegionGeometry::vftable, "CRegionGeometry::`vftable'", 0, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CRectangleGeometry::vftable, "CRectangleGeometry::`vftable'", 0, 0),
@@ -1165,7 +1209,8 @@ namespace OpenGlass::dwmcore
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CArrayBasedCoverageSet::IsCovered", 0, os::build_w11_24h2),
 
-		MAKE_FUNCTION_PROJECTION_TUPLE(CD2DContext::EnsureBeginDraw, 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CD2DContext::DestroyDeviceResources", 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::ApplyRenderStateInternal, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PushTransformInternal, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PopTransformInternal, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetUnOccludedWorldShape, 0, 0),
@@ -1175,6 +1220,7 @@ namespace OpenGlass::dwmcore
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::FlushD2D, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetCurrentVisual, 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CDrawingContext::DrawVisualTree", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CDrawingContext::PreSubgraph", 0, 0),
 		
 		MAKE_FUNCTION_PROJECTION_TUPLE(COcclusionContext::SetDeviceTransform, 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("COcclusionContext::IsOccluded", os::build_w11_24h2, 0),
@@ -1185,6 +1231,9 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetUnOccludedDirtyRect", os::build_min, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetOptimizedRect", os::build_w11_21h2, os::build_w11_24h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTreeDirty::GetOptimizedRect", os::build_w11_24h2, 0),
+		
+		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowNode::GetHwnd, 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CWindowNode::RenderImage", 0, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CCachedVisualImage::CCachedTarget::Update", 0, 0),
 
@@ -1209,7 +1258,13 @@ namespace OpenGlass::dwmcore
 		{
 			return true;
 		}
-
+		if (
+			!strcmp(symbolName, "CRenderData::DrawImageResource_FillMode") &&
+			!strstr(info->Name, "PEBUD2D_RECT_F")
+		)
+		{
+			return true;
+		}
 		if (
 			!strcmp(symbolName, "CVisual::GetWorldTransform") &&
 			!strstr(info->Name, "W4WalkReason@@PEAVCMILMatrix@@PEA_N2@Z")

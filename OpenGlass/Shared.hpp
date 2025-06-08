@@ -42,9 +42,9 @@ namespace OpenGlass::Shared
 	inline D2D1_COLOR_F g_afterglow{};
 	// exclusively used by aero backdrop - end
 
+	inline BITMAPINFO g_textGlowBitmapInfo{};
+	inline PVOID g_textGlowBitmapPixels{};
 	inline wil::unique_hbitmap g_textGlowBitmap{};
-	inline float g_textOpacity{};
-	inline float g_textOpacityInactive{};
 	inline int g_textGlowMode{};
 	inline bool g_dontDeflateInactiveFrameGeometry{ true };
 	inline std::optional<LONG> g_captionHeight{};
@@ -54,6 +54,7 @@ namespace OpenGlass::Shared
 	inline float g_reflectionParallaxIntensity{};
 	inline std::wstring g_reflectionTexturePath{};
 
+	inline float g_materialIntensity{};
 	inline std::wstring g_materialTexturePath{};
 
 	FORCEINLINE bool IsTransparencyDisabled()

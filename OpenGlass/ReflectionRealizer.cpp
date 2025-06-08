@@ -80,7 +80,7 @@ HRESULT CReflectionRealizer::LoadTexture(ID2D1DeviceContext* context)
 
 HRESULT CReflectionRealizer::Render(
 	ID2D1DeviceContext* context,
-	const ReflectionInput& input
+	const CReflectionInput& input
 )
 {
 	if (!m_reflectionBitmap)
@@ -89,14 +89,46 @@ HRESULT CReflectionRealizer::Render(
 	}
 
 	const auto worldTransform3D = input.worldTransform->GetD3DMatrix();
-	context->DrawBitmap(
+	/*context->DrawBitmap(
 		m_reflectionBitmap.get(),
 		input.viewport,
 		input.intensity,
 		D2D1_INTERPOLATION_MODE_LINEAR,
 		nullptr,
 		&worldTransform3D
-	);
+	);*/
+
+	auto worldTransform2D = input.worldTransform->GetD2DMatrix();
+	D2D1InvertMatrix(&worldTransform2D);
+
+	const auto reflectionBitmapSize = m_reflectionBitmap->GetSize();
+	const D2D1_SIZE_F viewportSize
+	{
+		wil::rect_width(*input.viewport),
+		wil::rect_height(*input.viewport)
+	};
+	for (auto subRectangle : input.rectangles)
+	{
+		subRectangle = RectF::TransformRect(subRectangle, worldTransform2D);
+		if (RectF::IntersectUnsafe(subRectangle, *input.viewport))
+		{
+			D2D1_RECT_F sourceRectangle
+			{
+				(subRectangle.left - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.top - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+				(subRectangle.right - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.bottom - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+			};
+			context->DrawBitmap(
+				m_reflectionBitmap.get(),
+				subRectangle,
+				input.intensity,
+				D2D1_INTERPOLATION_MODE_LINEAR,
+				&sourceRectangle,
+				&worldTransform3D
+			);
+		}
+	}
 
 	return S_OK;
 }

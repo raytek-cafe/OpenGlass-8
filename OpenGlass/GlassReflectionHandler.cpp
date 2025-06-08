@@ -14,25 +14,13 @@ namespace OpenGlass::GlassReflectionHandler
 
 	HRESULT STDMETHODCALLTYPE MyCLivePreview__FadeOutToGlass(uDWM::CLivePreview* This);
 	HRESULT STDMETHODCALLTYPE MyCLivePreview__UpdateInstructions(uDWM::CLivePreview* This);
-	HRESULT STDMETHODCALLTYPE MyCLivePreview__UpdateResourcesForMonitor(uDWM::CLivePreview* This, uDWM::LivePreviewResource* livepreviewResource);
-	HRESULT STDMETHODCALLTYPE MyCCachedVisualImageProxy_Update(
-		uDWM::CCachedVisualImageProxy* This,
-		const D2D1_RECT_F& viewbox,
-		const DWM::MilSizeD& realizationSize,
-		const uDWM::CRectResourceProxy* rectProxy,
-		const uDWM::CSizeResourceProxy* sizeProxy,
-		const uDWM::CVisualProxy* visualProxy,
-		DWM::MilBrushMappingMode viewboxUnits
-	);
-
+	
 	decltype(&MyCAnimatedGlassSheet_OnRectUpdated) g_CAnimatedGlassSheet_OnRectUpdated_Org{ nullptr };
 	decltype(&MyCAnimatedGlassSheet_Destructor) g_CAnimatedGlassSheet_Destructor_Org{ nullptr };
 
 	decltype(&MyCLivePreview__FadeOutToGlass) g_CLivePreview__FadeOutToGlass_Org{ nullptr };
 	decltype(&MyCLivePreview__UpdateInstructions) g_CLivePreview__UpdateInstructions_Org{ nullptr };
-	decltype(&MyCLivePreview__UpdateResourcesForMonitor) g_CLivePreview__UpdateResourcesForMonitor_Org{ nullptr };
-	decltype(&MyCCachedVisualImageProxy_Update) g_CCachedVisualImageProxy_Update_Org{ nullptr };
-
+	
 	class CAnimatedReflectionSheet : public winrt::implements<CAnimatedReflectionSheet, IUnknown, winrt::non_agile, winrt::no_weak_ref>
 	{
 		uDWM::CAnimatedGlassSheet* m_sheet{ nullptr };
@@ -145,8 +133,6 @@ namespace OpenGlass::GlassReflectionHandler
 		}
 	};
 	std::unordered_map<uDWM::CAnimatedGlassSheet*, winrt::com_ptr<CAnimatedReflectionSheet>> g_sheetMap{};
-
-	uDWM::LivePreviewResource* g_livepreviewResource{ nullptr };
 }
 
 void STDMETHODCALLTYPE GlassReflectionHandler::MyCAnimatedGlassSheet_OnRectUpdated(uDWM::CAnimatedGlassSheet* This, LPCRECT lprc)
@@ -306,7 +292,7 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__FadeOutToGlass
 }
 HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstructions(uDWM::CLivePreview* This)
 {
-	auto hr = g_CLivePreview__UpdateInstructions_Org(This);
+	const auto hr = g_CLivePreview__UpdateInstructions_Org(This);
 
 	for (const auto& resource : This->GetLivePreviewResourceArray()->views())
 	{
@@ -361,39 +347,6 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstruct
 
 	return hr;
 }
-HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateResourcesForMonitor(uDWM::CLivePreview* This, uDWM::LivePreviewResource* livepreviewResource)
-{
-	g_livepreviewResource = livepreviewResource;
-	auto hr = g_CLivePreview__UpdateResourcesForMonitor_Org(This, livepreviewResource);
-	g_livepreviewResource = nullptr;
-
-	return hr;
-}
-HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCCachedVisualImageProxy_Update(
-	uDWM::CCachedVisualImageProxy* This,
-	const D2D1_RECT_F& viewbox,
-	const DWM::MilSizeD& realizationSize,
-	const uDWM::CRectResourceProxy* rectProxy,
-	const uDWM::CSizeResourceProxy* sizeProxy,
-	const uDWM::CVisualProxy* visualProxy,
-	DWM::MilBrushMappingMode viewboxUnits
-)
-{
-	// The DWM team changed the implementation of dwmcore!CRenderData::TryDrawCommandAsDrawList, 
-	// which is why Aero Peek is glitching since Windows 10 1803. 
-	// 
-	// https://github.com/microsoft/Windows-Dev-Performance/issues/12
-	if (g_livepreviewResource)
-	{
-		auto fixedViewBox = viewbox;
-		fixedViewBox.left = static_cast<float>(g_livepreviewResource->GetMonitorRect()->left);
-		fixedViewBox.top = static_cast<float>(g_livepreviewResource->GetMonitorRect()->top);
-		fixedViewBox.right = static_cast<float>(g_livepreviewResource->GetMonitorRect()->right);
-		fixedViewBox.bottom = static_cast<float>(g_livepreviewResource->GetMonitorRect()->bottom);
-		return g_CCachedVisualImageProxy_Update_Org(This, fixedViewBox, realizationSize, rectProxy, sizeProxy, visualProxy, viewboxUnits);
-	}
-	return g_CCachedVisualImageProxy_Update_Org(This, viewbox, realizationSize, rectProxy, sizeProxy, visualProxy, viewboxUnits);
-}
 
 void GlassReflectionHandler::Update([[maybe_unused]] GlassEngine::UpdateType type)
 {
@@ -406,14 +359,10 @@ void GlassReflectionHandler::Startup()
 	
 	uDWM::g_projectionArray.ApplyToVariable("CLivePreview::_FadeOutToGlass", g_CLivePreview__FadeOutToGlass_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CLivePreview::_UpdateInstructions", g_CLivePreview__UpdateInstructions_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CLivePreview::_UpdateResourcesForMonitor", g_CLivePreview__UpdateResourcesForMonitor_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CCachedVisualImageProxy::Update", g_CCachedVisualImageProxy_Update_Org);
 	
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
-			HookHelper::Detours::Attach(&g_CLivePreview__UpdateResourcesForMonitor_Org, MyCLivePreview__UpdateResourcesForMonitor);
-			HookHelper::Detours::Attach(&g_CCachedVisualImageProxy_Update_Org, MyCCachedVisualImageProxy_Update);
 			if (uDWM::g_buildNumber < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Attach(&g_CAnimatedGlassSheet_OnRectUpdated_Org, MyCAnimatedGlassSheet_OnRectUpdated);
@@ -434,8 +383,6 @@ void GlassReflectionHandler::Shutdown()
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
-			HookHelper::Detours::Detach(&g_CLivePreview__UpdateResourcesForMonitor_Org, MyCLivePreview__UpdateResourcesForMonitor);
-			HookHelper::Detours::Detach(&g_CCachedVisualImageProxy_Update_Org, MyCCachedVisualImageProxy_Update);
 			if (uDWM::g_buildNumber < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Detach(&g_CAnimatedGlassSheet_OnRectUpdated_Org, MyCAnimatedGlassSheet_OnRectUpdated);

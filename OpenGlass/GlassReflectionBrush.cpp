@@ -11,16 +11,49 @@ D2D1_RECT_F GlassReflectionBrush::CalculateTargetViewport(
 	const POINT& offset,
 	float parallaxIntensity,
 	bool mirrored,
-	LONG width
+	LONG width,
+	const DWM::MilSizeD& scale
 )
 {
 	D2D1_RECT_F viewport
 	{
-		(mirrored ? 1.f : -1.f) * static_cast<float>(mirrored ? (offset.x + width - (GetSystemMetrics(SM_CXVIRTUALSCREEN))) : offset.x) * (1.f - parallaxIntensity),
-		-static_cast<float>(offset.y),
-		(mirrored ? 1.f : -1.f) * static_cast<float>(mirrored ? (offset.x + width - (GetSystemMetrics(SM_CXVIRTUALSCREEN))) : offset.x) * (1.f - parallaxIntensity) + static_cast<float>(GetSystemMetrics(SM_CXVIRTUALSCREEN)),
-		-static_cast<float>(offset.y) + static_cast<float>(GetSystemMetrics(SM_CYVIRTUALSCREEN))
+		-1.f * 
+		(
+			mirrored ? 
+			(
+				static_cast<float>(GetSystemMetrics(SM_XVIRTUALSCREEN)) +
+				static_cast<float>(GetSystemMetrics(SM_CXVIRTUALSCREEN))
+
+				-
+
+				(
+					static_cast<float>(offset.x) +
+					static_cast<float>(width)
+				)
+				
+			) : 
+			static_cast<float>(
+				offset.x - 
+				GetSystemMetrics(SM_XVIRTUALSCREEN)
+			)
+		) * 
+		(
+			1.f - 
+			parallaxIntensity
+		),
+
+		-static_cast<float>(
+			offset.y - 
+			GetSystemMetrics(SM_YVIRTUALSCREEN)
+		)
 	};
+	viewport.right = viewport.left + static_cast<float>(GetSystemMetrics(SM_CXVIRTUALSCREEN));
+	viewport.bottom = viewport.top + static_cast<float>(GetSystemMetrics(SM_CYVIRTUALSCREEN));
+
+	viewport.left /= static_cast<float>(scale.width);
+	viewport.top /= static_cast<float>(scale.height);
+	viewport.right /= static_cast<float>(scale.width);
+	viewport.bottom /= static_cast<float>(scale.height);
 
 	return viewport;
 }

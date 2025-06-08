@@ -26,6 +26,8 @@ namespace OpenGlass
 	);
 	LRESULT CALLBACK DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	HWND g_notificationWindow{ nullptr };
+	bool g_hotkeyRegistered{ false };
+	UINT g_msgToggleHotKeyState{ RegisterWindowMessageW(L"OpenGlass.ToggleHotKeyState")};
 	PVOID g_powerNotify{ nullptr };
 	WNDPROC g_oldWndProc{ nullptr };
 
@@ -130,6 +132,10 @@ VOID CALLBACK OpenGlass::EffectivePowerModeCallback(
 	[[maybe_unused]] PVOID context
 )
 {
+	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+	{
+		ExitProcess(static_cast<UINT>(E_ABORT));
+	}
 	if (mode < (os::buildNumber < os::build_w11_24h2 ? 1 : 2))
 	{
 		Shared::g_xxSaver = true;
@@ -143,13 +149,52 @@ VOID CALLBACK OpenGlass::EffectivePowerModeCallback(
 
 LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	if (uMsg == g_msgToggleHotKeyState)
+	{
+		if (g_hotkeyRegistered)
+		{
+			LOG_IF_WIN32_BOOL_FALSE(
+				UnregisterHotKey(
+					g_notificationWindow,
+					1
+				)
+			);
+		}
+		else
+		{
+			LOG_IF_WIN32_BOOL_FALSE(
+				RegisterHotKey(
+					g_notificationWindow,
+					1,
+					MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT | MOD_WIN,
+					'X'
+				)
+			);
+		}
+		g_hotkeyRegistered = !g_hotkeyRegistered;
+	}
 	switch (uMsg)
 	{
 		case WM_HOTKEY:
 		{
-			if (GetAsyncKeyState(VK_ESCAPE) & 0x8000)
+			if (wParam == 1)
 			{
-				ExitProcess(static_cast<UINT>(E_ABORT));
+				THROW_WIN32(ERROR_CANCELLED);
+			}
+			break;
+		}
+		case WM_CLOSE:
+		{
+			if (g_hotkeyRegistered)
+			{
+				LOG_IF_WIN32_BOOL_FALSE(
+					UnregisterHotKey(
+						g_notificationWindow,
+						1
+					)
+				);
+				g_hotkeyRegistered = false;
+				g_notificationWindow = nullptr;
 			}
 			break;
 		}
@@ -631,15 +676,6 @@ void OpenGlass::Startup()
 	// make sure our third-party ui creators can send message to dwm
 	THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_DWMCOLORIZATIONCOLORCHANGED, MSGFLT_ALLOW, nullptr));
 
-	THROW_IF_FAILED(
-		PowerRegisterForEffectivePowerModeNotifications(
-			EFFECTIVE_POWER_MODE_V2,
-			EffectivePowerModeCallback,
-			nullptr,
-			&g_powerNotify
-		)
-	);
-
 	THROW_IF_WIN32_BOOL_FALSE(WTSRegisterSessionNotification(g_notificationWindow, NOTIFY_FOR_THIS_SESSION));
 	THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_WTSSESSION_CHANGE, MSGFLT_ALLOW, nullptr));
 
@@ -651,6 +687,16 @@ void OpenGlass::Startup()
 		)
 	);
 	THROW_LAST_ERROR_IF(g_oldWndProc == 0);
+	SendMessageW(g_notificationWindow, g_msgToggleHotKeyState, 0, 0);
+
+	THROW_IF_FAILED(
+		PowerRegisterForEffectivePowerModeNotifications(
+			EFFECTIVE_POWER_MODE_V2,
+			EffectivePowerModeCallback,
+			nullptr,
+			&g_powerNotify
+		)
+	);
 
 	GlassEngine::LoadRegistry(false);
 	GlassEngine::Startup();
@@ -686,20 +732,29 @@ void OpenGlass::Shutdown()
 
 	g_startup = false;
 
-	THROW_LAST_ERROR_IF(SetWindowLongPtrW(g_notificationWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_oldWndProc)) == 0);
-	g_oldWndProc = nullptr;
+	if (g_hotkeyRegistered)
+	{
+		SendMessageW(g_notificationWindow, g_msgToggleHotKeyState, 0, 0);
+		g_hotkeyRegistered = false;
+	}
+	
+	if (g_notificationWindow)
+	{
+		THROW_LAST_ERROR_IF(SetWindowLongPtrW(g_notificationWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_oldWndProc)) == 0);
+		g_oldWndProc = nullptr;
 
-	THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_WTSSESSION_CHANGE, MSGFLT_DISALLOW, nullptr));
-	THROW_IF_WIN32_BOOL_FALSE(WTSUnRegisterSessionNotification(g_notificationWindow));
+		THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_WTSSESSION_CHANGE, MSGFLT_DISALLOW, nullptr));
+		THROW_IF_WIN32_BOOL_FALSE(WTSUnRegisterSessionNotification(g_notificationWindow));
+
+		THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_DWMCOLORIZATIONCOLORCHANGED, MSGFLT_DISALLOW, nullptr));
+
+		g_notificationWindow = nullptr;
+	}
 
 	THROW_IF_FAILED(
 		PowerUnregisterFromEffectivePowerModeNotifications(g_powerNotify)
 	);
 	g_powerNotify = nullptr;
-
-	THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_DWMCOLORIZATIONCOLORCHANGED, MSGFLT_DISALLOW, nullptr));
-
-	g_notificationWindow = nullptr;
 
 	GlassEngine::Shutdown();
 	GlassEngine::UnloadRegistry();

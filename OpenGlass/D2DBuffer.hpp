@@ -1,55 +1,88 @@
 #pragma once
 #include "framework.hpp"
 #include "wil.hpp"
+#include "D2DPrivates.hpp"
 
 namespace OpenGlass
 {
 	class CD2DBuffer
 	{
-		winrt::com_ptr<ID2D1Bitmap1> m_buffer{};
 		D2D1_SIZE_U m_size{};
+		winrt::com_ptr<ID2D1Bitmap1> m_buffer{};
+		winrt::com_ptr<ID2D1Bitmap1> m_bufferAlphaPremultiplied{};
 
 		HRESULT EnsureBitmapAndCompatibility(ID2D1DeviceContext* context, ID2D1Bitmap1* bitmap)
 		{
 			winrt::com_ptr<ID2D1ColorContext> colorContext;
 			const auto pixelFormat = bitmap->GetPixelFormat();
-			const auto options = bitmap->GetOptions();
 			bitmap->GetColorContext(colorContext.put());
 
 			if (m_buffer)
 			{
 				winrt::com_ptr<ID2D1ColorContext> bufferColorContext;
 				const auto bufferPixelFormat = m_buffer->GetPixelFormat();
-				const auto bufferOptions = m_buffer->GetOptions();
 				m_buffer->GetColorContext(colorContext.put());
 
 				if (
 					bufferPixelFormat.format != pixelFormat.format ||
-					bufferPixelFormat.alphaMode != pixelFormat.alphaMode ||
-					bufferOptions != options ||
 					bufferColorContext != colorContext
 				)
 				{
 					Reset();
 				}
 			}
+
+			auto bitmapProperties = D2D1::BitmapProperties1(
+				D2D1_BITMAP_OPTIONS_NONE,
+				D2D1::PixelFormat(
+					pixelFormat.format,
+					D2D1_ALPHA_MODE_IGNORE
+				)
+			);
 			if (!m_buffer)
 			{
 				RETURN_IF_FAILED(
 					context->CreateBitmap(
-						D2D1::SizeU(
-							m_size.width,
-							m_size.height
-						),
+						m_size,
 						nullptr,
 						0,
-						D2D1::BitmapProperties1(
-							options,
-							pixelFormat
-						),
+						bitmapProperties,
 						m_buffer.put()
 					)
 				);
+
+				/*OutputDebugStringW(
+					std::format(
+						L"d2d buffer created: [{} x {}]\n",
+						m_size.width,
+						m_size.height
+					).c_str()
+				);*/
+			}
+			if (!m_bufferAlphaPremultiplied)
+			{
+				winrt::com_ptr<ID2D1PrivateCompositorDeviceContext> compositorDeviceContext{};
+				if (
+					bitmapProperties.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+					FAILED(context->QueryInterface(compositorDeviceContext.put())) ||
+					FAILED(
+						compositorDeviceContext->CreateSharedAtlasBitmap(
+							m_buffer.get(),
+							&bitmapProperties,
+							m_bufferAlphaPremultiplied.put()
+						)
+					)
+				)
+				{
+					winrt::com_ptr<ID2D1Bitmap> sharedBitmap{};
+					context->CreateSharedBitmap(
+						IID_ID2D1Bitmap,
+						m_buffer.get(),
+						reinterpret_cast<D2D1_BITMAP_PROPERTIES*>(&bitmapProperties),
+						sharedBitmap.put()
+					);
+					m_bufferAlphaPremultiplied = sharedBitmap.as<ID2D1Bitmap1>();
+				}
 			}
 
 			return S_OK;
@@ -57,7 +90,9 @@ namespace OpenGlass
 	public:
 		void Reset()
 		{
+			m_size = {};
 			m_buffer = nullptr;
+			m_bufferAlphaPremultiplied = nullptr;
 		}
 		void Resize(const D2D1_SIZE_U& size)
 		{
@@ -66,8 +101,19 @@ namespace OpenGlass
 				m_size.height != size.height
 			)
 			{
-				m_size = size;
 				Reset();
+				m_size = size;
+			}
+		}
+		void Reserve(const D2D1_SIZE_U& size)
+		{
+			if (
+				m_size.width < size.width ||
+				m_size.height < size.height
+			)
+			{
+				Reset();
+				m_size = size;
 			}
 		}
 		HRESULT CopyFrom(
@@ -79,7 +125,7 @@ namespace OpenGlass
 		{
 			RETURN_IF_FAILED(EnsureBitmapAndCompatibility(context, bitmap));
 			RETURN_IF_FAILED(
-				m_buffer->CopyFromBitmap(
+				(bitmap->GetPixelFormat().alphaMode == D2D1_ALPHA_MODE_IGNORE ? m_buffer : m_bufferAlphaPremultiplied)->CopyFromBitmap(
 					&destPoint,
 					bitmap,
 					&srcRect
@@ -96,14 +142,14 @@ namespace OpenGlass
 		{
 			return bitmap->CopyFromBitmap(
 				&destPoint,
-				m_buffer.get(),
+				(bitmap->GetPixelFormat().alphaMode == D2D1_ALPHA_MODE_IGNORE ? m_buffer : m_bufferAlphaPremultiplied).get(),
 				&srcRect
 			);
 		}
 		ID2D1Bitmap* GetCompatibleD2DBitmap(ID2D1DeviceContext* context, ID2D1Bitmap1* bitmap)
 		{
 			EnsureBitmapAndCompatibility(context, bitmap);
-			return m_buffer.get();
+			return (bitmap->GetPixelFormat().alphaMode == D2D1_ALPHA_MODE_IGNORE ? m_buffer : m_bufferAlphaPremultiplied).get();
 		}
 	};
 }

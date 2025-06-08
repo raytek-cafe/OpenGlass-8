@@ -22,10 +22,17 @@ void HookHelper::PatchInstructions(void* memory, const UCHAR* data, size_t lengt
 	);
 	THROW_IF_WIN32_BOOL_FALSE(FlushInstructionCache(GetCurrentProcess(), memory, length));
 }
-PVOID HookHelper::WritePointerInternal(PVOID* pointerAddress, PVOID value)
+void HookHelper::WritePointerInternal(PVOID* pointerAddress, PVOID value, PVOID* originalValue)
 {
 	auto unprotectedScope = HookHelper::unprotect(pointerAddress, sizeof(value));
-	return InterlockedExchangePointer(pointerAddress, value);
+	if (originalValue)
+	{
+		*originalValue = InterlockedExchangePointer(pointerAddress, value);;
+	}
+	else
+	{
+		InterlockedExchangePointer(pointerAddress, value);
+	}
 }
 
 HMODULE HookHelper::GetProcessModule(HANDLE processHandle, std::wstring_view dllPath)
