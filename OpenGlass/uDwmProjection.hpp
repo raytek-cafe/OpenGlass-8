@@ -789,7 +789,7 @@ namespace OpenGlass::uDWM
 			}
 		}
 
-		float* GetGlyphOpacity()
+		float& GetGlyphOpacity()
 		{
 			float* glyphOpacity{ nullptr };
 
@@ -803,7 +803,7 @@ namespace OpenGlass::uDWM
 				glyphOpacity = &(reinterpret_cast<float*>(this)[89]);
 			}
 
-			return glyphOpacity;
+			return *glyphOpacity;
 		}
 		BYTE* GetButtonState()
 		{
@@ -1831,8 +1831,6 @@ namespace OpenGlass::uDWM
 			{
 				return reinterpret_cast<DWORD const*>(data)[17];
 			}
-
-			return 0;
 		}
 		MARGINS& GetMarginsVisibleOutside(bool zoomed)
 		{

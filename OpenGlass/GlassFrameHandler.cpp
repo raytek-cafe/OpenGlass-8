@@ -656,7 +656,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPosit
 
 				g_CButton_SetSize_Org(button, &buttonSize);
 				button->SetInsetFromParent(inset);
-				*button->GetGlyphOpacity() = 1.f;
+				button->GetGlyphOpacity() = 1.f;
 
 				return true;
 			}
@@ -815,7 +815,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCButton_CloneVisualTree(uDWM::CBu
 		(*clonedVisual)->SetVisualStates(
 			This->GetGlyphBitmapArray(),
 			This->GetButtonBitmapArray(),
-			*This->GetGlyphOpacity()
+			This->GetGlyphOpacity()
 		)
 	);
 
