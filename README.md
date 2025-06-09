@@ -61,13 +61,15 @@ You can change the settings of OpenGlass via editing the Windows registry.
 | -------- | ---- | ----------- |
 | GlassType | DWORD | The type of glass effect. <ul><li>0x0=Vista style blur.</li><li>0x1=Aero style blur.</li><ul> |
 | GlassOverrideAccent | DWORD | Overrides surfaces with accent blur with OpenGlass effects, I.E: the taskbar. <br><br> **⚠️ This option is deprecated and may be removed in a future release. It may cause serious compatibility issues, you should NOT use this!** |
-| CustomThemeReflection | String | path to PNG file which will be used as overlay image to simulate reflection (Aero stripes) effect |
+| CustomThemeReflection | String | path to file with texture that is stretched over whole desktop and rendered above glass regions (default is Aero Glass Win7 reflection texture) |
 | ColorizationGlassReflectionIntensity<br>ColorizationGlassReflectionIntensityInactive | DWORD | The intensity of reflection effect (0-100%). Default value is 0%. |
 | ColorizationGlassReflectionParallaxIntensity | DWORD | The parallax intensity of the reflection effect (I.E when moving the windows side to side). Default value is 13%. | 
 | ColorizationGlassReflectionPolicy | DWORD | Controls where reflections should be rendered. <ul><li>Titlebar=1<<0</li><li>Aero Peek=1<<2</li><li>Aero Snap=1<<3 (ℹ️ Only valid in Win10)</li></ul> |
 | BlurDeviation | DWORD | Standard deviation for gaussian blur, default=30 (which means σ=3.0) <br>Value 0 results in non-blurred transparency. |
 | BlurOptimization | DWORD | Quality of gaussian blur<ul><li>0x0=Speed first</li><li>0x1=Balance (default)</li><li>0x2=Quality first</li></ul>  |
 | RoundRectRadius | DWORD | The radius of glass geometry, Win8=0, Win7=12 | 
+| CustomThemeMaterial | String | path to file with texture that is rendered (tiled) above glass regions (default is Acrylic noise texture) |
+| MaterialOpacity  | DWORD | opacity of material texture (default = 0) |
 
 ### Theme settings
 | Key Name | Type | Description | 
