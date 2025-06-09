@@ -371,6 +371,17 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 		)
 	);
 
+	if (!metrics.width || !metrics.height)
+	{
+		return g_ID2D1DeviceContext_DrawTextLayout_Org(
+			This,
+			origin,
+			textLayout,
+			defaultFillBrush,
+			options
+		);
+	}
+
 	if (LOWORD(Shared::g_textGlowMode) == 3 && g_textGlowIntensity)
 	{
 		winrt::com_ptr<ID2D1BitmapRenderTarget> bitmapRT{};
@@ -415,13 +426,13 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 			THROW_IF_FAILED(
 				g_textMorphologyEffect->SetValue(
 					D2D1_MORPHOLOGY_PROP_WIDTH,
-					3
+					3 + g_textGlowSize / 12
 				)
 			);
 			THROW_IF_FAILED(
 				g_textMorphologyEffect->SetValue(
 					D2D1_MORPHOLOGY_PROP_HEIGHT,
-					3
+					3 + g_textGlowSize / 12
 				)
 			);
 		}
@@ -450,7 +461,10 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 		THROW_IF_FAILED(
 			g_textGlowEffect->SetValue(
 				D2D1_SHADOW_PROP_BLUR_STANDARD_DEVIATION,
-				(static_cast<float>(g_textGlowSize) - 0.5f) / 3.f
+				std::max(
+					0.f,
+					(static_cast<float>(g_textGlowSize)) / 3.f + 0.5f
+				)
 			)
 		);
 		g_textMorphologyEffect->SetInput(0, bitmap.get());
@@ -493,20 +507,58 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 				)
 			);
 		}
+
+		DWRITE_OVERHANG_METRICS overhangs{};
+		THROW_IF_FAILED(
+			textLayout->GetOverhangMetrics(
+				&overhangs
+			)
+		);
+		/*D2D1_RECT_F glowRect
+		{
+			origin.x + std::floor(-overhangs.left) - 1.f - static_cast<float>(g_contentMargins.cxLeftWidth),
+			origin.y + std::floor(-overhangs.top) - 1.f - static_cast<float>(g_contentMargins.cyTopHeight),
+			origin.x + std::floor(-overhangs.left) - 2.f + g_textSizeF.Width + static_cast<float>(g_contentMargins.cxRightWidth),
+			origin.y + std::floor(-overhangs.top) - 2.f + g_textSizeF.Height + static_cast<float>(g_contentMargins.cyBottomHeight)
+		};*/
+		D2D1_RECT_F glowRect
+		{
+			origin.x + (std::floor(-overhangs.left) - 1.f) - static_cast<float>(g_contentMargins.cxLeftWidth),
+			origin.y + std::floor(metrics.top) - 1.f - static_cast<float>(g_contentMargins.cyTopHeight),
+			origin.x + (std::floor(-overhangs.left) - 1.f) + g_textSizeF.Width + static_cast<float>(g_contentMargins.cxRightWidth),
+			origin.y + std::floor(metrics.top + metrics.height) + 1.f + static_cast<float>(g_contentMargins.cyBottomHeight)
+		};
 		THROW_IF_FAILED(
 			Util::DrawNineGridBitmap(
 				This,
 				g_textGlowD2DBitmap.get(),
-				D2D1::RectF(
-					std::floor(origin.x + metrics.left) - static_cast<float>(g_contentMargins.cxLeftWidth),
-					std::floor(origin.y + metrics.top) - static_cast<float>(g_contentMargins.cyTopHeight),
-					std::ceil(origin.x + metrics.left + metrics.width) + static_cast<float>(g_contentMargins.cxRightWidth),
-					std::ceil(origin.y + metrics.top + metrics.height) + static_cast<float>(g_contentMargins.cyBottomHeight)
-				),
+				glowRect,
 				g_sizingMargins,
 				Shared::g_textGlowMode == 2 ? (g_active ? g_textOpacity : g_textOpacityInactive) : 1.f
 			)
 		);
+		/*{
+			winrt::com_ptr<ID2D1SolidColorBrush> brush{};
+			THROW_IF_FAILED(This->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Red), brush.put()));
+			This->DrawRectangle(
+				glowRect,
+				brush.get(),
+				1.f,
+				nullptr
+			);
+			brush->SetColor(D2D1::ColorF(D2D1::ColorF::LightGreen));
+			This->DrawRectangle(
+				D2D1::RectF(
+					origin.x + std::floor(-overhangs.left) - 1.f,
+					origin.y + std::floor(-overhangs.top) - 1.f,
+					origin.x + std::floor(-overhangs.left) - 2.f + g_textSizeF.Width,
+					origin.y + std::floor(-overhangs.top) - 2.f + g_textSizeF.Height
+				),
+				brush.get(),
+				1.f,
+				nullptr
+			);
+		}*/
 	}
 
 	return g_ID2D1DeviceContext_DrawTextLayout_Org(
@@ -564,10 +616,11 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_ValidateVisual(uDWM:
 {
 	// if CDWriteText only updates its offset, it won't do anything
 	// let's make it redraw to ensure the glow
-	if (This->GetDirtyFlags() & 8)
+	if ((This->GetDirtyFlags() & 8))
 	{
 		This->SetDirtyFlags(2);
 	}
+	bool manuallyUpdateOffset = (This->GetDirtyFlags() & 2) == 2;
 	if (!g_CDWriteText_scalar_deleting_destructor_Org)
 	{
 		g_CDWriteText_scalar_deleting_destructor_Org_Address = HookHelper::vftbl_of<decltype(g_CDWriteText_scalar_deleting_destructor_Org)>(This);
@@ -609,6 +662,10 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_ValidateVisual(uDWM:
 	g_dwriteTextVisual = This;
 	const auto hr = g_CDWriteText_ValidateVisual_Org(This);
 	g_dwriteTextVisual = nullptr;
+	if (manuallyUpdateOffset)
+	{
+		MyCDWriteText_UpdateOffset(This);
+	}
 
 	return hr;
 }
@@ -715,8 +772,8 @@ void CaptionTextHandler::CalculateRealizedTextGlowParams(int textGlowMode)
 		GetThemeColor(themeHandle.get(), 0, 0, TMT_GLOWCOLOR, &g_textGlowColor);
 
 		// debug
-		g_textGlowIntensity = 305;
-		g_textGlowColor = 0xFFFFFF;
+		//g_textGlowIntensity = 305;
+		//g_textGlowColor = 0xFFFFFF;
 	}
 }
 

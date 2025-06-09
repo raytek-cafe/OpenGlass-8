@@ -644,24 +644,22 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPosit
 	auto& visibleMargins = This->GetMarginsVisibleOutside(maximized);
 	auto& borderMargins = This->GetBorderMargins();
 
-	RECT rect{ 0 };
-	This->GetActualWindowRect(&rect, true, true, true);
-	int cxLeft = (rect.left < 0) ? -rect.left : This->GetFrameThickness();
+	int cxLeft = borderMargins.cxLeftWidth ? borderMargins.cxLeftWidth : This->GetFrameThickness();
 
 	auto UpdateButton = [&](int buttonType, int offsetRight, int offsetTop, SIZE buttonSize)
+	{
+		if (auto button = This->GetButton(buttonType); button)
 		{
-			if (auto button = This->GetButton(buttonType); button)
-			{
-				MARGINS inset = { 0x7FFFFFFF, offsetRight, offsetTop, 0x7FFFFFFF };
+			MARGINS inset = { 0x7FFFFFFF, offsetRight, offsetTop, 0x7FFFFFFF };
 
-				g_CButton_SetSize_Org(button, &buttonSize);
-				button->SetInsetFromParent(inset);
-				button->GetGlyphOpacity() = 1.f;
+			g_CButton_SetSize_Org(button, &buttonSize);
+			button->SetInsetFromParent(inset);
+			button->GetGlyphOpacity() = 1.f;
 
-				return true;
-			}
-			return false;
-		};
+			return true;
+		}
+		return false;
+	};
 
 	int cySize = GetSystemMetricsForDpi(SM_CYSIZE, data->GetWindowDPI());
 

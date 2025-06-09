@@ -269,7 +269,7 @@ namespace OpenGlass::Util
 			
 			const auto ratio = destinationWidth / totalSrcHorizontalMargins;
 			destMargins.left *= ratio;
-			destMargins.left = std::round(destMargins.left);
+			destMargins.left = std::floor(destMargins.left);
 			destMargins.right = destinationWidth - destMargins.left;
 		}
 
@@ -280,7 +280,7 @@ namespace OpenGlass::Util
 
 			const auto ratio = destinationHeight / totalSrcVerticalMargins;
 			destMargins.top *= ratio;
-			destMargins.top = std::round(destMargins.top);
+			destMargins.top = std::floor(destMargins.top);
 			destMargins.bottom = destinationHeight - destMargins.top;
 		}
 

@@ -743,6 +743,10 @@ namespace OpenGlass::dwmcore
 
 	struct CD2DContext : CResource
 	{
+		DECLSPEC_PROJECTION void STDMETHODCALLTYPE EnsureBeginDraw()
+		{
+			return HANDLE_PROJECTION_FUNCTION(CD2DContext::EnsureBeginDraw);
+		}
 		ID2D1DeviceContext* GetDeviceContext() const
 		{
 			ID2D1DeviceContext* context{ nullptr };
@@ -942,10 +946,6 @@ namespace OpenGlass::dwmcore
 			return deviceTransform;
 		}
 
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE ApplyRenderStateInternal(bool unknown)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::ApplyRenderStateInternal, unknown);
-		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE PushTransformInternal(CVisual* visual, const CMILMatrix* matrix, bool unknown1, bool unknown2)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::PushTransformInternal, visual, matrix, unknown1, unknown2);
@@ -1210,7 +1210,7 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CArrayBasedCoverageSet::IsCovered", 0, os::build_w11_24h2),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CD2DContext::DestroyDeviceResources", 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::ApplyRenderStateInternal, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CD2DContext::EnsureBeginDraw, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PushTransformInternal, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PopTransformInternal, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetUnOccludedWorldShape, 0, 0),
@@ -1232,8 +1232,10 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetOptimizedRect", os::build_w11_21h2, os::build_w11_24h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTreeDirty::GetOptimizedRect", os::build_w11_24h2, 0),
 		
+#ifdef BUILD_BETA
 		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowNode::GetHwnd, 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CWindowNode::RenderImage", 0, 0),
+#endif
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CCachedVisualImage::CCachedTarget::Update", 0, 0),
 

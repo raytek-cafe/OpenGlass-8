@@ -80,6 +80,11 @@ namespace OpenGlass::GlassRenderer
 		ID2D1Brush* opacityBrush
 	);
 
+#ifdef BUILD_BETA
+	constexpr bool c_enableWatermarkHook{ true };
+#else
+	constexpr bool c_enableWatermarkHook{ false };
+#endif
 	HRESULT STDMETHODCALLTYPE MyCWindowNode_RenderImage(
 		dwmcore::CWindowNode* This,
 		dwmcore::CDrawingContext* drawingContext,
@@ -119,6 +124,7 @@ namespace OpenGlass::GlassRenderer
 	winrt::com_ptr<CGlassRealizer> g_glassRealizer{ nullptr };
 	winrt::com_ptr<CReflectionRealizer> g_reflectionRealizer{ nullptr };
 
+#ifdef BUILD_BETA
 	D2D1_RECT_F g_textLayoutBox{};
 	winrt::com_ptr<ID2D1Bitmap> g_textBitmap{};
 	winrt::com_ptr<ID2D1Image> g_textGlowImage{};
@@ -126,6 +132,7 @@ namespace OpenGlass::GlassRenderer
 	winrt::com_ptr<IDWriteFactory> g_dwriteFactory{ nullptr };
 	winrt::com_ptr<IDWriteTextFormat> g_dwriteTextFormat{ nullptr };
 	winrt::com_ptr<IDWriteTextLayout> g_dwriteTextLayout{ nullptr };
+#endif
 
 	HRESULT LoadMaterialEffect(ID2D1DeviceContext* context);
 	dwmcore::CShapePtr GetShapeRenderingData(
@@ -396,6 +403,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		return S_OK;
 	}
 
+	d2dContext->EnsureBeginDraw();
 	RETURN_IF_FAILED(
 		drawingContext->PushTransformInternal(
 			nullptr,
@@ -408,7 +416,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	{
 		drawingContext->PopTransformInternal(true);
 	});
-	RETURN_IF_FAILED(drawingContext->ApplyRenderStateInternal(false));
 	
 	if (HookHelper::vftbl_of(brush) == dwmcore::CImageLegacyMilBrush::vftable)
 	{
@@ -982,8 +989,10 @@ HRESULT GlassRenderer::LoadMaterialEffect(ID2D1DeviceContext* context)
 
 void GlassRenderer::DestroyDeviceResources()
 {
+#ifdef BUILD_BETA
 	g_textBitmap = nullptr;
 	g_textGlowImage = nullptr;
+#endif
 
 	g_brush = nullptr;
 	g_glassRealizer = nullptr;
@@ -1108,6 +1117,7 @@ void GlassRenderer::Startup()
 	g_glassInput.buffer = &g_buffer;
 	g_glassInput.drawingWorldBounds = &g_drawingWorldBounds;
 
+#ifdef BUILD_BETA
 	THROW_IF_FAILED(
 		DWriteCreateFactory(
 			DWRITE_FACTORY_TYPE_SHARED,
@@ -1131,7 +1141,7 @@ void GlassRenderer::Startup()
 	THROW_IF_FAILED(g_dwriteTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 	std::wstring watermarkText
 	{
-		L"Aero Glass For Windows 10+ (Beta) \n"
+		L"Aero Glass For Windows 10+ (Beta 01) \n"
 		L"For testing purposes only. Do not distribute. \n"
 		L"https://github.com/ALTaleX531/OpenGlass "
 	};
@@ -1155,6 +1165,7 @@ void GlassRenderer::Startup()
 		metrics.height
 	};
 	THROW_IF_FAILED(g_dwriteTextLayout->SetMaxWidth(wil::rect_width(g_textLayoutBox)));
+#endif
 	
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
@@ -1190,7 +1201,10 @@ void GlassRenderer::Startup()
 				);
 			}
 
-			HookHelper::Detours::Attach(&g_CWindowNode_RenderImage_Org, MyCWindowNode_RenderImage);
+			if constexpr (c_enableWatermarkHook)
+			{
+				HookHelper::Detours::Attach(&g_CWindowNode_RenderImage_Org, MyCWindowNode_RenderImage);
+			}
 		})
 	);
 }
@@ -1231,13 +1245,18 @@ void GlassRenderer::Shutdown()
 				);
 			}
 
-			HookHelper::Detours::Detach(&g_CWindowNode_RenderImage_Org, MyCWindowNode_RenderImage);
+			if constexpr (c_enableWatermarkHook)
+			{
+				HookHelper::Detours::Detach(&g_CWindowNode_RenderImage_Org, MyCWindowNode_RenderImage);
+			}
 		})
 	);
 
+#ifdef BUILD_BETA
 	g_dwriteTextLayout = nullptr;
 	g_dwriteTextFormat = nullptr;
 	g_dwriteFactory = nullptr;
+#endif
 
 	Sleep(20);
 

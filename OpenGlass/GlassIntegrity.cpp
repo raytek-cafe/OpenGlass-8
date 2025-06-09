@@ -729,8 +729,8 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 			break;
 		}
 
-		RETURN_IF_FAILED(This->ApplyRenderStateInternal(false));
 		const auto d2dContext = This->GetD2DContext();
+		d2dContext->EnsureBeginDraw();
 		const auto renderTargetBitmap = Util::GetTargetBitmapFromDeviceContext(d2dContext->GetDeviceContext());
 		if (!renderTargetBitmap)
 		{
