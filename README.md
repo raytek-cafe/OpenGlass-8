@@ -140,3 +140,15 @@ VC-LTL is an open source CRT library based on the MS VCRT that reduce program bi
 The Windows Implementation Libraries (WIL) is a header-only C++ library created to make life easier for developers on Windows through readable type-safe C++ interfaces for common Windows coding patterns.  
 ### [Interop Compositor](https://blog.adeltax.com/interopcompositor-and-coredispatcher/)
 Saved me some decompiling and reverse engineering time thanks to ADeltaX's blog!
+
+## Support
+The software was developed in free time and is now open source under the GPLv3 license.
+
+Since Desktop Window Manager does not provide any official support for its extensibility, OpenGlass internally uses many undocumented techniques to achieve the desired effect. Although these techniques have been developed precisely with an emphasis on stability, performance and compatibility, it may happen that some future Windows update will break it. The developer cannot ensure that OpenGlass will be fully functional in such case but he will do its best to make it work as soon as possible.
+
+If you are satisfied with my work, please consider donating via Ko-fi to support OpenGlass. By donation you agree with the following statements:
+* **You donate voluntarily without a claim for consideration**.
+* You donate as a natural person.
+
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/altalex531)
