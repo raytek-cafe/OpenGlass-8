@@ -55,7 +55,7 @@ You can change the settings of OpenGlass via editing the Windows registry.
 | ColorizationAfterglowOverride<br>ColorizationColorBalanceOverride<br>ColorizationAfterglowBalanceOverride<br>ColorizationBlurBalanceOverride | DWORD | Same as above, but OpenGlass prefers to use these. They are optional.<br><br>ℹ️ The reason these values exist is that some of the functions in uxtheme.dll since Windows 10 continually reset the values of some keys, and you want to have them fixed. |
 | GlassOpacity<br>GlassOpacityInactive | DWORD | The intensity of the color (0-100%).<br><br>ℹ️ Only used when `GlassType`=0x0 |
 | ColorizationColorCaption<br>ColorizationColorCaptionInactive | DWORD | Color used for drawing window titles. Format is 0xBBGGRR. |
-| ColorizationOpaqueBlend<br>`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize\EnableTransparency` | DWORD | Controls the transparency of glass effect. |
+| ColorizationOpaqueBlend | DWORD | Controls the transparency of glass effect. |
 | ColorizationOpaqueBlendColor | DWORD | ARGB base color used for opaque blending, alpha value is ignored. |
 
 ### Glass settings
@@ -90,7 +90,7 @@ The following registry items are located only in `HKLM\Software\Microsoft\Window
 | -------- | ---- | ----------- |
 | DisableGlassOnBattery | DWORD | <ul><li>0x1=When energy saver is on then the glass effect will be opaque to decrease energy consumption (default)</li><li>0x0=glass effect won't be opaque on energy saver</li></ul> |
 | DisableMemoryDump | DWORD | <ul><li>0x0=Generates a memory dump file when DWM crashes (default)</li><li>0x1=No memory dump files</li></ul> |
-| DisabledHooks | DWORD | Controls which module's hooks are disabled, which will also control the availability of features. <ul><li>0x0=No hooks are disabled (default)</li><li>0x1=Disables hooks for `CaptionTextHandler.cpp`</li></ul>ℹ️ Unless you want to ensure compatibility with third-party applications, you should not modify this key. |
+| DisabledHooks | DWORD | Controls which module's hooks are disabled, which will also control the availability of features. <ul><li>0x0=No hooks are disabled (default)</li><li>0x1=Disables hooks for `CaptionTextHandler.cpp`</li></ul><br>ℹ️ Unless you want to ensure compatibility with third-party applications, you should not modify this key. |
 
 ## What are the custom theme atlas files?
 When Desktop Windows Manager wants to draw frame controls (such as minimize/maximize/close buttons, frame shadow etc.), it uses images which are stored in your current theme. Normally, you would need to edit your theme and install UxTheme patch to be able to change the appearance of windows frames. OpenGlass comes with a feature that you can change these images directly without editing the theme. Just provide custom *.png image, point to it with CustomThemeAtlas registry settings and restart DWM.EXE process. The windows frames will be drawn using your custom image now. Just beware that the layout of theme resource depends on the current system theme. If you do not keep this layout, your frames will be rendered incorrectly.
