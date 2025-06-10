@@ -41,6 +41,8 @@ But remember that colorization of the frame is also influenced by used theme. Ma
 You can change the settings of OpenGlass via editing the Windows registry.
 > [!IMPORTANT]  
 > Unless specified, the options below are stored in `HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\DWM` (per-user) and `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\DWM` (global). OpenGlass prefers to read the settings in the HKCU.
+> 
+> When certain keys do not exist, OpenGlass uses the pre-defined default values.
 
 
 ### Colorization settings
@@ -48,26 +50,26 @@ You can change the settings of OpenGlass via editing the Windows registry.
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
 | ColorizationColor<br>ColorizationColorInactive | DWORD | ARGB color used for the glass effect, alpha value is ignored.<br><br>ℹ️ `ColorizationColorInactive` is only used when `GlassType`=0x0 |
-| ColorizationColorOverride | DWORD | Same as `ColorizationColor`, but OpenGlass prefers to use this item. |
+| ColorizationColorOverride | DWORD | Same as `ColorizationColor`, but OpenGlass prefers to use this item. It is optional.<br><br>ℹ️ The reason this value exists is that some of the functions in uxtheme.dll since Windows 10 continually reset the value of this key, and you want to have it fixed. |
 | ColorizationAfterglow<br>ColorizationColorBalance<br>ColorizationAfterglowBalance<br>ColorizationBlurBalance | DWORD | Composition parameters for aero shader effect.<br><br>ℹ️ Only used when `GlassType`=0x1 |
-| ColorizationAfterglowOverride<br>ColorizationColorBalanceOverride<br>ColorizationAfterglowBalanceOverride<br>ColorizationBlurBalanceOverride | DWORD | Same as above, but OpenGlass prefers to use these. |
+| ColorizationAfterglowOverride<br>ColorizationColorBalanceOverride<br>ColorizationAfterglowBalanceOverride<br>ColorizationBlurBalanceOverride | DWORD | Same as above, but OpenGlass prefers to use these. They are optional.<br><br>ℹ️ The reason these values exist is that some of the functions in uxtheme.dll since Windows 10 continually reset the values of some keys, and you want to have them fixed. |
 | GlassOpacity<br>GlassOpacityInactive | DWORD | The intensity of the color (0-100%).<br><br>ℹ️ Only used when `GlassType`=0x0 |
 | ColorizationColorCaption<br>ColorizationColorCaptionInactive | DWORD | Color used for drawing window titles. Format is 0xBBGGRR. |
-| ColorizationOpaqueBlend | DWORD | Controls the transparency of glass effect. |
+| ColorizationOpaqueBlend<br>`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize\EnableTransparency` | DWORD | Controls the transparency of glass effect. |
 | ColorizationOpaqueBlendColor | DWORD | ARGB base color used for opaque blending, alpha value is ignored. |
 
 ### Glass settings
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
 | GlassType | DWORD | The type of glass effect. <ul><li>0x0=Vista style blur.</li><li>0x1=Aero style blur.</li><ul> |
-| GlassOverrideAccent | DWORD | Overrides surfaces with accent blur with OpenGlass effects, I.E: the taskbar. <br><br> **⚠️ This option is deprecated and may be removed in a future release. It may cause serious compatibility issues, you should NOT use this!** |
+| GlassOverrideAccent | DWORD | Overrides surfaces with accent blur with OpenGlass effects, I.E: the taskbar. |
 | CustomThemeReflection | String | path to file with texture that is stretched over whole desktop and rendered above glass regions (default is Aero Glass Win7 reflection texture) |
 | ColorizationGlassReflectionIntensity<br>ColorizationGlassReflectionIntensityInactive | DWORD | The intensity of reflection effect (0-100%). Default value is 0%. |
 | ColorizationGlassReflectionParallaxIntensity | DWORD | The parallax intensity of the reflection effect (I.E when moving the windows side to side). Default value is 13%. | 
 | ColorizationGlassReflectionPolicy | DWORD | Controls where reflections should be rendered. <ul><li>Titlebar=1<<0</li><li>Aero Peek=1<<2</li><li>Aero Snap=1<<3 (ℹ️ Only valid in Win10)</li></ul> |
 | BlurDeviation | DWORD | Standard deviation for gaussian blur, default=30 (which means σ=3.0) <br>Value 0 results in non-blurred transparency. |
-| BlurOptimization | DWORD | Quality of gaussian blur<ul><li>0x0=Speed first</li><li>0x1=Balance (default)</li><li>0x2=Quality first</li></ul>  |
-| RoundRectRadius | DWORD | The radius of glass geometry, Win8=0, Win7=12 | 
+| BlurOptimization | DWORD | Quality of gaussian blur<ul><li>0x0=Speed first (default)</li><li>0x1=Balance</li><li>0x2=Quality first</li></ul>  |
+| RoundRectRadius | DWORD | The radius of glass geometry, Win8=0, Win7=6 | 
 | CustomThemeMaterial | String | path to file with texture that is rendered (tiled) above glass regions (default is Acrylic noise texture) |
 | MaterialOpacity  | DWORD | opacity of material texture (default = 0) |
 
@@ -76,7 +78,7 @@ You can change the settings of OpenGlass via editing the Windows registry.
 | -------- | ---- | ----------- |
 | CaptionButtons | DWORD | Changes caption buttons sizes and the opacity of the button glyphs.<ul><li>0x0=Windows 10 style (default)</li><li>0x1=Windows Vista style</li><li>0x2=Windows 7 style</li><li>0x3=Windows 8 style</li></ul> |
 | CenterCaption | DWORD | Controls how title bar text is aligned.<ul><li>0x0=Keeps it on the left (default)</li><li>0x1=Centers it between the titlebar icon and the titlebar buttons</li></ul> |
-| TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <ul><li>0x0=No glow effect</li><li>0x1=Glow effect loaded from atlas (default)</li><li>0x2=Glow effect loaded from atlas and theme opacity is respected</li><li>0x3=Composited glow effect using your theme settings HIWORD of the value specifies glow size (0=theme default)</li></ul |
+| TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <ul><li>0x0=No glow effect</li><li>0x1=Glow effect loaded from atlas (default)</li><li>0x2=Glow effect loaded from atlas and theme opacity is respected</li><li>0x3=Composited glow effect using your theme settings HIWORD of the value specifies glow size (0=theme default)</li> |
 | CustomThemeAtlas | String | path to PNG file with theme resource (bitmap must have exactly the same layout as msstyle theme you are using!) |
 | DisableModernBorders | DWORD | Disable modern rounded window borders. <ul><li>0x0=Enable modern borders</li><li>0x1=Disable modern borders</li></ul><br>ℹ️ Only valid in Win11 |
 
@@ -88,7 +90,7 @@ The following registry items are located only in `HKLM\Software\Microsoft\Window
 | -------- | ---- | ----------- |
 | DisableGlassOnBattery | DWORD | <ul><li>0x1=When energy saver is on then the glass effect will be opaque to decrease energy consumption (default)</li><li>0x0=glass effect won't be opaque on energy saver</li></ul> |
 | DisableMemoryDump | DWORD | <ul><li>0x0=Generates a memory dump file when DWM crashes (default)</li><li>0x1=No memory dump files</li></ul> |
-| DisabledHooks | DWORD | Controls which module's hooks are disabled, which will also control the availability of features. <ul><li>0x0=No hooks are disabled (default)</li><li>0x1=Disables hooks for `CaptionTextHandler.cpp`</li></ul> |
+| DisabledHooks | DWORD | Controls which module's hooks are disabled, which will also control the availability of features. <ul><li>0x0=No hooks are disabled (default)</li><li>0x1=Disables hooks for `CaptionTextHandler.cpp`</li></ul>ℹ️ Unless you want to ensure compatibility with third-party applications, you should not modify this key. |
 
 ## What are the custom theme atlas files?
 When Desktop Windows Manager wants to draw frame controls (such as minimize/maximize/close buttons, frame shadow etc.), it uses images which are stored in your current theme. Normally, you would need to edit your theme and install UxTheme patch to be able to change the appearance of windows frames. OpenGlass comes with a feature that you can change these images directly without editing the theme. Just provide custom *.png image, point to it with CustomThemeAtlas registry settings and restart DWM.EXE process. The windows frames will be drawn using your custom image now. Just beware that the layout of theme resource depends on the current system theme. If you do not keep this layout, your frames will be rendered incorrectly.
