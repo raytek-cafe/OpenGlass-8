@@ -1825,11 +1825,11 @@ namespace OpenGlass::uDWM
 
 			if (g_buildNumber < os::build_w11_21h2)
 			{
-				return reinterpret_cast<DWORD const*>(data)[24];
+				return *reinterpret_cast<DWORD const*>(reinterpret_cast<ULONG_PTR>(data) + 96);
 			}
 			else
 			{
-				return reinterpret_cast<DWORD const*>(data)[17];
+				return *reinterpret_cast<DWORD const*>(reinterpret_cast<ULONG_PTR>(data) + 112);
 			}
 		}
 		MARGINS& GetMarginsVisibleOutside(bool zoomed)
