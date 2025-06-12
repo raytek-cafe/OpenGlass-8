@@ -312,7 +312,7 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCChannel_MatrixTransformUpdate(d
 		if (g_centerCaption)
 		{
 			const auto offset = std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.);
-			matrix->DX += g_textVisual->IsRTL() ? -offset : offset;
+			matrix->DX += g_textVisual->IsRTLMirrored() ? -offset : offset;
 		}
 	}
 
@@ -603,7 +603,7 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyICompositionSurfaceBrush2_put_Of
 		if (g_centerCaption)
 		{
 			const auto offset = std::round((static_cast<float>(g_dwriteTextVisual->GetWidth()) - g_textSizeF.Width) / 2.f);
-			value.X += g_dwriteTextVisual->GetTextInterface()->IsRTL() ? -offset : offset;
+			value.X += g_dwriteTextVisual->IsRTLMirrored() ? -offset : offset;
 		}
 	}
 	return g_ICompositionSurfaceBrush2_put_Offset_Org(
@@ -614,13 +614,18 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyICompositionSurfaceBrush2_put_Of
 
 HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_ValidateVisual(uDWM::CDWriteText* This)
 {
-	// if CDWriteText only updates its offset, it won't do anything
 	// let's make it redraw to ensure the glow
-	if ((This->GetDirtyFlags() & 8))
+	bool manuallyUpdateOffset{ false };
+	// 0x10 rtl mirrored changed
+	// 0x8 offset changed
+	if ((This->GetDirtyFlags() & (0x8 | 0x10)))
 	{
-		This->SetDirtyFlags(2);
+		This->SetDirtyFlags(0x2);
 	}
-	bool manuallyUpdateOffset = (This->GetDirtyFlags() & 2) == 2;
+	if ((This->GetDirtyFlags() & 0x2))
+	{
+		manuallyUpdateOffset = true;
+	}
 	if (!g_CDWriteText_scalar_deleting_destructor_Org)
 	{
 		g_CDWriteText_scalar_deleting_destructor_Org_Address = HookHelper::vftbl_of<decltype(g_CDWriteText_scalar_deleting_destructor_Org)>(This);
@@ -683,7 +688,7 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_UpdateOffset(uDWM::C
 	// 
 	// This gives us enough space to render the glow.
 	auto& offset = const_cast<POINT&>(This->GetOffset());
-	const auto textGlowSize = (This->GetTextInterface()->IsRTL() ? -1 : 1) * g_textGlowSize;
+	const auto textGlowSize = (This->IsRTLMirrored() ? -1 : 1) * g_textGlowSize;
 	offset.x -= textGlowSize;
 	offset.y -= g_textGlowSize;
 	const auto hr = g_CDWriteText_UpdateOffset_Org(This);

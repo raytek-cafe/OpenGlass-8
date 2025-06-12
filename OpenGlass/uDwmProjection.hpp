@@ -191,6 +191,30 @@ namespace OpenGlass::uDWM
 	{
 		inline static PVOID* vftable{ nullptr };
 
+
+		bool IsRTLMirrored() const
+		{
+			bool rtlMirrored{ false };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[84] & 1) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[92] & 1) != 0;
+			}
+			else if (g_buildNumber < os::build_w11_24h2)
+			{
+				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[92] & 1) != 0;
+			}
+			else
+			{
+				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[36] & 1) != 0;
+			}
+
+			return rtlMirrored;
+		}
 		MilSizeD GetScale() const
 		{
 			MilSizeD scale{};
@@ -636,7 +660,7 @@ namespace OpenGlass::uDWM
 	struct CCanvasVisual : CRenderDataVisual {};
 	struct CText : CRenderDataVisual 
 	{
-		bool IsRTL() const
+		bool IsRTLReading() const
 		{
 			bool rtl{ false };
 
@@ -647,6 +671,21 @@ namespace OpenGlass::uDWM
 			else
 			{
 				rtl = (reinterpret_cast<BYTE const*>(this)[288] & 2) != 0;
+			}
+
+			return rtl;
+		}
+		bool IsReverseAlignment() const
+		{
+			bool rtl{ false };
+
+			if (g_buildNumber < os::build_w11_21h2)
+			{
+				rtl = (reinterpret_cast<BYTE const*>(this)[280] & 4) != 0;
+			}
+			else
+			{
+				rtl = (reinterpret_cast<BYTE const*>(this)[288] & 4) != 0;
 			}
 
 			return rtl;
@@ -679,9 +718,13 @@ namespace OpenGlass::uDWM
 			return text;
 		}
 
-		bool IsRTL() const
+		bool IsRTLReading() const
 		{
 			return reinterpret_cast<bool const*>(this)[256];
+		}
+		bool IsReverseAlignment() const
+		{
+			return reinterpret_cast<bool const*>(this)[257];
 		}
 	};
 	struct CDWriteText : CVisual
