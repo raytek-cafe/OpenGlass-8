@@ -95,12 +95,6 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 			D2D1_BORDER_MODE_HARD
 		)
 	);
-	RETURN_IF_FAILED(
-		m_cropAlignEffect->SetValue(
-			D2D1_PROPERTY_CACHED,
-			TRUE
-		)
-	);
 	m_cropAlignEffect->SetInputEffect(0, m_scaleDownEffect.get());
 
 	RETURN_IF_FAILED(
@@ -275,12 +269,8 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 	do
 	{
 		const auto params = static_cast<const CCustomBlurParams*>(additionalParams);
-		const auto blurAmount = params->blurAmount;
-		const auto optimization = params->optimization;
-		const auto prescaleInteroplation = params->prescaleInteroplation;
-		const auto extraScaleAmount = params->extraScaleAmount;
 
-		if (params->blurAmount == 0.f)
+		if (params->blurAmount == 0.f) [[unlikely]]
 		{
 			m_blurAmount = 0.f;
 			RETURN_IF_FAILED(
@@ -292,24 +282,30 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 			return S_OK;
 		}
 
-		if (m_blurAmount != blurAmount)
+		RETURN_IF_FAILED(
+			m_cropAlignEffect->SetValue(
+				D2D1_PROPERTY_CACHED,
+				static_cast<BOOL>(params->cachePrescaledImage)
+			)
+		);
+		if (m_blurAmount != params->blurAmount)
 		{
-			m_blurAmount = blurAmount;
+			m_blurAmount = params->blurAmount;
 			break;
 		}
-		if (m_extraScaleAmount != extraScaleAmount)
+		if (m_extraScaleAmount != params->extraScaleAmount)
 		{
-			m_extraScaleAmount = extraScaleAmount;
+			m_extraScaleAmount = params->extraScaleAmount;
 			break;
 		}
-		if (m_optimization != optimization)
+		if (m_optimization != params->optimization)
 		{
-			m_optimization = optimization;
+			m_optimization = params->optimization;
 			break;
 		}
-		if (m_prescaleInteroplation != prescaleInteroplation)
+		if (m_prescaleInteroplation != params->prescaleInteroplation)
 		{
-			m_prescaleInteroplation = prescaleInteroplation;
+			m_prescaleInteroplation = params->prescaleInteroplation;
 			break;
 		}
 

@@ -180,8 +180,8 @@ HRESULT STDMETHODCALLTYPE GlassKernel::MyCDrawingContext_PreSubgraph(
 
 HRESULT STDMETHODCALLTYPE GlassKernel::MyCD2DContext_DestroyDeviceResources(dwmcore::CD2DContext* This)
 {
-	GlassRenderer::DestroyDeviceResources();
-	GlassIntegrity::DestroyDeviceResources();
+	GlassRenderer::DestroyDeviceResources(This);
+	GlassIntegrity::DestroyDeviceResources(This);
 	return g_CD2DContext_DestroyDeviceResources_Org(This);
 }
 
@@ -297,11 +297,10 @@ void GlassKernel::Shutdown()
 		})
 	);
 
-	GlassReflectionBrush::Shutdown();
-	Sleep(20);
-
 	HookHelper::WritePointer(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address, g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org);
 	
 	*dwmcore::CCommonRegistryData::m_backdropBlurCachingThrottleQPCTimeDelta = g_old_BackdropBlurCachingThrottleQPCTimeDelta;
 	*dwmcore::CCommonRegistryData::m_dwOverlayTestMode = g_old_dwOverlayTestMode;
+
+	GlassReflectionBrush::Shutdown();
 }

@@ -87,19 +87,16 @@ HRESULT CReflectionRealizer::Render(
 	{
 		RETURN_IF_FAILED(LoadTexture(context));
 	}
+	winrt::com_ptr<ID2D1DeviceContext3> contextForSpriteBatch{};
+	RETURN_IF_FAILED(context->QueryInterface(contextForSpriteBatch.put()));
+	if (!m_spriteBatch)
+	{
+		RETURN_IF_FAILED(contextForSpriteBatch->CreateSpriteBatch(m_spriteBatch.put()));
+	}
 
 	const auto worldTransform3D = input.worldTransform->GetD3DMatrix();
-	/*context->DrawBitmap(
-		m_reflectionBitmap.get(),
-		input.viewport,
-		input.intensity,
-		D2D1_INTERPOLATION_MODE_LINEAR,
-		nullptr,
-		&worldTransform3D
-	);*/
-
-	auto worldTransform2D = input.worldTransform->GetD2DMatrix();
-	D2D1InvertMatrix(&worldTransform2D);
+	auto worldTransform2DInversed = input.worldTransform->GetD2DMatrix();
+	D2D1InvertMatrix(&worldTransform2DInversed);
 
 	const auto reflectionBitmapSize = m_reflectionBitmap->GetSize();
 	const D2D1_SIZE_F viewportSize
@@ -107,9 +104,9 @@ HRESULT CReflectionRealizer::Render(
 		wil::rect_width(*input.viewport),
 		wil::rect_height(*input.viewport)
 	};
-	for (auto subRectangle : input.rectangles)
+	/*for (auto subRectangle : input.rectangles)
 	{
-		subRectangle = RectF::TransformRect(subRectangle, worldTransform2D);
+		subRectangle = RectF::TransformRect(subRectangle, worldTransform2DInversed);
 		if (RectF::IntersectUnsafe(subRectangle, *input.viewport))
 		{
 			D2D1_RECT_F sourceRectangle
@@ -127,6 +124,99 @@ HRESULT CReflectionRealizer::Render(
 				&sourceRectangle,
 				&worldTransform3D
 			);
+		}
+	}*/
+
+	if (input.rectangles.size() == 1)
+	{
+		auto subRectangle = RectF::TransformRect(input.rectangles[0], worldTransform2DInversed);
+		if (RectF::IntersectUnsafe(subRectangle, *input.viewport))
+		{
+			D2D1_RECT_F sourceRectangle
+			{
+				(subRectangle.left - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.top - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+				(subRectangle.right - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.bottom - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+			};
+			context->DrawBitmap(
+				m_reflectionBitmap.get(),
+				subRectangle,
+				input.intensity,
+				D2D1_INTERPOLATION_MODE_LINEAR,
+				&sourceRectangle,
+				&worldTransform3D
+			);
+		}
+	}
+	else
+	{
+		bool ignoreLayer{ input.intensity == 1.f };
+		if (!ignoreLayer)
+		{
+			context->PushLayer(
+				D2D1::LayerParameters1(
+					D2D1::InfiniteRect(),
+					nullptr,
+					D2D1_ANTIALIAS_MODE_ALIASED,
+					D2D1::IdentityMatrix(),
+					input.intensity,
+					nullptr,
+					D2D1_LAYER_OPTIONS1_NONE
+				),
+				nullptr
+			);
+		}
+
+		struct CSpriteInfo
+		{
+			D2D1_RECT_F destinationRectangle;
+			D2D1_RECT_U sourceRectangle;
+		};
+		UINT32 spriteCount{};
+		auto spriteInfoArray = std::make_unique_for_overwrite<CSpriteInfo[]>(input.rectangles.size());
+		for (size_t i = 0; i < input.rectangles.size(); i++)
+		{
+			auto subRectangle = RectF::TransformRect(input.rectangles[i], worldTransform2DInversed);
+			if (RectF::IntersectUnsafe(subRectangle, *input.viewport))
+			{
+				spriteInfoArray[spriteCount].destinationRectangle = subRectangle;
+				spriteInfoArray[spriteCount].sourceRectangle =
+				{
+					static_cast<UINT32>(std::round((subRectangle.left - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width)),
+					static_cast<UINT32>(std::round((subRectangle.top - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height)),
+					static_cast<UINT32>(std::round((subRectangle.right - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width)),
+					static_cast<UINT32>(std::round((subRectangle.bottom - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height)),
+				};
+
+				spriteCount += 1;
+			}
+		}
+		const auto worldTransform2D = input.worldTransform->GetD2DMatrix();
+		m_spriteBatch->AddSprites(
+			spriteCount,
+			&spriteInfoArray[0].destinationRectangle,
+			&spriteInfoArray[0].sourceRectangle,
+			nullptr,
+			&worldTransform2D,
+			sizeof(CSpriteInfo),
+			sizeof(CSpriteInfo),
+			0U,
+			0U
+		);
+
+		const auto primitiveBlend = contextForSpriteBatch->GetPrimitiveBlend();
+		const auto antialiasMode = contextForSpriteBatch->GetAntialiasMode();
+		contextForSpriteBatch->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+		contextForSpriteBatch->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+		contextForSpriteBatch->DrawSpriteBatch(m_spriteBatch.get(), m_reflectionBitmap.get());
+		contextForSpriteBatch->SetAntialiasMode(antialiasMode);
+		contextForSpriteBatch->SetPrimitiveBlend(primitiveBlend);
+		m_spriteBatch->Clear();
+
+		if (!ignoreLayer)
+		{
+			context->PopLayer();
 		}
 	}
 

@@ -4,6 +4,7 @@
 #include "GlassRealizer.hpp"
 #include "AeroEffect.hpp"
 #include "BlurEffect.hpp"
+#include "Shared.hpp"
 
 using namespace OpenGlass;
 
@@ -42,9 +43,9 @@ HRESULT CGlassRealizer::Render(
 	const CGlassInput& input
 )
 {
-	if (m_glassType != input.params.type)
+	if (m_glassType != Shared::g_type)
 	{
-		m_glassType = input.params.type;
+		m_glassType = Shared::g_type;
 		switch (m_glassType)
 		{
 		case Shared::GlassType::Blur:
@@ -84,6 +85,7 @@ HRESULT CGlassRealizer::Render(
 			input.sourceBitmap->GetOptions(),
 			input.sourceBitmap->GetPixelFormat()
 		);
+		input.zeroCopyOptimization &&
 		SUCCEEDED(context->QueryInterface(compositorDeviceContext.put()))
 	)
 	{

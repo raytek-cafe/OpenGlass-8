@@ -121,7 +121,9 @@ namespace OpenGlass::GlassIntegrity
 
 	IGlassCoverageSet* g_glassCoverageSetNoRef{ nullptr };
 	dwmcore::CDrawingContext* g_drawingContextNoRef{ nullptr };
-	winrt::com_ptr<CGlassSafetyZoneLayer> g_safetyZoneLayer{};
+	wil::srwlock g_lock{};
+	bool g_disabled{};
+	std::unordered_map<dwmcore::CD2DContext*, CGlassSafetyZoneLayer> g_safetyZoneLayerMap{};
 
 	std::unordered_map<dwmcore::COcclusionContext*, ULONGLONG> g_shrunkCoverageSetMap{};
 	void ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occlusionContext);
@@ -693,6 +695,11 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 
 	do
 	{
+		if (GlassKernel::IsCVIPresent())
+		{
+			break;
+		}
+
 		if (HookHelper::vftbl_of(tree) != dwmcore::CDesktopTree::vftable)
 		{
 			break;
@@ -742,15 +749,13 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 			break;
 		}
 
-		const auto context = This->GetD2DContext()->GetDeviceContext();
-
-		auto safetyZoneLayer = g_safetyZoneLayer;
-		if (!safetyZoneLayer)
+		const auto lockScope = g_lock.lock_exclusive();
+		if (g_disabled)
 		{
-			safetyZoneLayer = winrt::make_self<CGlassSafetyZoneLayer>();
-			g_safetyZoneLayer = safetyZoneLayer;
+			break;
 		}
-		if (safetyZoneLayer->GetOwner()) [[unlikely]]
+		auto& safetyZoneLayer = g_safetyZoneLayerMap.try_emplace(d2dContext).first->second;
+		if (safetyZoneLayer.GetOwner()) [[unlikely]]
 		{
 			break;
 		}
@@ -764,8 +769,8 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		};
 		if (
 			FAILED(
-				safetyZoneLayer->Push(
-					context,
+				safetyZoneLayer.Push(
+					d2dContext->GetDeviceContext(),
 					renderTargetBitmap.get(),
 					This->GetDeviceTransform()->GetD2DMatrix(),
 					rectangle,
@@ -781,7 +786,7 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		hr = callback(extendedPixelRectangle);
 
 		LOG_IF_FAILED(This->FlushD2D());
-		safetyZoneLayer->Pop();
+		safetyZoneLayer.Pop();
 
 		return hr;
 	}
@@ -848,9 +853,9 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree_Win11
 	);
 }
 
-void GlassIntegrity::DestroyDeviceResources()
+void GlassIntegrity::DestroyDeviceResources(dwmcore::CD2DContext* d2dContext)
 {
-	g_safetyZoneLayer = nullptr;
+	g_safetyZoneLayerMap.erase(d2dContext);
 }
 
 void GlassIntegrity::Update([[maybe_unused]] GlassEngine::UpdateType type)
@@ -953,8 +958,6 @@ void GlassIntegrity::Shutdown()
 		})
 	);
 
-	Sleep(20);
-
 	if (g_COcclusionContext_DrawGeometry_Org)
 	{
 		HookHelper::WritePointer(g_COcclusionContext_DrawGeometry_Org_Address, g_COcclusionContext_DrawGeometry_Org);
@@ -962,5 +965,7 @@ void GlassIntegrity::Shutdown()
 
 	GlassCoverageSetFactory::Shutdown();
 	g_shrunkCoverageSetMap.clear();
-	DestroyDeviceResources();
+	const auto lockScope = g_lock.lock_exclusive();
+	g_disabled = true;
+	g_safetyZoneLayerMap.clear();
 }

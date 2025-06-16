@@ -14,6 +14,7 @@ namespace OpenGlass
 		float extraScaleAmount;
 		D2D1_SCALE_INTERPOLATION_MODE prescaleInteroplation;
 		D2D1_GAUSSIANBLUR_OPTIMIZATION optimization;
+		bool cachePrescaledImage;
 	};
 
 	class CCustomBlurEffect : public winrt::implements<CCustomBlurEffect, IRenderingEffect, winrt::non_agile, winrt::no_weak_ref>

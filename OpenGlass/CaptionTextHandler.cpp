@@ -960,8 +960,6 @@ void CaptionTextHandler::Shutdown()
 			})
 		);
 
-		Sleep(20);
-
 		HookHelper::WritePointer(
 			g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org_Address,
 			g_IWICImagingFactory2_CreateBitmapFromHBITMAP_Org

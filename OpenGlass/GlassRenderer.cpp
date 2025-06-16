@@ -110,25 +110,34 @@ namespace OpenGlass::GlassRenderer
 		RenderFlag_Reflection
 	};
 
+	struct CDeviceResources
+	{
+		winrt::com_ptr<ID2D1SolidColorBrush> m_brush{};
+		CD2DBuffer m_buffer{};
+		CGlassRealizer m_glassRealizer{};
+		CReflectionRealizer m_reflectionRealizer{};
+		winrt::com_ptr<ID2D1Effect> m_materialEffect{ nullptr };
+#ifdef BUILD_BETA
+		winrt::com_ptr<ID2D1Bitmap> m_textBitmap{};
+		winrt::com_ptr<ID2D1Image> m_textGlowImage{};
+#endif
+	};
 	bool g_shapeIsRectangles{};
 	CGlassInput g_glassInput{};
 	CReflectionInput g_reflectionInput{};
-	std::bitset<4> g_renderFlag{};
-	winrt::com_ptr<ID2D1SolidColorBrush> g_brush{};
 	D2D1_RECT_F g_drawingWorldBounds{};
+	std::bitset<4> g_renderFlag{};
+
+	wil::srwlock g_lock{};
+	bool g_disabled{};
+	std::unordered_map<dwmcore::CD2DContext*, CDeviceResources> g_deviceResources{};
+	CDeviceResources* g_currentDeviceResources{};
 
 	bool g_fixLivePreviewRendering{ false };
 	int g_drawGeometryCommandType{ 0 };
-	CD2DBuffer g_buffer{};
-	winrt::com_ptr<ID2D1Effect> g_materialEffect{ nullptr };
-	winrt::com_ptr<CGlassRealizer> g_glassRealizer{ nullptr };
-	winrt::com_ptr<CReflectionRealizer> g_reflectionRealizer{ nullptr };
 
-#ifdef BUILD_BETA
 	D2D1_RECT_F g_textLayoutBox{};
-	winrt::com_ptr<ID2D1Bitmap> g_textBitmap{};
-	winrt::com_ptr<ID2D1Image> g_textGlowImage{};
-
+#ifdef BUILD_BETA
 	winrt::com_ptr<IDWriteFactory> g_dwriteFactory{ nullptr };
 	winrt::com_ptr<IDWriteTextFormat> g_dwriteTextFormat{ nullptr };
 	winrt::com_ptr<IDWriteTextLayout> g_dwriteTextLayout{ nullptr };
@@ -404,6 +413,13 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	}
 
 	d2dContext->EnsureBeginDraw();
+	const auto lockScope = g_lock.lock_exclusive();
+	if (g_disabled)
+	{
+		return S_OK;
+	}
+
+	g_currentDeviceResources = &g_deviceResources.try_emplace(d2dContext).first->second;
 	RETURN_IF_FAILED(
 		drawingContext->PushTransformInternal(
 			nullptr,
@@ -415,6 +431,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	const auto transformScope = wil::scope_exit([drawingContext]
 	{
 		drawingContext->PopTransformInternal(true);
+		g_currentDeviceResources = nullptr;
 	});
 	
 	if (HookHelper::vftbl_of(brush) == dwmcore::CImageLegacyMilBrush::vftable)
@@ -507,6 +524,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 
 				g_glassInput.sourceBitmap = renderTargetBitmap.get();
 				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
+				g_glassInput.buffer = &g_currentDeviceResources->m_buffer;
 				// effect settings
 				g_glassInput.params.blurAmount = Shared::g_blurAmount;
 				g_glassInput.params.color = color;
@@ -515,7 +533,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				g_glassInput.params.afterglow = Shared::g_afterglow;
 				g_glassInput.params.afterglowBalance = afterglowBalance;
 				g_glassInput.params.blurBalance = blurBalance;
-				g_glassInput.params.type = Shared::g_type;
 
 				g_renderFlag.set(RenderFlag_Backdrop, true);
 			}
@@ -557,12 +574,12 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 			color.a *= opacity;
 			if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), color)))
 			{
-				if (!g_brush)
+				if (!g_currentDeviceResources->m_brush)
 				{
-					context->CreateSolidColorBrush({}, g_brush.put());
+					context->CreateSolidColorBrush({}, g_currentDeviceResources->m_brush.put());
 				}
-				g_brush->SetColor(color);
-				drawingContext->FillShapeWithBrush(renderingShape.get(), g_brush.get());
+				g_currentDeviceResources->m_brush->SetColor(color);
+				drawingContext->FillShapeWithBrush(renderingShape.get(), g_currentDeviceResources->m_brush.get());
 			}
 		}
 	}
@@ -592,7 +609,7 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	ID2D1Brush* opacityBrush
 )
 {
-	if (brush)
+	if (brush || !g_currentDeviceResources)
 	{
 		return g_ID2D1DeviceContext_FillGeometry_Org(This, geometry, brush, opacityBrush);
 	}
@@ -625,14 +642,8 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	}
 	if (g_renderFlag.test(RenderFlag_Backdrop))
 	{
-		auto glassRealizer = g_glassRealizer;
-		if (!glassRealizer)
-		{
-			glassRealizer = winrt::make_self<CGlassRealizer>();
-			g_glassRealizer = glassRealizer;
-		}
 		LOG_IF_FAILED(
-			glassRealizer->Render(
+			g_currentDeviceResources->m_glassRealizer.Render(
 				This,
 				g_glassInput
 			)
@@ -644,15 +655,21 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 			THROW_IF_FAILED(This->QueryInterface(contextForBlending.put()));
 
 			HRESULT hr{ S_OK };
-			if (!g_materialEffect)
+			if (!g_currentDeviceResources->m_materialEffect)
 			{
 				hr = LoadMaterialEffect(This);
 			}
 
 			if (SUCCEEDED(hr))
 			{
+				LOG_IF_FAILED(
+					g_currentDeviceResources->m_materialEffect->SetValue(
+						D2D1_OPACITY_PROP_OPACITY,
+						Shared::g_materialIntensity
+					)
+				);
 				winrt::com_ptr<ID2D1Image> materialImage{};
-				g_materialEffect->GetOutput(materialImage.put());
+				g_currentDeviceResources->m_materialEffect->GetOutput(materialImage.put());
 
 				for (const auto& subRectangle : g_glassInput.rectangles)
 				{
@@ -680,14 +697,8 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	{
 		const auto primitiveBlendPreReflection = This->GetPrimitiveBlend();
 		This->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
-		auto reflectionRealizer = g_reflectionRealizer;
-		if (!reflectionRealizer)
-		{
-			reflectionRealizer = winrt::make_self<CReflectionRealizer>();
-			g_reflectionRealizer = reflectionRealizer;
-		}
 		LOG_IF_FAILED(
-			reflectionRealizer->Render(
+			g_currentDeviceResources->m_reflectionRealizer.Render(
 				This,
 				g_reflectionInput
 			)
@@ -737,11 +748,18 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCWindowNode_RenderImage(
 	{
 		LOG_IF_FAILED(drawingContext->FlushD2D());
 
-		const auto context = drawingContext->GetD2DContext()->GetDeviceContext();
+		const auto d2dContext = drawingContext->GetD2DContext();
+		const auto context = d2dContext->GetDeviceContext();
+		const auto lockScope = g_lock.lock_exclusive();
+		if (g_disabled)
+		{
+			return S_OK;
+		}
 
 		winrt::com_ptr<ID2D1Effect> textGlowEffect{};
 		winrt::com_ptr<ID2D1Effect> textMorphologyEffect{};
-		if (!g_textBitmap || !g_textGlowImage)
+		auto& deviceResources = g_deviceResources.try_emplace(d2dContext).first->second;
+		if (!deviceResources.m_textBitmap || !deviceResources.m_textGlowImage)
 		{
 			THROW_IF_FAILED(
 				context->CreateEffect(
@@ -824,9 +842,9 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCWindowNode_RenderImage(
 			);
 
 			THROW_IF_FAILED(bitmapRT->EndDraw());
-			THROW_IF_FAILED(bitmapRT->GetBitmap(g_textBitmap.put()));
-			textMorphologyEffect->SetInput(0, g_textBitmap.get());
-			textGlowEffect->GetOutput(g_textGlowImage.put());
+			THROW_IF_FAILED(bitmapRT->GetBitmap(deviceResources.m_textBitmap.put()));
+			textMorphologyEffect->SetInput(0, deviceResources.m_textBitmap.get());
+			textGlowEffect->GetOutput(deviceResources.m_textGlowImage.put());
 		}
 
 		MONITORINFO monitorInfo{ sizeof(monitorInfo) };
@@ -837,13 +855,13 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCWindowNode_RenderImage(
 			static_cast<float>(monitorInfo.rcWork.bottom) - 9.f - wil::rect_height(g_textLayoutBox) - 24.f,
 		};
 		context->DrawImage(
-			g_textGlowImage.get(),
+			deviceResources.m_textGlowImage.get(),
 			&origin,
 			nullptr,
 			D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR
 		);
 		context->DrawImage(
-			g_textBitmap.get(),
+			deviceResources.m_textBitmap.get(),
 			&origin,
 			nullptr,
 			D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR
@@ -967,38 +985,29 @@ HRESULT GlassRenderer::LoadMaterialEffect(ID2D1DeviceContext* context)
 	);
 	tileEffect->SetInputEffect(0, bitmapSourceEffect.get());
 
-	if (!g_materialEffect)
+	if (!g_currentDeviceResources->m_materialEffect)
 	{
 		RETURN_IF_FAILED(
 			context->CreateEffect(
 				CLSID_D2D1Opacity,
-				g_materialEffect.put()
+				g_currentDeviceResources->m_materialEffect.put()
 			)
 		);
 		RETURN_IF_FAILED(
-			g_materialEffect->SetValue(
+			g_currentDeviceResources->m_materialEffect->SetValue(
 				D2D1_OPACITY_PROP_OPACITY,
 				Shared::g_materialIntensity
 			)
 		);
-		g_materialEffect->SetInputEffect(0, tileEffect.get());
+		g_currentDeviceResources->m_materialEffect->SetInputEffect(0, tileEffect.get());
 	}
 
 	return S_OK;
 }
 
-void GlassRenderer::DestroyDeviceResources()
+void GlassRenderer::DestroyDeviceResources(dwmcore::CD2DContext* d2dContext)
 {
-#ifdef BUILD_BETA
-	g_textBitmap = nullptr;
-	g_textGlowImage = nullptr;
-#endif
-
-	g_brush = nullptr;
-	g_glassRealizer = nullptr;
-	g_reflectionRealizer = nullptr;
-	g_materialEffect = nullptr;
-	g_buffer.Reset();
+	g_deviceResources.erase(d2dContext);
 }
 
 void GlassRenderer::Update(GlassEngine::UpdateType type)
@@ -1009,6 +1018,13 @@ void GlassRenderer::Update(GlassEngine::UpdateType type)
 		GlassEngine::GetStringFromRegistry(L"CustomThemeMaterial", materialTexturePath);
 		PathUnquoteSpacesW(materialTexturePath);
 		Shared::g_materialTexturePath.assign(materialTexturePath);
+
+		const auto lockScope = g_lock.lock_exclusive();
+		for (auto& [_, deviceResources] : g_deviceResources)
+		{
+			deviceResources.m_reflectionRealizer.Reset();
+			deviceResources.m_materialEffect = nullptr;
+		}
 	}
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
@@ -1030,19 +1046,11 @@ void GlassRenderer::Update(GlassEngine::UpdateType type)
 	
 		value = GlassEngine::GetDwordFromRegistry(L"MaterialOpacity");
 		Shared::g_materialIntensity = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
-		if (g_materialEffect)
-		{
-			LOG_IF_FAILED(
-				g_materialEffect->SetValue(
-					D2D1_OPACITY_PROP_OPACITY,
-					Shared::g_materialIntensity
-				)
-			);
-		}
-	}
 
-	g_reflectionRealizer = nullptr;
-	g_glassRealizer = nullptr;
+		value = GlassEngine::GetDwordFromRegistry(L"ZeroCopyOptimization", 1);
+		g_glassInput.zeroCopyOptimization = static_cast<bool>(value);
+		g_glassInput.params.cachePrescaledImage = static_cast<bool>(value);
+	}
 }
 
 void GlassRenderer::Startup()
@@ -1051,8 +1059,10 @@ void GlassRenderer::Startup()
 
 	dwmcore::g_projectionArray.ApplyToVariable("CRenderData::TryDrawCommandAsDrawList", g_CRenderData_TryDrawCommandAsDrawList_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CRenderData::DrawImageResource_FillMode", g_CRenderData_DrawImageResource_FillMode_Org);
-
-	dwmcore::g_projectionArray.ApplyToVariable("CWindowNode::RenderImage", g_CWindowNode_RenderImage_Org);
+	if constexpr (c_enableWatermarkHook)
+	{
+		dwmcore::g_projectionArray.ApplyToVariable("CWindowNode::RenderImage", g_CWindowNode_RenderImage_Org);
+	}
 
 	if (!g_drawGeometryCommandType)
 	{
@@ -1114,7 +1124,6 @@ void GlassRenderer::Startup()
 			i--;
 		} while (i);
 	}
-	g_glassInput.buffer = &g_buffer;
 	g_glassInput.drawingWorldBounds = &g_drawingWorldBounds;
 
 #ifdef BUILD_BETA
@@ -1258,8 +1267,6 @@ void GlassRenderer::Shutdown()
 	g_dwriteFactory = nullptr;
 #endif
 
-	Sleep(20);
-
 	if (g_ID2D1DeviceContext_FillGeometry_Org)
 	{
 		HookHelper::WritePointer(
@@ -1275,6 +1282,8 @@ void GlassRenderer::Shutdown()
 		);
 	}
 
-	DestroyDeviceResources();
+	const auto lockScope = g_lock.lock_exclusive();
+	g_disabled = true;
+	g_deviceResources.clear();
 	THROW_IF_FAILED(CAeroColorizationEffect::UnRegister(*dwmcore::g_DeviceManager));
 }

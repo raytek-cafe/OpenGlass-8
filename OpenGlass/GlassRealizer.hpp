@@ -8,13 +8,9 @@
 
 namespace OpenGlass
 {
-	struct CGlassParams : CAeroParams
-	{
-		Shared::GlassType type;
-	};
 	struct CGlassInput
 	{
-		CGlassParams params;
+		CAeroParams params;
 		D2D1_INTERPOLATION_MODE drawImageInterpolationMode;
 
 		const D2D1_RECT_F* drawingWorldBounds;
@@ -22,9 +18,10 @@ namespace OpenGlass
 
 		ID2D1Bitmap1* sourceBitmap;
 		CD2DBuffer* buffer;
+		bool zeroCopyOptimization;
 	};
 
-	class CGlassRealizer : public winrt::implements<CGlassRealizer, IUnknown, winrt::non_agile, winrt::no_weak_ref>
+	class CGlassRealizer
 	{
 		Shared::GlassType m_glassType{ Shared::GlassType::Invalid };
 		winrt::com_ptr<IRenderingEffect> m_glassEffect{ nullptr };
@@ -35,10 +32,5 @@ namespace OpenGlass
 			ID2D1DeviceContext* context,
 			const CGlassInput& input
 		);
-		void Reset() 
-		{ 
-			m_glassEffect = nullptr; 
-			m_glassType = Shared::GlassType::Invalid;
-		}
 	};
 }

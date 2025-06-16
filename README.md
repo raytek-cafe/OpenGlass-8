@@ -3,7 +3,7 @@
 This utility returns the full glass effect to the window frame, just like [glass8](http://www.msfn.org/board/forum/180-aero-glass-for-windows-8/) did.
 
 > [!NOTE]  
-> Currently only the following official versions of Windows are supported.
+> Currently only the following **official** versions of **64-bit** Windows are supported.
 > - Windows 10 20H2
 > - Windows 10 21H2
 > - Windows 10 22H2
@@ -17,7 +17,7 @@ This utility returns the full glass effect to the window frame, just like [glass
 > For the average users, you should consider using [DWMBlurGlass](https://github.com/Maplespe/DWMBlurGlass).
 
 ## How to use this software
-1. Extract the files from the Release page to `C:\`, better not put it in any other location. Important thing is that you must place all files in writable location (i.e. not in `Program Files`), because DWM process does not run under user's credential. If you don't do this, OpenGlass will not be able to download symbols or create debug logs! If you worry about the security, you can change the permission of OpenGlass.dll files to be writable by Administrators group only and leave it read-only to others.
+1. Extract the files from the Release page to `C:\`, better not put it in any other location. Important thing is that you must place all files in writable location (i.e. not in `Program Files`, `Users`), because DWM process does not run under user's credential. If you don't do this, OpenGlass will not be able to download symbols or create debug logs! If you worry about the security, you can change the permission of OpenGlass.dll files to be writable by Administrators group only and leave it read-only to others.
 2. Run `install.cmd` as administrator, this will create a scheduled task for you to run the OpenGlass host process which will inject DLL into DWM for you and also maintains that user settings are correctly loaded. 
 3. Run `startup.cmd` as administrator, this will run the host process manually.
 4. When you use it for the first time or just after updating your system, OpenGlass will try to download the symbol files and you will see its symbol downloading dialog, just be patient for about 15s. When the symbol files are ready, enjoy!

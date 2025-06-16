@@ -206,10 +206,3 @@ void CGlassSafetyZoneLayer::Pop()
 	
 	m_renderTargetBitmap = nullptr;
 }
-
-void CGlassSafetyZoneLayer::Reset()
-{
-	m_safetyZoneBufferVertical.Reset();
-	m_safetyZoneBufferHorizon.Reset();
-	memset(m_safetyZoneBounds, 0, sizeof(m_safetyZoneBounds));
-}
