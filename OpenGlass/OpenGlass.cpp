@@ -59,7 +59,7 @@ LONG NTAPI OpenGlass::TopLevelExceptionFilter(EXCEPTION_POINTERS* exceptionInfo)
 {
 	DWORD value{ 0ul };
 	wil::reg::get_value_dword_nothrow(
-		GlassEngine::GetDwmKey(),
+		GlassEngine::GetDwmLocalMachineKey(),
 		L"DisableMemoryDump",
 		&value
 	);

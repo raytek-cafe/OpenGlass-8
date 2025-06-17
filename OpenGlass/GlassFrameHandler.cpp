@@ -982,7 +982,7 @@ void GlassFrameHandler::Startup()
 {
 	DWORD value{ 0ul };
 	wil::reg::get_value_dword_nothrow(
-		GlassEngine::GetDwmKey(),
+		GlassEngine::GetDwmLocalMachineKey(),
 		L"DisabledHooks",
 		&value
 	);

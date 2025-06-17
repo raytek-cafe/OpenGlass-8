@@ -17,6 +17,7 @@ namespace OpenGlass::GlassEngine
 
 	HKEY GetDwmKey();
 	HKEY GetPersonalizeKey();
+	HKEY GetDwmLocalMachineKey();
 
 	FORCEINLINE std::optional<DWORD> TryGetDwordFromRegistry(PCWSTR keyName)
 	{

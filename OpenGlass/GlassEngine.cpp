@@ -16,6 +16,7 @@ namespace OpenGlass::GlassEngine
 {
 	wil::unique_hkey g_dwmKey{ nullptr };
 	wil::unique_hkey g_personalizeKey{ nullptr };
+	wil::unique_hkey g_dwmLocalMachineKey{ nullptr };
 }
 
 HKEY GlassEngine::GetDwmKey()
@@ -26,6 +27,11 @@ HKEY GlassEngine::GetDwmKey()
 HKEY GlassEngine::GetPersonalizeKey()
 {
 	return g_personalizeKey.get();
+}
+
+HKEY GlassEngine::GetDwmLocalMachineKey()
+{
+	return g_dwmLocalMachineKey.get();
 }
 
 void GlassEngine::LoadRegistry(bool redrawNow)
@@ -42,11 +48,13 @@ void GlassEngine::LoadRegistry(bool redrawNow)
 	{
 		UnloadRegistry();
 	}
+	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\DWM", g_dwmLocalMachineKey);
 }
 void GlassEngine::UnloadRegistry()
 {
 	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\DWM", g_dwmKey);
 	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", g_personalizeKey);
+	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\DWM", g_dwmLocalMachineKey);
 }
 
 void GlassEngine::RedrawAll()

@@ -227,7 +227,20 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 	}
 	if (type & GlassEngine::UpdateType::Framework)
 	{
-		Shared::g_disableOnBattery = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"DisableGlassOnBattery", TRUE));
+		DWORD value{ 0ul };
+		if (
+			FAILED(
+				wil::reg::get_value_dword_nothrow(
+					GlassEngine::GetDwmLocalMachineKey(),
+					L"DisableGlassOnBattery",
+					&value
+				)
+			)
+		)
+		{
+			value = 1ul;
+		}
+		Shared::g_disableOnBattery = value;
 	}
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
