@@ -207,11 +207,17 @@ HRESULT CReflectionRealizer::Render(
 
 		const auto primitiveBlend = contextForSpriteBatch->GetPrimitiveBlend();
 		const auto antialiasMode = contextForSpriteBatch->GetAntialiasMode();
-		contextForSpriteBatch->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+		if (!ignoreLayer)
+		{
+			contextForSpriteBatch->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
+		}
 		contextForSpriteBatch->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
 		contextForSpriteBatch->DrawSpriteBatch(m_spriteBatch.get(), m_reflectionBitmap.get());
 		contextForSpriteBatch->SetAntialiasMode(antialiasMode);
-		contextForSpriteBatch->SetPrimitiveBlend(primitiveBlend);
+		if (!ignoreLayer)
+		{
+			contextForSpriteBatch->SetPrimitiveBlend(primitiveBlend);
+		}
 		m_spriteBatch->Clear();
 
 		if (!ignoreLayer)
