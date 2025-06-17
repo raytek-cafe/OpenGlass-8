@@ -31,6 +31,8 @@ namespace OpenGlass::AccentOverrider
 	decltype(&MyCAccent_UpdateAccentPolicy) g_CAccent_UpdateAccentPolicy_Org{ nullptr };
 	decltype(&MyCAccent__UpdateSolidFill) g_CAccent__UpdateSolidFill_Org{ nullptr };
 	decltype(&MyCAccentBlurBehind_IsBlurBehindDirty) g_CAccentBlurBehind_IsBlurBehindDirty_Org{ nullptr };
+
+	bool g_disableGlassHooks{ false };
 }
 
 HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent_UpdateAccentPolicy(
@@ -43,8 +45,7 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent_UpdateAccentPolicy(
 	if (
 		policy->AccentState != 1 &&
 		policy->AccentState != 3 &&
-		policy->AccentState != 4 &&
-		policy->AccentState != 5
+		policy->AccentState != 4
 	)
 	{
 		return g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
@@ -193,6 +194,19 @@ void AccentOverrider::Update(GlassEngine::UpdateType type)
 
 void AccentOverrider::Startup()
 {
+	DWORD value{ 0ul };
+	wil::reg::get_value_dword_nothrow(
+		GlassEngine::GetDwmKey(),
+		L"DisabledHooks",
+		&value
+	);
+	g_disableGlassHooks = (value & 2) != 0;
+
+	if (g_disableGlassHooks)
+	{
+		return;
+	}
+
 	uDWM::g_projectionArray.ApplyToVariable("CAccent::UpdateAccentPolicy", g_CAccent_UpdateAccentPolicy_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CAccent::_UpdateSolidFill", g_CAccent__UpdateSolidFill_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CAccentBlurBehind::IsBlurBehindDirty", g_CAccentBlurBehind_IsBlurBehindDirty_Org);
@@ -212,6 +226,11 @@ void AccentOverrider::Startup()
 
 void AccentOverrider::Shutdown()
 {
+	if (g_disableGlassHooks)
+	{
+		return;
+	}
+
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{

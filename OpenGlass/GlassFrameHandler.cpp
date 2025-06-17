@@ -130,6 +130,7 @@ namespace OpenGlass::GlassFrameHandler
 		Windows7,
 		Windows8
 	} g_captionButtons{ 0 };
+	bool g_disableGlassHooks{ false };
 
 	SIZE CalculateButtonSize(int cySize, int buttonType);
 	HRESULT UpdateReflectionViewport(uDWM::CTopLevelWindow* window);
@@ -979,6 +980,19 @@ void GlassFrameHandler::Update(GlassEngine::UpdateType type)
 
 void GlassFrameHandler::Startup()
 {
+	DWORD value{ 0ul };
+	wil::reg::get_value_dword_nothrow(
+		GlassEngine::GetDwmKey(),
+		L"DisabledHooks",
+		&value
+	);
+	g_disableGlassHooks = (value & 4) != 0;
+
+	if (g_disableGlassHooks)
+	{
+		return;
+	}
+
 	uDWM::g_projectionArray.ApplyToVariable("CGlassColorizationParameters::AdjustWindowColorization", g_CGlassColorizationParameters_AdjustWindowColorization_Org);
 	uDWM::g_projectionArray.ApplyToVariable("ResourceHelper::CreateGeometryFromHRGN", g_ResourceHelper_CreateGeometryFromHRGN_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CTopLevelAtlasedRectsVisual::ShouldCloneAtlasImage", g_CTopLevelAtlasedRectsVisual_ShouldCloneAtlasImage_Org);
@@ -1178,6 +1192,11 @@ void GlassFrameHandler::Startup()
 
 void GlassFrameHandler::Shutdown()
 {
+	if (g_disableGlassHooks)
+	{
+		return;
+	}
+
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{

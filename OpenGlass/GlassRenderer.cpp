@@ -128,7 +128,7 @@ namespace OpenGlass::GlassRenderer
 	D2D1_RECT_F g_drawingWorldBounds{};
 	std::bitset<4> g_renderFlag{};
 
-	wil::srwlock g_lock{};
+	wil::critical_section g_lock{};
 	bool g_disabled{};
 	std::unordered_map<dwmcore::CD2DContext*, CDeviceResources> g_deviceResources{};
 	CDeviceResources* g_currentDeviceResources{};
@@ -413,7 +413,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	}
 
 	d2dContext->EnsureBeginDraw();
-	const auto lockScope = g_lock.lock_exclusive();
+	const auto lockScope = g_lock.lock();
 	if (g_disabled)
 	{
 		return S_OK;
@@ -596,7 +596,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 			);
 		}
 
-		drawingContext->FillShapeWithBrush(renderingShape.get(), nullptr);
+		return drawingContext->FillShapeWithBrush(renderingShape.get(), nullptr);
 	}
 
 	return S_OK;
@@ -750,7 +750,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCWindowNode_RenderImage(
 
 		const auto d2dContext = drawingContext->GetD2DContext();
 		const auto context = d2dContext->GetDeviceContext();
-		const auto lockScope = g_lock.lock_exclusive();
+		const auto lockScope = g_lock.lock();
 		if (g_disabled)
 		{
 			return S_OK;
@@ -1019,7 +1019,7 @@ void GlassRenderer::Update(GlassEngine::UpdateType type)
 		PathUnquoteSpacesW(materialTexturePath);
 		Shared::g_materialTexturePath.assign(materialTexturePath);
 
-		const auto lockScope = g_lock.lock_exclusive();
+		const auto lockScope = g_lock.lock();
 		for (auto& [_, deviceResources] : g_deviceResources)
 		{
 			deviceResources.m_reflectionRealizer.Reset();
@@ -1282,7 +1282,7 @@ void GlassRenderer::Shutdown()
 		);
 	}
 
-	const auto lockScope = g_lock.lock_exclusive();
+	const auto lockScope = g_lock.lock();
 	g_disabled = true;
 	g_deviceResources.clear();
 	THROW_IF_FAILED(CAeroColorizationEffect::UnRegister(*dwmcore::g_DeviceManager));

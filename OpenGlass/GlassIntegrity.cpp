@@ -82,7 +82,6 @@ namespace OpenGlass::GlassIntegrity
 	template <typename T>
 	HRESULT STDMETHODCALLTYPE MyCDrawingContext_DrawVisualTree(
 		dwmcore::CDrawingContext* This,
-		dwmcore::CVisualTree* tree,
 		const D2D1_RECT_F& rectangle,
 		dwmcore::COcclusionContext* occlusionContext,
 		T&& callback
@@ -121,7 +120,7 @@ namespace OpenGlass::GlassIntegrity
 
 	IGlassCoverageSet* g_glassCoverageSetNoRef{ nullptr };
 	dwmcore::CDrawingContext* g_drawingContextNoRef{ nullptr };
-	wil::srwlock g_lock{};
+	wil::critical_section g_lock{};
 	bool g_disabled{};
 	std::unordered_map<dwmcore::CD2DContext*, CGlassSafetyZoneLayer> g_safetyZoneLayerMap{};
 
@@ -685,7 +684,6 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCTreeDirty_GetOptimizedRect(
 template <typename T>
 HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 	dwmcore::CDrawingContext* This,
-	dwmcore::CVisualTree* tree,
 	const D2D1_RECT_F& rectangle,
 	dwmcore::COcclusionContext* occlusionContext,
 	T&& callback
@@ -696,11 +694,6 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 	do
 	{
 		if (GlassKernel::IsCVIPresent())
-		{
-			break;
-		}
-
-		if (HookHelper::vftbl_of(tree) != dwmcore::CDesktopTree::vftable)
 		{
 			break;
 		}
@@ -744,12 +737,7 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 			break;
 		}
 
-		if (renderTargetBitmap->GetPixelFormat().alphaMode != D2D1_ALPHA_MODE_IGNORE)
-		{
-			break;
-		}
-
-		const auto lockScope = g_lock.lock_exclusive();
+		const auto lockScope = g_lock.lock();
 		if (g_disabled)
 		{
 			break;
@@ -807,7 +795,6 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree_Win10
 {
 	return MyCDrawingContext_DrawVisualTree(
 		This,
-		tree,
 		rectangle,
 		occlusionContext,
 		[=](const D2D1_RECT_F& replacedRectangle)
@@ -835,7 +822,6 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree_Win11
 {
 	return MyCDrawingContext_DrawVisualTree(
 		This,
-		tree,
 		rectangle,
 		occlusionContext,
 		[=](const D2D1_RECT_F& replacedRectangle)
@@ -965,7 +951,7 @@ void GlassIntegrity::Shutdown()
 
 	GlassCoverageSetFactory::Shutdown();
 	g_shrunkCoverageSetMap.clear();
-	const auto lockScope = g_lock.lock_exclusive();
+	const auto lockScope = g_lock.lock();
 	g_disabled = true;
 	g_safetyZoneLayerMap.clear();
 }

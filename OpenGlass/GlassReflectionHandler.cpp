@@ -133,6 +133,8 @@ namespace OpenGlass::GlassReflectionHandler
 		}
 	};
 	std::unordered_map<uDWM::CAnimatedGlassSheet*, winrt::com_ptr<CAnimatedReflectionSheet>> g_sheetMap{};
+
+	bool g_disableReflectionHooks{ false };
 }
 
 void STDMETHODCALLTYPE GlassReflectionHandler::MyCAnimatedGlassSheet_OnRectUpdated(uDWM::CAnimatedGlassSheet* This, LPCRECT lprc)
@@ -354,6 +356,19 @@ void GlassReflectionHandler::Update([[maybe_unused]] GlassEngine::UpdateType typ
 
 void GlassReflectionHandler::Startup()
 {
+	DWORD value{ 0ul };
+	wil::reg::get_value_dword_nothrow(
+		GlassEngine::GetDwmKey(),
+		L"DisabledHooks",
+		&value
+	);
+	g_disableReflectionHooks = (value & 8) != 0;
+
+	if (g_disableReflectionHooks)
+	{
+		return;
+	}
+
 	uDWM::g_projectionArray.ApplyToVariable("CAnimatedGlassSheet::OnRectUpdated", g_CAnimatedGlassSheet_OnRectUpdated_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CAnimatedGlassSheet::~CAnimatedGlassSheet", g_CAnimatedGlassSheet_Destructor_Org);
 	
@@ -380,6 +395,11 @@ void GlassReflectionHandler::Startup()
 
 void GlassReflectionHandler::Shutdown()
 {
+	if (g_disableReflectionHooks)
+	{
+		return;
+	}
+
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{

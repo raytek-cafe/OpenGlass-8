@@ -796,11 +796,6 @@ void CaptionTextHandler::DestroyDeviceResources()
 
 void CaptionTextHandler::Update(GlassEngine::UpdateType type)
 {
-	if (g_disableTextHooks)
-	{
-		return;
-	}
-
 	if (type & GlassEngine::UpdateType::Theme)
 	{
 		g_textGlowD2DBitmap = nullptr;
