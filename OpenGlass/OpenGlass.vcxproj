@@ -1,5 +1,8 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.props" Condition="Exists('..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.props')" />
+  <Import Project="..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.props" Condition="Exists('..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.props')" />
+  <Import Project="..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.props" Condition="Exists('..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.props')" />
   <Import Project="..\packages\VC-LTL.5.2.2-Beta1\build\native\VC-LTL.props" Condition="Exists('..\packages\VC-LTL.5.2.2-Beta1\build\native\VC-LTL.props')" />
   <Import Project="..\packages\YY.NuGet.Import.Helper.1.0.1\build\native\YY.NuGet.Import.Helper.props" Condition="Exists('..\packages\YY.NuGet.Import.Helper.1.0.1\build\native\YY.NuGet.Import.Helper.props')" />
   <ItemGroup Label="ProjectConfigurations">
@@ -349,6 +352,9 @@
     <Import Project="..\packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1\build\native\Microsoft.Windows.ImplementationLibrary.targets" Condition="Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.250325.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" />
     <Import Project="..\packages\YY.NuGet.Import.Helper.1.0.1\build\native\YY.NuGet.Import.Helper.targets" Condition="Exists('..\packages\YY.NuGet.Import.Helper.1.0.1\build\native\YY.NuGet.Import.Helper.targets')" />
     <Import Project="..\packages\YY-Thunks.1.1.7-Beta6\build\native\YY-Thunks.targets" Condition="Exists('..\packages\YY-Thunks.1.1.7-Beta6\build\native\YY-Thunks.targets')" />
+    <Import Project="..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.targets" Condition="Exists('..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.targets')" />
+    <Import Project="..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.targets" Condition="Exists('..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.targets')" />
+    <Import Project="..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.targets" Condition="Exists('..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
@@ -360,5 +366,11 @@
     <Error Condition="!Exists('..\packages\YY.NuGet.Import.Helper.1.0.1\build\native\YY.NuGet.Import.Helper.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\YY.NuGet.Import.Helper.1.0.1\build\native\YY.NuGet.Import.Helper.targets'))" />
     <Error Condition="!Exists('..\packages\VC-LTL.5.2.2-Beta1\build\native\VC-LTL.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\VC-LTL.5.2.2-Beta1\build\native\VC-LTL.props'))" />
     <Error Condition="!Exists('..\packages\YY-Thunks.1.1.7-Beta6\build\native\YY-Thunks.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\YY-Thunks.1.1.7-Beta6\build\native\YY-Thunks.targets'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.props'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Build.Tasks.Git.8.0.0\build\Microsoft.Build.Tasks.Git.targets'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.props'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.SourceLink.Common.8.0.0\build\Microsoft.SourceLink.Common.targets'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.props'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.SourceLink.GitHub.8.0.0\build\Microsoft.SourceLink.GitHub.targets'))" />
   </Target>
 </Project>
