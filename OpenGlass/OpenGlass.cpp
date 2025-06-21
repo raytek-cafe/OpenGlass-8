@@ -26,8 +26,7 @@ namespace OpenGlass
 	);
 	LRESULT CALLBACK DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	HWND g_notificationWindow{ nullptr };
-	bool g_hotkeyRegistered{ false };
-	UINT g_msgToggleHotKeyState{ RegisterWindowMessageW(L"OpenGlass.ToggleHotKeyState")};
+	UINT g_msgHotKeyStateChanged{ RegisterWindowMessageW(L"OpenGlassHotKeyStateChanged")};
 	PVOID g_powerNotify{ nullptr };
 	WNDPROC g_oldWndProc{ nullptr };
 
@@ -149,29 +148,30 @@ VOID CALLBACK OpenGlass::EffectivePowerModeCallback(
 
 LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	if (uMsg == g_msgToggleHotKeyState)
+	if (uMsg == g_msgHotKeyStateChanged)
 	{
-		if (g_hotkeyRegistered)
-		{
-			LOG_IF_WIN32_BOOL_FALSE(
-				UnregisterHotKey(
-					g_notificationWindow,
-					1
-				)
-			);
-		}
-		else
+		if (wParam)
 		{
 			LOG_IF_WIN32_BOOL_FALSE(
 				RegisterHotKey(
-					g_notificationWindow,
+					hWnd,
 					1,
 					MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT | MOD_WIN,
 					'X'
 				)
 			);
 		}
-		g_hotkeyRegistered = !g_hotkeyRegistered;
+		else
+		{
+			LOG_IF_WIN32_BOOL_FALSE(
+				UnregisterHotKey(
+					hWnd,
+					1
+				)
+			);
+		}
+
+		return 0;
 	}
 	switch (uMsg)
 	{
@@ -185,17 +185,13 @@ LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM 
 		}
 		case WM_CLOSE:
 		{
-			if (g_hotkeyRegistered)
-			{
-				LOG_IF_WIN32_BOOL_FALSE(
-					UnregisterHotKey(
-						g_notificationWindow,
-						1
-					)
-				);
-				g_hotkeyRegistered = false;
-				g_notificationWindow = nullptr;
-			}
+			LOG_IF_WIN32_BOOL_FALSE(
+				UnregisterHotKey(
+					hWnd,
+					1
+				)
+			);
+			g_notificationWindow = nullptr;
 			break;
 		}
 		case WM_WININICHANGE:
@@ -687,7 +683,7 @@ void OpenGlass::Startup()
 		)
 	);
 	THROW_LAST_ERROR_IF(g_oldWndProc == 0);
-	SendMessageW(g_notificationWindow, g_msgToggleHotKeyState, 0, 0);
+	SendMessageW(g_notificationWindow, g_msgHotKeyStateChanged, TRUE, 0);
 
 	THROW_IF_FAILED(
 		PowerRegisterForEffectivePowerModeNotifications(
@@ -732,14 +728,10 @@ void OpenGlass::Shutdown()
 
 	g_startup = false;
 
-	if (g_hotkeyRegistered)
-	{
-		SendMessageW(g_notificationWindow, g_msgToggleHotKeyState, 0, 0);
-		g_hotkeyRegistered = false;
-	}
-	
 	if (g_notificationWindow)
 	{
+		SendMessageW(g_notificationWindow, g_msgHotKeyStateChanged, FALSE, 0);
+
 		THROW_LAST_ERROR_IF(SetWindowLongPtrW(g_notificationWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_oldWndProc)) == 0);
 		g_oldWndProc = nullptr;
 

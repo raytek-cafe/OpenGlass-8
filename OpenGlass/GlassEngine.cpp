@@ -36,17 +36,21 @@ HKEY GlassEngine::GetDwmLocalMachineKey()
 
 void GlassEngine::LoadRegistry(bool redrawNow)
 {
+	UnloadRegistry();
+
 	GlassService::RequestBuffer content{ GlassService::RequestType::OpenUserRegistry };
 	const auto hr = GlassService::SendRequest(content);
 	if (SUCCEEDED(hr))
 	{
-		g_dwmKey.reset(content.dwmKey);
-		g_personalizeKey.reset(content.personalizeKey);
+		if (content.dwmKey)
+		{
+			g_dwmKey.reset(content.dwmKey);
+		}
+		if (content.personalizeKey)
+		{
+			g_personalizeKey.reset(content.personalizeKey);
+		}
 		Update(UpdateType::All, redrawNow);
-	}
-	else
-	{
-		UnloadRegistry();
 	}
 	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\DWM", g_dwmLocalMachineKey);
 }
