@@ -409,6 +409,10 @@ namespace OpenGlass::dwmcore
 			{
 				opacity = reinterpret_cast<float const*>(this)[30];
 			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				opacity = reinterpret_cast<float const*>(this)[32];
+			}
 			else if (g_buildNumber < os::build_w11_24h2)
 			{
 				opacity = reinterpret_cast<float const*>(this)[16];
@@ -427,6 +431,10 @@ namespace OpenGlass::dwmcore
 			if (g_buildNumber < os::build_w11_21h2)
 			{
 				resource = reinterpret_cast<CFloatResource* const*>(this)[16];
+			}
+			else if (g_buildNumber < os::build_w11_22h2)
+			{
+				resource = reinterpret_cast<CFloatResource* const*>(this)[17];
 			}
 			else if (g_buildNumber < os::build_w11_24h2)
 			{
