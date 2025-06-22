@@ -786,6 +786,13 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_SetSize(uDWM::CDWrit
 			static_cast<double>(size->cy)
 		);
 	}
+	else
+	{
+		This->GetVisualProxy()->SetSize(
+			static_cast<double>(size->cx + offset.x - std::max(offset.x - g_textGlowSize, 0l) + g_textGlowSize),
+			static_cast<double>(size->cy)
+		);
+	}
 
 	return hr;
 }
