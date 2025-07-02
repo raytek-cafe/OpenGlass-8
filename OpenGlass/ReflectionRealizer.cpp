@@ -45,7 +45,7 @@ HRESULT CReflectionRealizer::LoadTexture(ID2D1DeviceContext* context)
 	}
 	RETURN_HR_IF_NULL(E_OUTOFMEMORY, stream);
 
-	winrt::com_ptr<IWICImagingFactory2> wicFactory{ nullptr };
+	winrt::com_ptr<IWICImagingFactory> wicFactory{ nullptr };
 	wicFactory.copy_from(uDWM::CDesktopManager::GetInstance()->GetWICFactory());
 	winrt::com_ptr<IWICBitmapDecoder> wicDecoder{ nullptr };
 	RETURN_IF_FAILED(wicFactory->CreateDecoderFromStream(stream.get(), &GUID_VendorMicrosoft, WICDecodeMetadataCacheOnDemand, wicDecoder.put()));

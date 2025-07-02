@@ -613,7 +613,7 @@ namespace OpenGlass::dwmcore
 
 			return ptr;
 		}
-		CShape* operator->()
+		CShape* operator->() const
 		{
 			return ptr;
 		}
@@ -626,7 +626,7 @@ namespace OpenGlass::dwmcore
 			Release();
 			return &ptr;
 		}
-		operator bool()
+		operator bool() const
 		{
 			return ptr != nullptr;
 		}

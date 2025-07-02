@@ -43,27 +43,7 @@ HRESULT CGlassRealizer::Render(
 	const CGlassInput& input
 )
 {
-	if (m_glassType != Shared::g_type)
-	{
-		m_glassType = Shared::g_type;
-		switch (m_glassType)
-		{
-		case Shared::GlassType::Blur:
-		{
-			m_glassEffect = winrt::make<CBlurEffect>();
-			break;
-		}
-		case Shared::GlassType::Aero:
-		{
-			m_glassEffect = winrt::make<CAeroEffect>();
-			break;
-		}
-		default:
-			m_glassEffect = nullptr;
-			break;
-		}
-	}
-	if (!m_glassEffect)
+	if (!EnsureGlassEffect(Shared::g_type))
 	{
 		return S_OK;
 	}

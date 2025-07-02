@@ -2356,25 +2356,25 @@ namespace OpenGlass::uDWM
 
 			return windowList;
 		}
-		IWICImagingFactory2* GetWICFactory() const
+		IWICImagingFactory* GetWICFactory() const
 		{
-			IWICImagingFactory2* factory{ nullptr };
+			IWICImagingFactory* factory{ nullptr };
 
 			if (g_buildNumber < os::build_w11_21h2)
 			{
-				factory = reinterpret_cast<IWICImagingFactory2* const*>(this)[39];
+				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[39];
 			}
 			else if (g_buildNumber < os::build_w11_22h2)
 			{
-				factory = reinterpret_cast<IWICImagingFactory2* const*>(this)[30];
+				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[30];
 			}
 			else if (g_buildNumber < os::build_w11_24h2)
 			{
-				factory = reinterpret_cast<IWICImagingFactory2* const*>(this)[31];
+				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[31];
 			}
 			else
 			{
-				factory = reinterpret_cast<IWICImagingFactory2* const*>(this)[30];
+				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[30];
 			}
 
 			return factory;

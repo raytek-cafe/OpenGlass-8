@@ -946,7 +946,10 @@ void GlassIntegrity::Shutdown()
 
 	if (g_COcclusionContext_DrawGeometry_Org)
 	{
-		HookHelper::WritePointer(g_COcclusionContext_DrawGeometry_Org_Address, g_COcclusionContext_DrawGeometry_Org);
+		HookHelper::WritePointer(
+			g_COcclusionContext_DrawGeometry_Org_Address, 
+			g_COcclusionContext_DrawGeometry_Org
+		);
 	}
 
 	GlassCoverageSetFactory::Shutdown();

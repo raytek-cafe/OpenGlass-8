@@ -697,7 +697,7 @@ void OpenGlass::Startup()
 	GlassEngine::LoadRegistry(false);
 	GlassEngine::Startup();
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(BUILD_BETA)
 	winrt::com_ptr<IDCompositionDeviceDebug> debugDevice{ nullptr };
 	uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(
 		debugDevice.put()
@@ -718,7 +718,7 @@ void OpenGlass::Shutdown()
 		return;
 	}
 
-#ifdef _DEBUG
+#if defined(_DEBUG) || defined(BUILD_BETA)
 	winrt::com_ptr<IDCompositionDeviceDebug> debugDevice{ nullptr };
 	uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(
 		debugDevice.put()

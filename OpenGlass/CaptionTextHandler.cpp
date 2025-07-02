@@ -103,6 +103,7 @@ namespace OpenGlass::CaptionTextHandler
 	COLORREF g_captionInactiveColor{};
 	MARGINS g_contentMargins{}, g_sizingMargins{};
 	std::unordered_map<uDWM::CVisual*, bool> g_textVisualStateMap{};
+	winrt::com_ptr<ID2D1DCRenderTarget> g_textGlowRT{};
 	winrt::com_ptr<ID2D1Bitmap1> g_textGlowD2DBitmap{};
 	winrt::com_ptr<ID2D1Effect> g_textGlowEffect{};
 	winrt::com_ptr<ID2D1Effect> g_textMorphologyEffect{};
@@ -170,12 +171,13 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 
 	const auto calcGlowClipRect = [](LPCRECT lprc, RECT& glowClipRect, bool mirrored)
 	{
+		const auto visibleMarginsLeft = g_window->GetMarginsVisibleOutside(g_window->IsWindowMaximized()).cxLeftWidth;
 		if (!mirrored)
 		{
 			glowClipRect.left = std::max(
 				glowClipRect.left,
 				lprc->left -
-				(g_textVisual->GetX() + (g_centerCaption ? static_cast<LONG>(std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.)) : 0l))
+				(g_textVisual->GetX() + (g_centerCaption ? static_cast<LONG>(std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.)) : 0l) - visibleMarginsLeft)
 			);
 		}
 		else
@@ -183,7 +185,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 			glowClipRect.right = std::min(
 				glowClipRect.right,
 				lprc->right +
-				(g_textVisual->GetX() + (g_centerCaption ? static_cast<LONG>(std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.)) : 0l))
+				(g_textVisual->GetX() + (g_centerCaption ? static_cast<LONG>(std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.)) : 0l) - visibleMarginsLeft)
 			);
 		}
 	};
@@ -220,15 +222,66 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 
 	if (Shared::g_textGlowMode == 1 || Shared::g_textGlowMode == 2)
 	{
-		const auto opacity = Shared::g_textGlowMode == 2 ? static_cast<int>((g_textVisualStateMap[g_dwriteTextVisual] ? g_textOpacity : g_textOpacityInactive) * 255.f) : 255;
+		if (!g_textGlowRT)
+		{
+			winrt::com_ptr<ID2D1Factory> factory{};
+			uDWM::CDesktopManager::GetInstance()->GetD2DDevice()->GetFactory(factory.put());
+			D2D1_RENDER_TARGET_PROPERTIES properties = D2D1::RenderTargetProperties(
+				D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+				D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
+			);
+			THROW_IF_FAILED(
+				factory->CreateDCRenderTarget(
+					&properties,
+					g_textGlowRT.put()
+				)
+			);
+		}
+		winrt::com_ptr<ID2D1DeviceContext> context = g_textGlowRT.as<ID2D1DeviceContext>();
+		if (!g_textGlowD2DBitmap)
+		{
+			THROW_IF_FAILED(
+				context->CreateBitmap(
+					D2D1::SizeU(
+						Shared::g_textGlowBitmapInfo.bmiHeader.biWidth,
+						-Shared::g_textGlowBitmapInfo.bmiHeader.biHeight
+					),
+					Shared::g_textGlowBitmapPixels,
+					Shared::g_textGlowBitmapInfo.bmiHeader.biWidth * 4,
+					D2D1::BitmapProperties1(
+						D2D1_BITMAP_OPTIONS_NONE,
+						D2D1::PixelFormat(
+							DXGI_FORMAT_B8G8R8A8_UNORM,
+							D2D1_ALPHA_MODE_PREMULTIPLIED
+						)
+					),
+					g_textGlowD2DBitmap.put()
+				)
+			);
+		}
 		
+		RECT targetRect
+		{
+			lprc->left - g_textGlowSize, 
+			lprc->top - g_textGlowSize,
+			lprc->right + g_textGlowSize,
+			lprc->bottom + g_textGlowSize
+		};
+		g_textGlowRT->BindDC(hdc, &targetRect);
+		g_textGlowRT->BeginDraw();
 		Util::DrawNineGridBitmap(
-			hdc,
-			Shared::g_textGlowBitmap.get(),
-			glowDrawRect,
+			context.get(),
+			g_textGlowD2DBitmap.get(),
+			D2D1::RectF(
+				static_cast<float>(glowDrawRect.left),
+				static_cast<float>(glowDrawRect.top),
+				static_cast<float>(glowDrawRect.right),
+				static_cast<float>(glowDrawRect.bottom)
+			),
 			g_sizingMargins,
-			opacity
+			Shared::g_textGlowMode == 2 ? (g_textVisualStateMap[g_dwriteTextVisual] ? g_textOpacity : g_textOpacityInactive) : 1.f
 		);
+		LOG_IF_FAILED(g_textGlowRT->EndDraw());
 		/*{
 			FrameRect(
 				hdc,
@@ -865,12 +918,13 @@ void CaptionTextHandler::CalculateRealizedTextGlowParams(int textGlowMode)
 
 void CaptionTextHandler::DestroyDeviceResources()
 {
+	g_textGlowRT = nullptr;
+	g_textGlowD2DBitmap = nullptr;
+
 	if (uDWM::g_buildNumber < os::build_w11_22h2)
 	{
 		return;
 	}
-
-	g_textGlowD2DBitmap = nullptr;
 	g_textGlowEffect = nullptr;
 	g_textMorphologyEffect = nullptr;
 }
@@ -1091,9 +1145,9 @@ void CaptionTextHandler::Shutdown()
 		);
 
 		g_dwriteTextVisual = nullptr;
-		DestroyDeviceResources();
 	}
 
+	DestroyDeviceResources();
 	g_textSize = {};
 	g_textVisualStateMap.clear();
 }
