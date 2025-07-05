@@ -3,14 +3,16 @@
 This utility returns the full glass effect to the window frame, just like [glass8](http://www.msfn.org/board/forum/180-aero-glass-for-windows-8/) did.
 
 > [!NOTE]  
-> Currently only the following **official** versions of **64-bit** Windows are supported.
+> Currently only the following **official** versions of **64-bit** Windows (not including server edition) are fully supported.
 > - Windows 10 20H2
 > - Windows 10 21H2
 > - Windows 10 22H2
 > - Windows 11 21H2
 > - Windows 11 22H2
 > - Windows 11 23H2
-> - Windows 11 24H2
+> - ~~Windows 11 24h2~~
+> 
+> Windows 11 24H2 has very weird version control, simply detecting the build number is no longer enough, function inlining behavior, and class member offsets may change at every revision number. This means that if you're using 24H2, OpenGlass might work for you—but it's more likely that it won't.
 
 > [!IMPORTANT]  
 > This software is intended for advanced users only. If you are a beginner and you do not have deeper knowledge of Windows (such as registry editing etc.) you should not install this software.  
