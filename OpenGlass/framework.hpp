@@ -46,6 +46,7 @@
 #include <d3d11_4.h>
 #include <dcomp.h>
 #include <dwrite_3.h>
+#include <d3dcompiler.h>
 
 #pragma comment(lib, "powrprof.lib")
 #pragma comment(lib, "version.lib")
@@ -72,5 +73,6 @@
 #pragma comment(lib, "dcomp.lib")
 #pragma comment(lib, "dwrite.lib")
 #pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 
 #pragma comment(lib, "onecore.lib")

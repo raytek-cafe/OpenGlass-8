@@ -7,7 +7,7 @@ namespace OpenGlass
 	class CGlassSafetyZoneLayer
 	{
 		CD2DBuffer m_safetyZoneBufferVertical{};
-		CD2DBuffer m_safetyZoneBufferHorizon{};
+		CD2DBuffer m_safetyZoneBufferHorizontal{};
 		D2D1_RECT_U m_safetyZoneBounds[4]{};
 		winrt::com_ptr<ID2D1Bitmap1> m_renderTargetBitmap{};
 	public:
@@ -16,7 +16,8 @@ namespace OpenGlass
 			ID2D1Bitmap1* renderTargetBitmap,
 			const D2D1_MATRIX_3X2_F& deviceTransform,
 			const D2D1_RECT_F& originalPixelRectangle,
-			float extendedAmount
+			float extendedAmount,
+			D2D1_RECT_F& extendedPixelRectangle
 		);
 		void Pop();
 		ID2D1Bitmap1* GetOwner() const { return m_renderTargetBitmap.get(); }

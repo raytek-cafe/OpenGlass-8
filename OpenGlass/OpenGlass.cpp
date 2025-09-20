@@ -19,6 +19,13 @@ namespace OpenGlass
 	LONG NTAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* exceptionInfo);
 	LPTOP_LEVEL_EXCEPTION_FILTER g_old{ nullptr };
 
+	[[noreturn]] VOID WINAPI MyRaiseFailFastException(
+		_In_opt_ PEXCEPTION_RECORD pExceptionRecord,
+		_In_opt_ PCONTEXT pContextRecord,
+		_In_ DWORD dwFlags
+	);
+	decltype(&MyRaiseFailFastException) g_RaiseFailFastException_Org{ nullptr };
+
 	_Function_class_(EFFECTIVE_POWER_MODE_CALLBACK)
 	VOID CALLBACK EffectivePowerModeCallback(
 		EFFECTIVE_POWER_MODE mode,
@@ -125,16 +132,22 @@ LONG NTAPI OpenGlass::TopLevelExceptionFilter(EXCEPTION_POINTERS* exceptionInfo)
 	ExitProcess(exceptionInfo->ExceptionRecord->ExceptionCode);
 }
 
+[[noreturn]] VOID WINAPI OpenGlass::MyRaiseFailFastException(
+	_In_opt_ PEXCEPTION_RECORD pExceptionRecord,
+	_In_opt_ [[maybe_unused]] PCONTEXT pContextRecord,
+	_In_ [[maybe_unused]] DWORD dwFlags
+)
+{
+	THROW_HR_IF_NULL(E_INVALIDARG, pExceptionRecord);
+	THROW_HR(static_cast<HRESULT>(pExceptionRecord->ExceptionInformation[0]));
+}
+
 _Function_class_(EFFECTIVE_POWER_MODE_CALLBACK)
 VOID CALLBACK OpenGlass::EffectivePowerModeCallback(
 	EFFECTIVE_POWER_MODE mode,
 	[[maybe_unused]] PVOID context
 )
 {
-	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-	{
-		ExitProcess(static_cast<UINT>(E_ABORT));
-	}
 	if (mode < (os::buildNumber < os::build_w11_24h2 ? 1 : 2))
 	{
 		Shared::g_xxSaver = true;
@@ -148,6 +161,7 @@ VOID CALLBACK OpenGlass::EffectivePowerModeCallback(
 
 LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+	constexpr UINT c_hotkeyId = 114514;
 	if (uMsg == g_msgHotKeyStateChanged)
 	{
 		if (wParam)
@@ -155,9 +169,9 @@ LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM 
 			LOG_IF_WIN32_BOOL_FALSE(
 				RegisterHotKey(
 					hWnd,
-					1,
+					c_hotkeyId,
 					MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT | MOD_WIN,
-					'X'
+					'Q'
 				)
 			);
 		}
@@ -166,7 +180,7 @@ LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM 
 			LOG_IF_WIN32_BOOL_FALSE(
 				UnregisterHotKey(
 					hWnd,
-					1
+					c_hotkeyId
 				)
 			);
 		}
@@ -177,7 +191,7 @@ LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM 
 	{
 		case WM_HOTKEY:
 		{
-			if (wParam == 1)
+			if (wParam == c_hotkeyId)
 			{
 				THROW_WIN32(ERROR_CANCELLED);
 			}
@@ -188,7 +202,7 @@ LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM 
 			LOG_IF_WIN32_BOOL_FALSE(
 				UnregisterHotKey(
 					hWnd,
-					1
+					c_hotkeyId
 				)
 			);
 			g_notificationWindow = nullptr;
@@ -323,7 +337,9 @@ DWORD OpenGlass::SymbolLoaderUIThreadEntryPoint(PVOID)
 				THROW_IF_FAILED(taskbarList->SetProgressValue(hwnd, g_progressCompleted, g_progressTotal));
 				SendMessageW(hwnd, TDM_SET_PROGRESS_BAR_POS, actualProgress, 0);
 			}
-			const auto instruction = Util::GetResourceString<IDS_STRING111>() + (g_progressPreviouslyCompleted < 100 ? L" (1/2)" : L" (2/2)");
+			auto instruction = Util::GetResourceString<IDS_STRING111>();
+			instruction.pop_back();
+			instruction += (g_progressPreviouslyCompleted < 100 ? L" (1/2)" : L" (2/2)");
 			const auto content = (g_progressPreviouslyCompleted < 100 ? L"uDWM.pdb" : L"dwmcore.pdb") + (g_status == DownloaderStatus::Indeterminate ? std::wstring{} : (L" (" + std::to_wstring(actualProgress)) + L"%)");
 			SendMessageW(hwnd, TDM_SET_ELEMENT_TEXT, TDE_MAIN_INSTRUCTION, reinterpret_cast<LPARAM>(instruction.c_str()));
 			SendMessageW(hwnd, TDM_SET_ELEMENT_TEXT, TDE_CONTENT, reinterpret_cast<LPARAM>(content.c_str()));
@@ -640,7 +656,26 @@ void OpenGlass::Startup()
 
 	g_old = SetUnhandledExceptionFilter(TopLevelExceptionFilter);
 
-	if (!os::IsOpenGlassSupported())
+	g_RaiseFailFastException_Org = reinterpret_cast<decltype(g_RaiseFailFastException_Org)>(GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "RaiseFailFastException"));
+	THROW_IF_FAILED(
+		HookHelper::Detours::Write([]()
+		{
+			HookHelper::Detours::Attach(&g_RaiseFailFastException_Org, MyRaiseFailFastException);
+		})
+	);
+
+	constexpr std::array supportList
+	{
+		os::build_w10_2004,
+		os::build_w11_21h2,
+		os::build_w11_22h2,
+		os::build_w11_24h2,
+	};
+
+	if (
+		std::find(supportList.begin(), supportList.end(), uDWM::g_versionInfo.build) == supportList.end() ||
+		std::find(supportList.begin(), supportList.end(), dwmcore::g_versionInfo.build) == supportList.end()
+	)
 	{
 		auto result = 0;
 		THROW_IF_FAILED(
@@ -751,6 +786,13 @@ void OpenGlass::Shutdown()
 	GlassEngine::Shutdown();
 	GlassEngine::UnloadRegistry();
 	GlassEngine::RedrawAll();
+
+	THROW_IF_FAILED(
+		HookHelper::Detours::Write([]()
+		{
+			HookHelper::Detours::Detach(&g_RaiseFailFastException_Org, MyRaiseFailFastException);
+		})
+	);
 
 	SetUnhandledExceptionFilter(g_old);
 }

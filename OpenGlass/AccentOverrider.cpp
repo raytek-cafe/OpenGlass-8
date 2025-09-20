@@ -216,7 +216,7 @@ void AccentOverrider::Startup()
 		{
 			HookHelper::Detours::Attach(&g_CAccent_UpdateAccentPolicy_Org, MyCAccent_UpdateAccentPolicy);
 			HookHelper::Detours::Attach(&g_CAccent__UpdateSolidFill_Org, MyCAccent__UpdateSolidFill);
-			if (uDWM::g_buildNumber < os::build_w11_22h2)
+			if (uDWM::g_versionInfo.build < os::build_w11_22h2)
 			{
 				HookHelper::Detours::Attach(&g_CAccentBlurBehind_IsBlurBehindDirty_Org, MyCAccentBlurBehind_IsBlurBehindDirty);
 			}
@@ -236,7 +236,7 @@ void AccentOverrider::Shutdown()
 		{
 			HookHelper::Detours::Detach(&g_CAccent_UpdateAccentPolicy_Org, MyCAccent_UpdateAccentPolicy);
 			HookHelper::Detours::Detach(&g_CAccent__UpdateSolidFill_Org, MyCAccent__UpdateSolidFill);
-			if (uDWM::g_buildNumber < os::build_w11_22h2)
+			if (uDWM::g_versionInfo.build < os::build_w11_22h2)
 			{
 				HookHelper::Detours::Detach(&g_CAccentBlurBehind_IsBlurBehindDirty_Org, MyCAccentBlurBehind_IsBlurBehindDirty);
 			}

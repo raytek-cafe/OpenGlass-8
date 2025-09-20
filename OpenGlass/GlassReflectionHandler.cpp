@@ -378,7 +378,7 @@ void GlassReflectionHandler::Startup()
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
-			if (uDWM::g_buildNumber < os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Attach(&g_CAnimatedGlassSheet_OnRectUpdated_Org, MyCAnimatedGlassSheet_OnRectUpdated);
 				HookHelper::Detours::Attach(&g_CAnimatedGlassSheet_Destructor_Org, MyCAnimatedGlassSheet_Destructor);
@@ -403,7 +403,7 @@ void GlassReflectionHandler::Shutdown()
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
-			if (uDWM::g_buildNumber < os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Detach(&g_CAnimatedGlassSheet_OnRectUpdated_Org, MyCAnimatedGlassSheet_OnRectUpdated);
 				HookHelper::Detours::Detach(&g_CAnimatedGlassSheet_Destructor_Org, MyCAnimatedGlassSheet_Destructor);

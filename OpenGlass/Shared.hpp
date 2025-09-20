@@ -29,6 +29,7 @@ namespace OpenGlass::Shared
 	inline D2D1_GAUSSIANBLUR_OPTIMIZATION g_blurOptimization{};
 	inline float g_glassOpacity{};
 	inline float g_glassOpacityInactive{};
+	inline bool g_useD3DRendering{};
 
 	inline D2D1_COLOR_F g_color{};
 	inline D2D1_COLOR_F g_colorInactive{};

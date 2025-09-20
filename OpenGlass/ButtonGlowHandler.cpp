@@ -100,7 +100,7 @@ namespace OpenGlass::ButtonGlowHandler
 
 	void Startup()
 	{
-		if (uDWM::g_buildNumber < os::build_w11_21h2)
+		if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 		{
 			uDWM::g_projectionArray.ApplyToVariable("CVisual::SetDirtyFlags", CVisual_SetDirtyFlags_orig);
 			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateBitmapFromAtlas", CTopLevelWindow__CreateBitmapFromAtlas);
@@ -120,7 +120,7 @@ namespace OpenGlass::ButtonGlowHandler
 
 	void Shutdown()
 	{
-		if (uDWM::g_buildNumber < os::build_w11_21h2)
+		if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 		{
 			THROW_IF_FAILED(
 				HookHelper::Detours::Write([]()

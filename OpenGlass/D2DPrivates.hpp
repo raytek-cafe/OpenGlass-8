@@ -53,4 +53,10 @@ namespace OpenGlass
 		STDMETHODV(GetInkRenderingHint)(void) PURE;
 		STDMETHODV(SignalFence)(ID3D11Fence*, UINT64) PURE;
 	};
+
+	interface DX_DECLARE_INTERFACE("e7fda62a-6a94-4f17-9f7c-26a950c74010") ID2D1RegionGeometry : public ID2D1Geometry
+	{
+		virtual UINT STDMETHODCALLTYPE GetRectanglesCount() const = 0;
+		virtual void STDMETHODCALLTYPE GetRectangles(RECT* buffer, UINT count) const = 0;
+	};
 }

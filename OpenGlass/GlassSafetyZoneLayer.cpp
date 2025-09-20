@@ -9,9 +9,11 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	ID2D1Bitmap1* renderTargetBitmap,
 	const D2D1_MATRIX_3X2_F& deviceTransform,
 	const D2D1_RECT_F& originalPixelRectangle,
-	float extendedAmount
+	float extendedAmount,
+	D2D1_RECT_F& extendedPixelRectangle
 )
 {
+	extendedPixelRectangle = originalPixelRectangle;
 	m_renderTargetBitmap.copy_from(renderTargetBitmap);
 	auto pushCleanupScope = wil::scope_exit([this]
 	{
@@ -46,6 +48,29 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	extendedDeviceRectangle.right = std::ceil(extendedDeviceRectangle.right);
 	extendedDeviceRectangle.bottom = std::ceil(extendedDeviceRectangle.bottom);
 	RectF::IntersectUnsafe(extendedDeviceRectangle, targetRect);
+
+	D2D1_MATRIX_3X2_F invertedDeviceTransform = deviceTransform;
+	if (D2D1InvertMatrix(&invertedDeviceTransform)) [[unlikely]]
+	{
+		extendedPixelRectangle = RectF::TransformRect(extendedDeviceRectangle, invertedDeviceTransform);
+	}
+	else
+	{
+		extendedPixelRectangle.left -= extendedAmount;
+		extendedPixelRectangle.top -= extendedAmount;
+		extendedPixelRectangle.right += extendedAmount;
+		extendedPixelRectangle.bottom += extendedAmount;
+	}
+
+	if (
+		extendedPixelRectangle.left == originalPixelRectangle.left &&
+		extendedPixelRectangle.top == originalPixelRectangle.top &&
+		extendedPixelRectangle.right == originalPixelRectangle.right &&
+		extendedPixelRectangle.bottom == originalPixelRectangle.bottom
+	)
+	{
+		return S_OK;
+	}
 
 	m_safetyZoneBounds[0] =
 	{
@@ -93,7 +118,7 @@ HRESULT CGlassSafetyZoneLayer::Push(
 			static_cast<UINT32>(std::ceil(targetSize.height + actualExtendedAmountY))
 		)
 	);
-	m_safetyZoneBufferHorizon.Resize(
+	m_safetyZoneBufferHorizontal.Resize(
 		D2D1::SizeU(
 			static_cast<UINT32>(std::ceil(targetSize.width + actualExtendedAmountX)),
 			static_cast<UINT32>(std::ceil(actualExtendedAmountY)) * 2
@@ -125,7 +150,7 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	if (!wil::rect_is_empty(m_safetyZoneBounds[1]))
 	{
 		RETURN_IF_FAILED(
-			m_safetyZoneBufferHorizon.CopyFrom(
+			m_safetyZoneBufferHorizontal.CopyFrom(
 				context,
 				D2D1::Point2U(0, 0),
 				m_renderTargetBitmap.get(),
@@ -136,7 +161,7 @@ HRESULT CGlassSafetyZoneLayer::Push(
 	if (!wil::rect_is_empty(m_safetyZoneBounds[3]))
 	{
 		RETURN_IF_FAILED(
-			m_safetyZoneBufferHorizon.CopyFrom(
+			m_safetyZoneBufferHorizontal.CopyFrom(
 				context,
 				D2D1::Point2U(0, wil::rect_height(m_safetyZoneBounds[1])),
 				m_renderTargetBitmap.get(),
@@ -151,6 +176,11 @@ HRESULT CGlassSafetyZoneLayer::Push(
 
 void CGlassSafetyZoneLayer::Pop()
 {
+	if (!m_renderTargetBitmap)
+	{
+		return;
+	}
+
 	if (!wil::rect_is_empty(m_safetyZoneBounds[0]))
 	{
 		m_safetyZoneBufferVertical.CopyTo(
@@ -179,7 +209,7 @@ void CGlassSafetyZoneLayer::Pop()
 	}
 	if (!wil::rect_is_empty(m_safetyZoneBounds[1]))
 	{
-		m_safetyZoneBufferHorizon.CopyTo(
+		m_safetyZoneBufferHorizontal.CopyTo(
 			D2D1::Point2U(m_safetyZoneBounds[1].left, m_safetyZoneBounds[1].top),
 			m_renderTargetBitmap.get(),
 			D2D1::RectU(
@@ -192,7 +222,7 @@ void CGlassSafetyZoneLayer::Pop()
 	}
 	if (!wil::rect_is_empty(m_safetyZoneBounds[3]))
 	{
-		m_safetyZoneBufferHorizon.CopyTo(
+		m_safetyZoneBufferHorizontal.CopyTo(
 			D2D1::Point2U(m_safetyZoneBounds[3].left, m_safetyZoneBounds[3].top),
 			m_renderTargetBitmap.get(),
 			D2D1::RectU(
@@ -205,4 +235,5 @@ void CGlassSafetyZoneLayer::Pop()
 	}
 	
 	m_renderTargetBitmap = nullptr;
+	ZeroMemory(m_safetyZoneBounds, sizeof(m_safetyZoneBounds));
 }

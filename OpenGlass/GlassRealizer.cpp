@@ -48,7 +48,19 @@ HRESULT CGlassRealizer::Render(
 		return S_OK;
 	}
 
-	const auto targetSize = input.sourceBitmap->GetSize();
+	const auto renderTargetBitmap = Util::GetTargetBitmapFromDeviceContext(context);
+	if (!renderTargetBitmap)
+	{
+		return S_OK;
+	}
+
+	const D2D1_RECT_F alignedSamplingWorldBounds
+	{
+		std::floor(input.samplingWorldBoundsShapeClipped->left),
+		std::floor(input.samplingWorldBoundsShapeClipped->top),
+		std::ceil(input.samplingWorldBoundsShapeClipped->right),
+		std::ceil(input.samplingWorldBoundsShapeClipped->bottom)
+	};
 	const D2D1_RECT_F alignedDrawingWorldBounds
 	{
 		std::floor(input.drawingWorldBounds->left),
@@ -62,8 +74,8 @@ HRESULT CGlassRealizer::Render(
 	
 	if (
 		const auto bitmapProperties = D2D1::BitmapProperties1(
-			input.sourceBitmap->GetOptions(),
-			input.sourceBitmap->GetPixelFormat()
+			renderTargetBitmap->GetOptions(),
+			renderTargetBitmap->GetPixelFormat()
 		);
 		input.zeroCopyOptimization &&
 		SUCCEEDED(context->QueryInterface(compositorDeviceContext.put()))
@@ -71,7 +83,7 @@ HRESULT CGlassRealizer::Render(
 	{
 		LOG_IF_FAILED(
 			compositorDeviceContext->CreateSharedAtlasBitmap(
-				input.sourceBitmap,
+				renderTargetBitmap.get(),
 				&bitmapProperties,
 				sharedAtlasBitmap.put()
 			)
@@ -81,20 +93,20 @@ HRESULT CGlassRealizer::Render(
 	const auto buffer = input.buffer;
 	if (!sharedAtlasBitmap)
 	{
-		buffer->Reserve(input.sourceBitmap->GetPixelSize());
+		buffer->Reserve(renderTargetBitmap->GetPixelSize());
 		RETURN_IF_FAILED(
 			buffer->CopyFrom(
 				context,
 				D2D1::Point2U(
-					static_cast<UINT32>(alignedDrawingWorldBounds.left),
-					static_cast<UINT32>(alignedDrawingWorldBounds.top)
+					static_cast<UINT32>(alignedSamplingWorldBounds.left),
+					static_cast<UINT32>(alignedSamplingWorldBounds.top)
 				),
-				input.sourceBitmap,
+				renderTargetBitmap.get(),
 				D2D1::RectU(
-					static_cast<UINT32>(alignedDrawingWorldBounds.left),
-					static_cast<UINT32>(alignedDrawingWorldBounds.top),
-					static_cast<UINT32>(alignedDrawingWorldBounds.right),
-					static_cast<UINT32>(alignedDrawingWorldBounds.bottom)
+					static_cast<UINT32>(alignedSamplingWorldBounds.left),
+					static_cast<UINT32>(alignedSamplingWorldBounds.top),
+					static_cast<UINT32>(alignedSamplingWorldBounds.right),
+					static_cast<UINT32>(alignedSamplingWorldBounds.bottom)
 				)
 			)
 		);
@@ -108,8 +120,8 @@ HRESULT CGlassRealizer::Render(
 	RETURN_IF_FAILED(
 		m_glassEffect->Build(
 			context,
-			sharedAtlasBitmap ? sharedAtlasBitmap.get() : buffer->GetCompatibleD2DBitmap(context, input.sourceBitmap),
-			alignedDrawingWorldBounds,
+			sharedAtlasBitmap ? sharedAtlasBitmap.get() : buffer->GetCompatibleD2DBitmap(context, renderTargetBitmap.get()),
+			alignedSamplingWorldBounds,
 			static_cast<const void*>(&input.params)
 		)
 	);
@@ -143,7 +155,7 @@ HRESULT CGlassRealizer::Render(
 					transformedSubRectangle.right + offset.x,
 					transformedSubRectangle.bottom + offset.y
 				),
-				input.drawImageInterpolationMode,
+				D2D1_INTERPOLATION_MODE_LINEAR,
 				D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY
 			);
 		}

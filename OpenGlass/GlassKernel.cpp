@@ -16,7 +16,7 @@ namespace OpenGlass::GlassKernel
 		dwmcore::CCachedVisualImage::CCachedTarget* This,
 		const D2D1_RECT_F& rect,
 		DWM::MilStretch mode,
-		const dwmcore::RenderTargetInfo& info
+		const struct RenderTargetInfo& info
 	);
 	HRESULT STDMETHODCALLTYPE MyCDrawingContext_PreSubgraph(
 		dwmcore::CDrawingContext* This,
@@ -42,7 +42,7 @@ namespace OpenGlass::GlassKernel
 	{
 		if (window)
 		{
-			if (uDWM::g_buildNumber >= os::build_w11_22h2)
+			if (uDWM::g_versionInfo.build >= os::build_w11_22h2)
 			{
 				if (const auto dwriteTextVisual = window->GetDWriteTextVisual(); dwriteTextVisual)
 				{
@@ -61,6 +61,17 @@ namespace OpenGlass::GlassKernel
 			{
 				legacyVisual->ClearInstructions();
 			}
+			if (const auto colorizationParams = window->GetCaptionColorizationParameters(); colorizationParams)
+			{
+				if (const auto captionBrush = window->GetCaptionBrush(); captionBrush)
+				{
+					captionBrush->Update(1.0, colorizationParams->getArgbcolor());
+				}
+				if (const auto clientBlurBrush = window->GetClientBlurBrush(); clientBlurBrush)
+				{
+					clientBlurBrush->Update(1.0, colorizationParams->getArgbcolor());
+				}
+			}
 			// update blur behind
 			window->OnBlurBehindUpdated();
 			if (const auto accentVisual = window->GetAccent(); accentVisual)
@@ -69,7 +80,7 @@ namespace OpenGlass::GlassKernel
 			}
 			window->OnAccentPolicyUpdated();
 			// update system backdrop
-			if (uDWM::g_buildNumber >= os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build >= os::build_w11_21h2)
 			{
 				window->SetDirtyFlags(0x4000u);
 			}
@@ -140,7 +151,7 @@ HRESULT STDMETHODCALLTYPE GlassKernel::MyCCachedVisualImage_CCachedTarget_Update
 	dwmcore::CCachedVisualImage::CCachedTarget* This,
 	const D2D1_RECT_F& rect,
 	DWM::MilStretch mode,
-	const dwmcore::RenderTargetInfo& info
+	const struct RenderTargetInfo& info
 )
 {
 	g_hwnd = nullptr;
@@ -207,11 +218,20 @@ void GlassKernel::RedrawAllTopLevelWindow()
 
 float GlassKernel::GetBlurExtendedAmount()
 {
+	if (Shared::IsGlassFullyOpaque())
+	{
+		return 0.f;
+	}
 	if (Shared::g_blurAmount == 0.f)
 	{
 		return 0.f;
 	}
-	return !Shared::IsGlassFullyOpaque() ? Shared::g_blurAmount * 3.f + 0.5f : 0.f;
+	if (Shared::g_useD3DRendering)
+	{
+		return 7.f;
+	}
+
+	return Shared::g_blurAmount * 3.f + 0.5f;
 }
 
 void GlassKernel::Update(GlassEngine::UpdateType type)
@@ -262,6 +282,8 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 
 		Shared::g_opaqueBlend = static_cast<int>(GlassEngine::GetDwordFromRegistry(L"ColorizationOpaqueBlend"));
 		Shared::g_opaqueBlendColor = Color::FromArgb(GlassEngine::GetDwordFromRegistry(L"ColorizationOpaqueBlendColor", 0xFFDFDFDF));
+		
+		Shared::g_useD3DRendering = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"UseDirect3DRendering", 0));
 	}
 }
 
@@ -278,7 +300,7 @@ void GlassKernel::Startup()
 	dwmcore::g_projectionArray.ApplyToVariable("CCachedVisualImage::CCachedTarget::Update", g_CCachedVisualImage_CCachedTarget_Update_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CDrawingContext::PreSubgraph", g_CDrawingContext_PreSubgraph_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CD2DContext::DestroyDeviceResources", g_CD2DContext_DestroyDeviceResources_Org);
-	if (uDWM::g_buildNumber < os::build_w11_21h2)
+	if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 	{
 		uDWM::g_projectionArray.ApplyToVariable("CDesktopManager::ReleaseDXGIAdapter", g_CXXX_ReleaseXXX_Org);
 	}

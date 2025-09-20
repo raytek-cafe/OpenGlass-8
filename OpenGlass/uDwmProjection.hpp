@@ -3,12 +3,13 @@
 #include "cpprt.hpp"
 #include "ProjectionHelper.hpp"
 #include "DWM.hpp"
+#include "uDwmProjection.Offsets.hpp"
 
 namespace OpenGlass::uDWM
 {
 	using namespace DWM;
-	inline const auto g_moduleHandle{ GetModuleHandleW(L"uDWM.dll")};
-	inline const auto g_buildNumber{ Util::GetModuleBuildNumber(g_moduleHandle) };
+	inline const auto g_moduleHandle{ GetModuleHandleW(L"uDWM.dll") };
+	inline const auto g_versionInfo{ Util::GetModuleVersionInfo(g_moduleHandle) };
 
 	struct CBaseObject
 	{
@@ -63,42 +64,7 @@ namespace OpenGlass::uDWM
 	struct CRectResourceProxy : CBaseResourceProxy {};
 	struct CSizeResourceProxy : CBaseResourceProxy {};
 	struct CDoubleResourceProxy : CBaseResourceProxy {};
-	struct CRectangleGeometryProxy : CBaseGeometryProxy 
-	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetRectangle(
-			float left,
-			float top,
-			float right,
-			float bottom,
-			float topLeftRadiusX,
-			float topLeftRadiusY,
-			float topRightRadiusX,
-			float topRightRadiusY,
-			float bottomLeftRadiusX,
-			float bottomLeftRadiusY,
-			float bottomRightRadiusX,
-			float bottomRightRadiusY,
-			bool animate
-		)
-		{
-			return HANDLE_PROJECTION_FUNCTION(
-				CRectangleGeometryProxy::SetRectangle,
-				left,
-				top,
-				right,
-				bottom,
-				topLeftRadiusX,
-				topLeftRadiusY,
-				topRightRadiusX,
-				topRightRadiusY,
-				bottomLeftRadiusX,
-				bottomLeftRadiusY,
-				bottomRightRadiusX,
-				bottomRightRadiusY,
-				animate
-			);
-		}
-	};
+	struct CRectangleGeometryProxy : CBaseGeometryProxy {};
 	struct CCombinedGeometryProxy : CBaseGeometryProxy {};
 	struct CRgnGeometryProxy : CBaseGeometryProxy {};
 	struct CSolidColorLegacyMilBrushProxy : CBaseLegacyMilBrushProxy 
@@ -171,10 +137,6 @@ namespace OpenGlass::uDWM
 	struct VisualCollection;
 	struct CVisualProxy : CResource 
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetClip(CBaseGeometryProxy* geometry)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CVisualProxy::SetClip, geometry);
-		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetSize(double cx, double cy)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisualProxy::SetSize, cx, cy);
@@ -189,71 +151,24 @@ namespace OpenGlass::uDWM
 	};
 	struct CVisual : CBaseObject
 	{
-		inline static PVOID* vftable{ nullptr };
-
-
-		bool IsRTLMirrored() const
+		DECLSPEC_PROJECTION bool IsRTLMirrored() const
 		{
-			bool rtlMirrored{ false };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[84] & 1) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[92] & 1) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[92] & 1) != 0;
-			}
-			else
-			{
-				rtlMirrored = (reinterpret_cast<BYTE const*>(this)[36] & 1) != 0;
-			}
-
-			return rtlMirrored;
+			const auto propByte = Util::PointerExecuteUnsafe<CVisual_IsRTLMirrored_ByteOffset_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return (*propByte & 1) != 0;
 		}
-		MilSizeD GetScale() const
+		DECLSPEC_PROJECTION MilSizeD GetScale() const
 		{
-			MilSizeD scale{};
-
-			if (g_buildNumber < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_w11_24h2)
 			{
-				scale = *reinterpret_cast<MilSizeD const*>(reinterpret_cast<ULONG_PTR>(this) + 168);
+				return Util::PointerExecuteUnsafe<CVisual_GetScale_MilSizeD_Offsets, Util::DereferenceAt<MilSizeD>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				scale = *reinterpret_cast<MilSizeD const*>(reinterpret_cast<ULONG_PTR>(this) + 176);
-			}
-			else
-			{
-				const auto scaleF = reinterpret_cast<D2D1_SIZE_F const*>(reinterpret_cast<ULONG_PTR>(this) + 112);
-				scale = { static_cast<double>(scaleF->width), static_cast<double>(scaleF->height) };
-			}
-
-			return scale;
+			const auto scaleF = Util::PointerExecuteUnsafe<CVisual_GetScale_D2D1_SIZE_F_Offsets, Util::OffsetBy<D2D1_SIZE_F const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return { static_cast<double>(scaleF->width), static_cast<double>(scaleF->height) };
 		}
 
-		const SIZE& GetSize() const
+		DECLSPEC_PROJECTION const SIZE& GetSize() const
 		{
-			const SIZE* size{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				size = &reinterpret_cast<SIZE const*>(this)[15];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				size = &reinterpret_cast<SIZE const*>(this)[16];
-			}
-			else
-			{
-				size = &reinterpret_cast<SIZE const*>(this)[9];
-			}
-
-			return *size;
+			return *Util::PointerExecuteUnsafe<CVisual_GetSize_Offsets, Util::OffsetBy<SIZE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 		LONG GetWidth() const
 		{
@@ -264,24 +179,9 @@ namespace OpenGlass::uDWM
 			return GetSize().cy;
 		}
 
-		const POINT& GetOffset() const
+		DECLSPEC_PROJECTION const POINT& GetOffset() const
 		{
-			const POINT* pt{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				pt = &reinterpret_cast<POINT const*>(this)[14];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				pt = &reinterpret_cast<POINT const*>(this)[15];
-			}
-			else
-			{
-				pt = &reinterpret_cast<POINT const*>(this)[8];
-			}
-
-			return *pt;
+			return *Util::PointerExecuteUnsafe<CVisual_GetOffset_Offsets, Util::OffsetBy<POINT const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 		LONG GetX() const
 		{
@@ -304,19 +204,9 @@ namespace OpenGlass::uDWM
 			}
 			return pt;
 		}
-		void SetExcludeSubtree(bool exclude)
+		DECLSPEC_PROJECTION void SetExcludeSubtree(bool exclude)
 		{
-			BYTE* properties{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				properties = &(reinterpret_cast<BYTE*>(this)[84]);
-			}
-			else
-			{
-				properties = &(reinterpret_cast<BYTE*>(this)[92]);
-			}
-
+			auto properties = Util::PointerExecuteUnsafe<CVisual_SetExcludeSubtree_ByteOffset_Offsets, Util::OffsetBy<BYTE*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			if (exclude)
 			{
 				*properties |= 8;
@@ -326,67 +216,25 @@ namespace OpenGlass::uDWM
 				*properties &= ~8;
 			}
 		}
-		VisualCollection* GetVisualCollection()
+		DECLSPEC_PROJECTION VisualCollection* GetVisualCollection()
 		{
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				return reinterpret_cast<VisualCollection*>(reinterpret_cast<ULONG_PTR>(this) + 32);
-			}
-
-			return reinterpret_cast<VisualCollection*>(reinterpret_cast<ULONG_PTR>(this) + 144);
+			return Util::PointerExecuteUnsafe<CVisual_GetVisualCollection_Offsets, Util::OffsetBy<VisualCollection*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CVisualProxy* GetVisualProxy() const
+		DECLSPEC_PROJECTION CVisualProxy* GetVisualProxy() const
 		{
-			return reinterpret_cast<CVisualProxy* const*>(this)[2];
+			return *Util::PointerExecuteUnsafe<CVisual_GetVisualProxy_Offsets, Util::OffsetBy<CVisualProxy**>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CVisual* GetTransformParent() const
+		DECLSPEC_PROJECTION CVisual* GetTransformParent() const
 		{
-			const auto vtfble = HookHelper::vftbl_of(this);
-
-			if (g_buildNumber < os::build_w11_22h2)
-			{
-				return std::invoke(
-					Util::force_cast_to<decltype(&CVisual::GetTransformParent)>(
-						vtfble[10]
-					),
-					this
-				);
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				return std::invoke(
-					Util::force_cast_to<decltype(&CVisual::GetTransformParent)>(
-						vtfble[11]
-					),
-					this
-				);
-			}
-			else
-			{
-				return std::invoke(
-					Util::force_cast_to<decltype(&CVisual::GetTransformParent)>(
-						vtfble[8]
-					),
-					this
-				);
-			}
+			return std::invoke(
+				Util::PointerExecuteUnsafe<CVisual_GetTransformParent_Offsets, Util::DereferenceAt<decltype(&CVisual::GetTransformParent)>>(HookHelper::vftbl_of(this), g_versionInfo.build, g_versionInfo.revision),
+				this
+			);
 		}
 
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InitializeFromSharedHandle(HANDLE visualHandle)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::InitializeFromSharedHandle, visualHandle);
-		}
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetParent(CVisual* parent)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::SetParent, parent);
-		}
 		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetSize(const SIZE* size)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::SetSize, size);
-		}
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetOpacity(double opacity)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::SetOpacity, opacity);
 		}
 		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetInsetFromParent(const MARGINS& margins)
 		{
@@ -396,17 +244,6 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::SetInsetFromParentLeft, left);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InitializeVisualTreeClone(
-			CVisual* clonedVisual,
-			UINT cloneOption
-		)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::InitializeVisualTreeClone, clonedVisual, cloneOption);
-		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE ValidateVisual()
-		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::ValidateVisual);
-		}
 		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetDirtyFlags(int flags)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::SetDirtyFlags, flags);
@@ -415,40 +252,14 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::RenderRecursive);
 		}
-		DWORD GetDirtyFlags() const
+		DECLSPEC_PROJECTION DWORD GetDirtyFlags() const
 		{
-			DWORD flags{};
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				flags = reinterpret_cast<DWORD const*>(this)[20];
-			}
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				flags = reinterpret_cast<DWORD const*>(this)[22];
-			}
-			else
-			{
-				flags = reinterpret_cast<DWORD const*>(this)[8];
-			}
-
-			return flags;
+			return *Util::PointerExecuteUnsafe<CVisual_GetDirtyFlags_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		HRESULT STDMETHODCALLTYPE _ValidateVisual()
+		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE _ValidateVisual()
 		{
-			decltype(&CVisual::_ValidateVisual) vfptr{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[6]);
-			}
-			else
-			{
-				vfptr = Util::force_cast_to<decltype(vfptr)>(HookHelper::vftbl_of(this)[4]);
-			}
-
 			return std::invoke(
-				vfptr,
+				Util::PointerExecuteUnsafe<CVisual__ValidateVisual_Offsets, Util::DereferenceAt<decltype(&CVisual::_ValidateVisual)>>(HookHelper::vftbl_of(this), g_versionInfo.build, g_versionInfo.revision),
 				this
 			);
 		}
@@ -513,60 +324,16 @@ namespace OpenGlass::uDWM
 			);
 		}
 
-		CBaseLegacyMilBrushProxy*& GetBrush()
+		DECLSPEC_PROJECTION CBaseLegacyMilBrushProxy*& GetBrush()
 		{
-			return reinterpret_cast<CBaseLegacyMilBrushProxy**>(this)[2];
+			return *Util::PointerExecuteUnsafe<CDrawGeometryInstruction_GetBrush_Offsets, Util::OffsetBy<CBaseLegacyMilBrushProxy**>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CBaseGeometryProxy*& GetGeometry()
+		DECLSPEC_PROJECTION CBaseGeometryProxy*& GetGeometry()
 		{
-			return reinterpret_cast<CBaseGeometryProxy**>(this)[3];
-		}
-	};
-	struct CRectangleInstruction : CRenderDataInstruction
-	{
-		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE Create(CRectangleInstruction** instruction)
-		{
-			return HANDLE_PROJECTION_FUNCTION(
-				CRectangleInstruction::Create,
-				instruction
-			);
-		}
-
-		void SetBrush1(CBaseLegacyMilBrushProxy* brush)
-		{
-			auto& m_brush = reinterpret_cast<CBaseLegacyMilBrushProxy**>(this)[2];
-
-			if (brush)
-			{
-				m_brush = brush;
-				m_brush->AddRef();
-			}
-			else if (m_brush)
-			{
-				m_brush->Release();
-				m_brush = nullptr;
-			}
-		}
-		void SetBrush2(CBaseLegacyMilBrushProxy* brush)
-		{
-			auto& m_brush = reinterpret_cast<CBaseLegacyMilBrushProxy**>(this)[3];
-
-			if (brush)
-			{
-				m_brush = brush;
-				m_brush->AddRef();
-			}
-			else if (m_brush)
-			{
-				m_brush->Release();
-				m_brush = nullptr;
-			}
-		}
-		void SetRectangle(const D2D1_RECT_F& rect)
-		{
-			reinterpret_cast<D2D1_RECT_F*>(this)[2] = rect;
+			return *Util::PointerExecuteUnsafe<CDrawGeometryInstruction_GetGeometry_Offsets, Util::OffsetBy<CBaseGeometryProxy**>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
+	struct CRectangleInstruction : CRenderDataInstruction {};
 	struct CSolidRectangleInstruction : CRenderDataInstruction
 	{
 		DWORD m_refCount{ 1 };
@@ -584,60 +351,13 @@ namespace OpenGlass::uDWM
 		D2D1_COLOR_F& GetColor() { return m_color; }
 		D2D1_RECT_F& GetRectangle() { return m_drawRect; }
 	};
-	class CDrawVisualTreeInstruction : public CRenderDataInstruction
-	{
-		DWORD m_refCount{ 1 };
-		winrt::com_ptr<CVisual> m_visual{ nullptr };
-	public:
-		static HRESULT STDMETHODCALLTYPE Create(CVisual* visual, CDrawVisualTreeInstruction** instruction)
-		{
-			*instruction = new (std::nothrow) CDrawVisualTreeInstruction(visual);
-			RETURN_HR_IF_NULL(E_OUTOFMEMORY, *instruction);
-			return S_OK;
-		}
-		CDrawVisualTreeInstruction(CVisual* visual) : CRenderDataInstruction{} 
-		{ 
-			m_visual.copy_from(visual); 
-		}
-		STDMETHOD(WriteInstruction)(
-			IRenderDataBuilder* builder,
-			[[maybe_unused]] const CVisual* visual
-		) override
-		{
-			UINT visualHandleId{ 0 };
-			if (visual)
-			{
-				visualHandleId = visual->GetVisualProxy()->GetProxy()->GetHandleId();
-			}
-
-			return builder->DrawVisual(visualHandleId);
-		}
-	};
+	class CDrawVisualTreeInstruction : public CRenderDataInstruction {};
 
 	struct CRenderDataVisual : CVisual
 	{
-		DynArray<CRenderDataInstruction*>& GetInstructions() const
+		DECLSPEC_PROJECTION DynArray<CRenderDataInstruction*>& GetInstructions() const
 		{
-			DynArray<CRenderDataInstruction*>* instructionArray{};
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				instructionArray = reinterpret_cast<DynArray<CRenderDataInstruction*>*>(reinterpret_cast<ULONG_PTR>(this) + 248);
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				instructionArray = reinterpret_cast<DynArray<CRenderDataInstruction*>*>(reinterpret_cast<ULONG_PTR>(this) + 256);
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				instructionArray = reinterpret_cast<DynArray<CRenderDataInstruction*>*>(reinterpret_cast<ULONG_PTR>(this) + 256);
-			}
-			else
-			{
-				instructionArray = reinterpret_cast<DynArray<CRenderDataInstruction*>*>(reinterpret_cast<ULONG_PTR>(this) + 208);
-			}
-
-			return *instructionArray;
+			return *Util::PointerExecuteUnsafe<CRenderDataVisual_GetInstructions_Offsets, Util::OffsetBy<DynArray<CRenderDataInstruction*>*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 		DWORD GetCount() const
 		{
@@ -660,35 +380,15 @@ namespace OpenGlass::uDWM
 	struct CCanvasVisual : CRenderDataVisual {};
 	struct CText : CRenderDataVisual 
 	{
-		bool IsRTLReading() const
+		DECLSPEC_PROJECTION bool IsRTLReading() const
 		{
-			bool rtl{ false };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				rtl = (reinterpret_cast<BYTE const*>(this)[280] & 2) != 0;
-			}
-			else
-			{
-				rtl = (reinterpret_cast<BYTE const*>(this)[288] & 2) != 0;
-			}
-
-			return rtl;
+			const auto p = Util::PointerExecuteUnsafe<CText_RTL_FlagByteOffset_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return (*p & 2) != 0;
 		}
-		bool IsReverseAlignment() const
+		DECLSPEC_PROJECTION bool IsReverseAlignment() const
 		{
-			bool rtl{ false };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				rtl = (reinterpret_cast<BYTE const*>(this)[280] & 4) != 0;
-			}
-			else
-			{
-				rtl = (reinterpret_cast<BYTE const*>(this)[288] & 4) != 0;
-			}
-
-			return rtl;
+			const auto p = Util::PointerExecuteUnsafe<CText_RTL_FlagByteOffset_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return (*p & 4) != 0;
 		}
 	};
 	struct CDWriteText;
@@ -702,52 +402,29 @@ namespace OpenGlass::uDWM
 		STDMETHODV_(void, SetReverseAlignment)(bool) PURE;
 		STDMETHODV_(ULONG_PTR, SetText)(LPCWSTR) PURE;
 
-		CDWriteText* GetDWriteText() const
+		DECLSPEC_PROJECTION CDWriteText* GetDWriteText() const
 		{
-			CDWriteText* text{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				text = reinterpret_cast<CDWriteText*>(reinterpret_cast<ULONG_PTR>(this) - 272);
-			}
-			else
-			{
-				text = reinterpret_cast<CDWriteText*>(reinterpret_cast<ULONG_PTR>(this) - 168);
-			}
-
-			return text;
+			return Util::PointerExecuteUnsafe<IText_GetDWriteText_NegativeOffset_Offsets, Util::OffsetBy<CDWriteText*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		bool IsRTLReading() const
+		DECLSPEC_PROJECTION bool IsRTLReading() const
 		{
-			return reinterpret_cast<bool const*>(this)[256];
+			return *Util::PointerExecuteUnsafe<IText_RTL_Index_Offsets, Util::OffsetBy<bool const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		bool IsReverseAlignment() const
+		DECLSPEC_PROJECTION bool IsReverseAlignment() const
 		{
-			return reinterpret_cast<bool const*>(this)[257];
+			return *Util::PointerExecuteUnsafe<IText_Reverse_Index_Offsets, Util::OffsetBy<bool const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 	struct CDWriteText : CVisual
 	{
-		IText* GetTextInterface() const
+		DECLSPEC_PROJECTION IText* GetTextInterface() const
 		{
-			IText* text{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				text = reinterpret_cast<IText*>(reinterpret_cast<ULONG_PTR>(this) + 272);
-			}
-			else
-			{
-				text = reinterpret_cast<IText*>(reinterpret_cast<ULONG_PTR>(this) + 168);
-			}
-
-			return text;
+			return Util::PointerExecuteUnsafe<CDWriteText_GetTextInterface_Offsets, Util::OffsetBy<IText*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 
 	struct CImage : CVisual {};
-
 	struct CBitmapSource : CBaseObject {};
 	struct CBitmapSourceArray : DynArray<CBitmapSource*> {};
 
@@ -764,9 +441,9 @@ namespace OpenGlass::uDWM
 	struct CTopLevelAtlasedRectsVisual : CAtlasedRectsVisual {};
 	struct CAtlasedImage : CBaseObject
 	{
-		DWORD GetPartId() const
+		DECLSPEC_PROJECTION DWORD GetPartId() const
 		{
-			return reinterpret_cast<DWORD const*>(this)[30];
+			return *Util::PointerExecuteUnsafe<CAtlasedImage_GetPartId_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 
@@ -813,7 +490,7 @@ namespace OpenGlass::uDWM
 			float opacity
 		)
 		{
-			if (g_buildNumber < os::build_w11_21h2) [[likely]]
+			if (g_versionInfo.build < os::build_w11_21h2) [[likely]]
 			{
 				return SetVisualStates_Win10(
 					buttonArray,
@@ -832,70 +509,25 @@ namespace OpenGlass::uDWM
 			}
 		}
 
-		float& GetGlyphOpacity()
+		DECLSPEC_PROJECTION float& GetGlyphOpacity()
 		{
-			float* glyphOpacity{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				glyphOpacity = &(reinterpret_cast<float*>(this)[101]);
-			}
-
-			else
-			{
-				glyphOpacity = &(reinterpret_cast<float*>(this)[89]);
-			}
-
-			return *glyphOpacity;
+			return *Util::PointerExecuteUnsafe<CButton_GetGlyphOpacity_Offsets, Util::OffsetBy<float*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		BYTE* GetButtonState()
+		DECLSPEC_PROJECTION BYTE* GetButtonState()
 		{
-			BYTE* buttonState{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				buttonState = &(reinterpret_cast<BYTE*>(this)[280]);
-			}
-			else
-			{
-				buttonState = &(reinterpret_cast<BYTE*>(this)[288]);
-			}
-
-			return buttonState;
+			return Util::PointerExecuteUnsafe<CButton_GetButtonState_Offsets, Util::OffsetBy<BYTE*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CTimeline* GetTimeline()
+		DECLSPEC_PROJECTION CTimeline* GetTimeline()
 		{
-			return reinterpret_cast<CTimeline**>(this)[49];
+			return *Util::PointerExecuteUnsafe<CButton_GetTimeline_Offsets, Util::OffsetBy<CTimeline**>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CBitmapSourceArray* GetGlyphBitmapArray()
+		DECLSPEC_PROJECTION CBitmapSourceArray* GetGlyphBitmapArray()
 		{
-			CBitmapSourceArray* glyphBitmapArray{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				glyphBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 304);
-			}
-			else
-			{
-				glyphBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 312);
-			}
-
-			return glyphBitmapArray;
+			return Util::PointerExecuteUnsafe<CButton_GetGlyphBitmapArray_Offsets, Util::OffsetBy<CBitmapSourceArray*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CBitmapSourceArray* GetButtonBitmapArray()
+		DECLSPEC_PROJECTION CBitmapSourceArray* GetButtonBitmapArray()
 		{
-			CBitmapSourceArray* buttonBitmapArray{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				buttonBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 336);
-			}
-			else
-			{
-				buttonBitmapArray = reinterpret_cast<CBitmapSourceArray*>(reinterpret_cast<ULONG_PTR>(this) + 344);
-			}
-
-			return buttonBitmapArray;
+			return Util::PointerExecuteUnsafe<CButton_GetButtonBitmapArray_Offsets, Util::OffsetBy<CBitmapSourceArray*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 
@@ -919,31 +551,7 @@ namespace OpenGlass::uDWM
 			return (AccentFlags & (1 << 4)) != 0;
 		}
 	};
-	struct CAccent : CRenderDataVisual
-	{
-		bool IsVisibleAndUncloaked() const
-		{
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				return reinterpret_cast<bool const*>(this)[397];
-			}
-
-			return reinterpret_cast<bool const*>(this)[405];
-		}
-		ACCENT_POLICY* GetPolicy()
-		{
-			return reinterpret_cast<ACCENT_POLICY*>(this) + 35;
-		}
-		HWND GetHwnd() const
-		{
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				return reinterpret_cast<HWND const*>(this)[50];
-			}
-
-			return reinterpret_cast<HWND const*>(this)[51];
-		}
-	};
+	struct CAccent : CRenderDataVisual {};
 	struct CAccentBlurBehind : CRenderDataVisual {};
 	struct CAccentAcrylicBlurBehind : CRenderDataVisual {};
 	struct CWindowBorder : CVisual
@@ -952,214 +560,60 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(CWindowBorder::EnableBorder, enable);
 		}
-		CVisual* GetContainerVisual() const
-		{
-			CVisual* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CVisual* const*>(this)[31];
-			}
-			else
-			{
-				visual = reinterpret_cast<CVisual* const*>(this)[25];
-			}
-
-			return visual;
-		}
-		CVisual* GetContentVisual() const
-		{
-			CVisual* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CVisual* const*>(this)[32];
-			}
-			else
-			{
-				visual = reinterpret_cast<CVisual* const*>(this)[26];
-			}
-
-			return visual;
-		}
 	};
 
 	struct IDwmWindow;
 	struct CTopLevelWindow;
 	struct CWindowData : CBaseObject
 	{
-		HWND GetHwnd() const
+		DECLSPEC_PROJECTION HWND GetHwnd() const
 		{
-			return reinterpret_cast<const HWND*>(this)[5];
+			return *Util::PointerExecuteUnsafe<CWindowData_GetHwnd_Offsets, Util::OffsetBy<const HWND*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		IDwmWindow* GetWindowContext() const
+		DECLSPEC_PROJECTION IDwmWindow* GetWindowContext() const
 		{
-			return reinterpret_cast<IDwmWindow* const*>(this)[3];
+			return *Util::PointerExecuteUnsafe<CWindowData_GetWindowContext_Offsets, Util::OffsetBy<IDwmWindow* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CTopLevelWindow* GetWindow() const
+		DECLSPEC_PROJECTION CTopLevelWindow* GetWindow() const
 		{
-			CTopLevelWindow* window{ nullptr };
-
-			if (g_buildNumber < os::build_w10_1903)
-			{
-				window = reinterpret_cast<CTopLevelWindow* const*>(this)[49];
-			}
-			else if (g_buildNumber < os::build_w10_2004)
-			{
-				window = reinterpret_cast<CTopLevelWindow* const*>(this)[50];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				window = reinterpret_cast<CTopLevelWindow* const*>(this)[48];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				window = reinterpret_cast<CTopLevelWindow* const*>(this)[55];
-			}
-			else
-			{
-				window = reinterpret_cast<CTopLevelWindow* const*>(this)[55];
-			}
-
-			return window;
+			return *Util::PointerExecuteUnsafe<CWindowData_GetWindow_Index_Offsets, Util::OffsetBy<CTopLevelWindow* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		ACCENT_POLICY* GetAccentPolicy() const
+		DECLSPEC_PROJECTION ACCENT_POLICY* GetAccentPolicy() const
 		{
-			ACCENT_POLICY* accentPolicy{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				accentPolicy = reinterpret_cast<ACCENT_POLICY*>(reinterpret_cast<ULONG_PTR>(this) + 152);
-			}
-			else
-			{
-				accentPolicy = reinterpret_cast<ACCENT_POLICY*>(reinterpret_cast<ULONG_PTR>(this) + 168);
-			}
-
-			return accentPolicy;
+			return Util::PointerExecuteUnsafe<CWindowData_GetAccentPolicy_Offsets, Util::OffsetBy<ACCENT_POLICY*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		DWM_SYSTEMBACKDROP_TYPE& GetSystemBackdropType()
+		DECLSPEC_PROJECTION DWM_SYSTEMBACKDROP_TYPE& GetSystemBackdropType()
 		{
-			DWM_SYSTEMBACKDROP_TYPE* systemBackdrop{ nullptr };
-
-			systemBackdrop = &reinterpret_cast<DWM_SYSTEMBACKDROP_TYPE*>(this)[51];
-
-			return *systemBackdrop;
+			return *Util::PointerExecuteUnsafe<CWindowData_GetSystemBackdropType_Index_Offsets, Util::OffsetBy<DWM_SYSTEMBACKDROP_TYPE*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		DWORD& GetCaptionColorOverride()
+		DECLSPEC_PROJECTION DWORD& GetCaptionColorOverride()
 		{
-			DWORD* captionColor{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				captionColor = &reinterpret_cast<DWORD*>(this)[47];
-			}
-			else
-			{
-				captionColor = &reinterpret_cast<DWORD*>(this)[47];
-			}
-
-			return *captionColor;
+			return *Util::PointerExecuteUnsafe<CWindowData_ColorOverride_Index_Offsets, Util::OffsetBy<DWORD*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DWORD& GetBorderColorOverride()
+		DECLSPEC_PROJECTION DWORD& GetBorderColorOverride()
 		{
-			DWORD* captionColor{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				captionColor = &reinterpret_cast<DWORD*>(this)[48];
-			}
-			else
-			{
-				captionColor = &reinterpret_cast<DWORD*>(this)[48];
-			}
-
-			return *captionColor;
+			return *Util::PointerExecuteUnsafe<CWindowData_BorderColorOverride_Index_Offsets, Util::OffsetBy<DWORD*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DWORD& GetTextColorOverride()
+		DECLSPEC_PROJECTION DWORD& GetTextColorOverride()
 		{
-			DWORD* captionColor{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				captionColor = &reinterpret_cast<DWORD*>(this)[49];
-			}
-			else
-			{
-				captionColor = &reinterpret_cast<DWORD*>(this)[49];
-			}
-
-			return *captionColor;
+			return *Util::PointerExecuteUnsafe<CWindowData_TextColorOverride_Index_Offsets, Util::OffsetBy<DWORD*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		UINT GetWindowDPI() const
+		DECLSPEC_PROJECTION UINT GetWindowDPI() const
 		{
-			UINT dpi{ 0 };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				dpi = *reinterpret_cast<UINT const*>(reinterpret_cast<ULONG_PTR>(this) + 324);
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				dpi = *reinterpret_cast<UINT const*>(reinterpret_cast<ULONG_PTR>(this) + 348);
-			}
-			else
-			{
-				dpi = reinterpret_cast<UINT const*>(this)[87];
-			}
-
-			return dpi;
+			return *Util::PointerExecuteUnsafe<CWindowData_GetWindowDPI_Offsets, Util::OffsetBy<UINT const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		BYTE GetNonClientAttribute() const
+		DECLSPEC_PROJECTION BYTE GetNonClientAttribute() const
 		{
-			BYTE attribute{ 0 };
-
-			if (g_buildNumber < os::build_w10_1903)
-			{
-				attribute = reinterpret_cast<BYTE const*>(this)[596];
-			}
-			else if (g_buildNumber < os::build_w10_2004)
-			{
-				attribute = reinterpret_cast<BYTE const*>(this)[604];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				attribute = reinterpret_cast<BYTE const*>(this)[608];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				attribute = reinterpret_cast<BYTE const*>(this)[664];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				attribute = reinterpret_cast<BYTE const*>(this)[672];
-			}
-			else
-			{
-				attribute = reinterpret_cast<BYTE const*>(this)[672];
-			}
-
-			return attribute;
+			return *Util::PointerExecuteUnsafe<CWindowData_GetNonClientAttribute_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		MARGINS& GetExtendedFrameMargins()
+		DECLSPEC_PROJECTION MARGINS& GetExtendedFrameMargins()
 		{
-			MARGINS* margins{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 80);
-			}
-			else
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 96);
-			}
-
-			return *margins;
+			return *Util::PointerExecuteUnsafe<CWindowData_GetExtendedFrameMargins_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 		bool IsFrameExtendedIntoClientAreaLRB()
 		{
@@ -1207,22 +661,23 @@ namespace OpenGlass::uDWM
 	};
 	struct CGlassColorizationResources
 	{
-		float* GetBalance()
+		DECLSPEC_PROJECTION const float& GetBalance() const
 		{
-			return &(reinterpret_cast<float*>(this)[8]);
+			return reinterpret_cast<float const*>(this)[8];
 		}
-		D2D1_COLOR_F* GetColor()
+		DECLSPEC_PROJECTION const D2D1_COLOR_F& GetColor() const
 		{
-			return &(reinterpret_cast<D2D1_COLOR_F*>(this)[1]);
+			return reinterpret_cast<D2D1_COLOR_F const*>(this)[1];
 		}
-		D2D1_COLOR_F getArgbcolor() const
+		DECLSPEC_PROJECTION D2D1_COLOR_F getArgbcolor() const
 		{
-			const auto balance = reinterpret_cast<float const*>(this)[8];
+			const auto& balance = GetBalance();
+			const auto& color = GetColor();
 			return D2D1::ColorF(
-				reinterpret_cast<float const*>(this)[4] * balance,
-				reinterpret_cast<float const*>(this)[5] * balance,
-				reinterpret_cast<float const*>(this)[6] * balance,
-				reinterpret_cast<float const*>(this)[7]
+				color.r * balance,
+				color.g * balance,
+				color.b * balance,
+				color.a
 			);
 		}
 	};
@@ -1243,545 +698,111 @@ namespace OpenGlass::uDWM
 			return borderRect.left <= -32000 || borderRect.top <= -32000;
 		}
 
-		CWindowData* GetData() const
+		DECLSPEC_PROJECTION CWindowData* GetData() const
 		{
-			CWindowData* data{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				data = reinterpret_cast<CWindowData* const*>(this)[90];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				data = reinterpret_cast<CWindowData* const*>(this)[91];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				data = reinterpret_cast<CWindowData* const*>(this)[94];
-			}
-			else
-			{
-				data = reinterpret_cast<CWindowData* const*>(this)[89];
-			}
-
-			return data;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetData_Index_Offsets, Util::OffsetBy<CWindowData* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CText* GetTextVisual() const
+		DECLSPEC_PROJECTION CText* GetTextVisual() const
 		{
-			CText* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				visual = reinterpret_cast<CText* const*>(this)[64];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				visual = reinterpret_cast<CText* const*>(this)[65];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				visual = reinterpret_cast<CText* const*>(this)[67];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CText* const*>(this)[70];
-			}
-			else
-			{
-				visual = reinterpret_cast<CText* const*>(this)[65];
-			}
-
-			return visual;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetTextVisual_Index_Offsets, Util::OffsetBy<CText* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CImage* GetIconVisual() const
+		DECLSPEC_PROJECTION CImage* GetIconVisual() const
 		{
-			CImage* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				visual = reinterpret_cast<CImage* const*>(this)[66];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				visual = reinterpret_cast<CImage* const*>(this)[68];
-			}
-			else if (g_buildNumber < os::build_w11_23h2)
-			{
-				visual = reinterpret_cast<CImage* const*>(this)[72];
-			}
-			else
-			{
-				visual = reinterpret_cast<CImage* const*>(this)[67];
-			}
-
-			return visual;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetIconVisual_Index_Offsets, Util::OffsetBy<CImage* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CDWriteText* GetDWriteTextVisual() const
+		DECLSPEC_PROJECTION CDWriteText* GetDWriteTextVisual() const
 		{
-			CDWriteText* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CDWriteText* const*>(this)[70];
-			}
-			else
-			{
-				visual = reinterpret_cast<CDWriteText* const*>(this)[65];
-			}
-
-			return visual;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetDWriteTextVisual_Index_Offsets, Util::OffsetBy<CDWriteText* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CCanvasVisual* GetNonClientVisual() const
+		DECLSPEC_PROJECTION CCanvasVisual* GetNonClientVisual() const
 		{
-			CCanvasVisual* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[32];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[33];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[34];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[36];
-			}
-			else
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[31];
-			}
-
-			return visual;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetNonClientVisual_Index_Offsets, Util::OffsetBy<CCanvasVisual* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CAccent* GetAccent() const
+		DECLSPEC_PROJECTION CAccent* GetAccent() const
 		{
-			CAccent* accent{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				accent = reinterpret_cast<CAccent* const*>(this)[33];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				accent = reinterpret_cast<CAccent* const*>(this)[34];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				accent = reinterpret_cast<CAccent* const*>(this)[35];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				accent = reinterpret_cast<CAccent* const*>(this)[37];
-			}
-			else
-			{
-				accent = reinterpret_cast<CAccent* const*>(this)[32];
-			}
-
-			return accent;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetAccent_Index_Offsets, Util::OffsetBy<CAccent* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CCanvasVisual* GetLegacyVisual() const
+		DECLSPEC_PROJECTION CCanvasVisual* GetLegacyVisual() const
 		{
-			CCanvasVisual* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[35];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[36];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[37];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[39];
-			}
-			else
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[34];
-			}
-
-			return visual;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetLegacyVisual_Index_Offsets, Util::OffsetBy<CCanvasVisual* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CCanvasVisual* GetClientBlurVisual() const
+		DECLSPEC_PROJECTION CCanvasVisual* GetClientBlurVisual() const
 		{
-			CCanvasVisual* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[36];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[37];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[39];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[42];
-			}
-			else
-			{
-				visual = reinterpret_cast<CCanvasVisual* const*>(this)[37];
-			}
-
-			return visual;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetClientBlurVisual_Index_Offsets, Util::OffsetBy<CCanvasVisual* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CWindowBorder* GetWindowBorder() const
+		DECLSPEC_PROJECTION CWindowBorder* GetWindowBorder() const
 		{
-			CWindowBorder* windowBorder{ nullptr };
-
-			if (g_buildNumber < os::build_w11_22h2)
-			{
-				windowBorder = reinterpret_cast<CWindowBorder* const*>(this)[33];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				windowBorder = reinterpret_cast<CWindowBorder* const*>(this)[34];
-			}
-			else
-			{
-				windowBorder = reinterpret_cast<CWindowBorder* const*>(this)[28];
-			}
-
-			return windowBorder;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetWindowBorder_Index_Offsets, Util::OffsetBy<CWindowBorder* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
 
-		CRgnGeometryProxy* GetBorderGeometry() const
+		DECLSPEC_PROJECTION CRgnGeometryProxy* GetBorderGeometry() const
 		{
-			CRgnGeometryProxy* geometry{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
+			if (g_versionInfo.build < os::build_w11_22h2)
 			{
-				geometry = reinterpret_cast<CRgnGeometryProxy* const*>(this)[68];
+				return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetBorderGeometry_Index_OnThis_Offsets, Util::OffsetBy<CRgnGeometryProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				geometry = reinterpret_cast<CRgnGeometryProxy* const*>(this)[69];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				geometry = reinterpret_cast<CRgnGeometryProxy* const*>(this)[71];
-			}
-			else
-			{
-				auto legacyVisual = GetLegacyVisual();
-				if (legacyVisual)
-				{
-					if (g_buildNumber < os::build_w11_24h2)
-					{
-						geometry = reinterpret_cast<CRgnGeometryProxy* const*>(legacyVisual)[40];
-					}
-					else
-					{
-						geometry = reinterpret_cast<CRgnGeometryProxy* const*>(legacyVisual)[34];
-					}
-				}
-			}
-
-			return geometry;
+			const auto legacyVisual = GetLegacyVisual();
+			return legacyVisual ? *Util::PointerExecuteUnsafe<CTopLevelWindow_GetBorderGeometry_Index_OnLegacy_Offsets, Util::OffsetBy<CRgnGeometryProxy* const*>>(legacyVisual, g_versionInfo.build, g_versionInfo.revision) : nullptr;
 		}
-		CRgnGeometryProxy* GetCaptionGeometry() const
+		DECLSPEC_PROJECTION CRgnGeometryProxy* GetCaptionGeometry() const
 		{
-			CRgnGeometryProxy* geometry{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
+			if (g_versionInfo.build < os::build_w11_22h2)
 			{
-				geometry = reinterpret_cast<CRgnGeometryProxy* const*>(this)[69];
+				return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetCaptionGeometry_Index_OnThis_Offsets, Util::OffsetBy<CRgnGeometryProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				geometry = reinterpret_cast<CRgnGeometryProxy* const*>(this)[70];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				geometry = reinterpret_cast<CRgnGeometryProxy* const*>(this)[72];
-			}
-			else
-			{
-				auto legacyVisual = GetLegacyVisual();
-				if (legacyVisual)
-				{
-					if (g_buildNumber < os::build_w11_24h2)
-					{
-						geometry = reinterpret_cast<CRgnGeometryProxy* const*>(legacyVisual)[39];
-					}
-					else
-					{
-						geometry = reinterpret_cast<CRgnGeometryProxy* const*>(legacyVisual)[33];
-					}
-				}
-			}
-
-			return geometry;
+			const auto legacyVisual = GetLegacyVisual();
+			return legacyVisual ? *Util::PointerExecuteUnsafe<CTopLevelWindow_GetCaptionGeometry_Index_OnLegacy_Offsets, Util::OffsetBy<CRgnGeometryProxy* const*>>(legacyVisual, g_versionInfo.build, g_versionInfo.revision) : nullptr;
 		}
-		CSolidColorLegacyMilBrushProxy* GetCaptionBrush() const
+		DECLSPEC_PROJECTION CSolidColorLegacyMilBrushProxy* GetCaptionBrush() const
 		{
-			CSolidColorLegacyMilBrushProxy* brush{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_w11_22h2)
 			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[95];
+				return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetCaptionBrush_Index_OnThis_Offsets, Util::OffsetBy<CSolidColorLegacyMilBrushProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[99];
-			}
-			else
-			{
-				auto legacyVisual = GetLegacyVisual();
-				if (legacyVisual)
-				{
-					if (g_buildNumber < os::build_w11_24h2)
-					{
-						brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(legacyVisual)[37];
-					}
-					else
-					{
-						brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(legacyVisual)[31];
-					}
-				}
-			}
-
-			return brush;
+			const auto legacyVisual = GetLegacyVisual();
+			return legacyVisual ? *Util::PointerExecuteUnsafe<CTopLevelWindow_GetCaptionBrush_Index_OnLegacy_Offsets, Util::OffsetBy<CSolidColorLegacyMilBrushProxy* const*>>(legacyVisual, g_versionInfo.build, g_versionInfo.revision) : nullptr;
 		}
-		CSolidColorLegacyMilBrushProxy* GetBorderBrush() const
+		DECLSPEC_PROJECTION CSolidColorLegacyMilBrushProxy* GetBorderBrush() const
 		{
-			CSolidColorLegacyMilBrushProxy* brush{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_w11_22h2)
 			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[94];
+				return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetBorderBrush_Index_OnThis_Offsets, Util::OffsetBy<CSolidColorLegacyMilBrushProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[98];
-			}
-			else
-			{
-				auto legacyVisual = GetLegacyVisual();
-				if (legacyVisual)
-				{
-					if (g_buildNumber < os::build_w11_24h2)
-					{
-						brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(legacyVisual)[38];
-					}
-					else
-					{
-						brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(legacyVisual)[30];
-					}
-				}
-			}
-
-			return brush;
+			const auto legacyVisual = GetLegacyVisual();
+			return legacyVisual ? *Util::PointerExecuteUnsafe<CTopLevelWindow_GetBorderBrush_Index_OnLegacy_Offsets, Util::OffsetBy<CSolidColorLegacyMilBrushProxy* const*>>(legacyVisual, g_versionInfo.build, g_versionInfo.revision) : nullptr;
 		}
-		CSolidColorLegacyMilBrushProxy* GetClientBlurBrush() const
+		DECLSPEC_PROJECTION CSolidColorLegacyMilBrushProxy* GetClientBlurBrush() const
 		{
-			CSolidColorLegacyMilBrushProxy* brush{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[96];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[100];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[98];
-			}
-			else
-			{
-				brush = reinterpret_cast<CSolidColorLegacyMilBrushProxy* const*>(this)[93];
-			}
-
-			return brush;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetClientBlurBrush_Index_OnThis_Offsets, Util::OffsetBy<CSolidColorLegacyMilBrushProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		bool& GetIsBorderUpdatesSuppressed()
+		DECLSPEC_PROJECTION bool& GetIsBorderUpdatesSuppressed()
 		{
-			bool* suppressed{ nullptr };
-
-			if (g_buildNumber < os::build_w11_22h2)
-			{
-				suppressed = &reinterpret_cast<bool*>(this)[888];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				suppressed = &reinterpret_cast<bool*>(this)[864];
-			}
-			else
-			{
-				suppressed = &reinterpret_cast<bool*>(this)[832];
-			}
-
-			return *suppressed;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetIsBorderUpdatesSuppressed_ByteIndex_Offsets, Util::OffsetBy<bool*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		bool IsRTLMirrored() const
+		DECLSPEC_PROJECTION bool IsRTLMirrored() const
 		{
-			bool rtlMirrored{ false };
-			
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				rtlMirrored = (reinterpret_cast<DWORD const*>(this)[146] & 0x20000) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				rtlMirrored = (reinterpret_cast<DWORD const*>(this)[148] & 0x20000) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				rtlMirrored = (reinterpret_cast<DWORD const*>(this)[152] & 0x20000) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				rtlMirrored = (reinterpret_cast<DWORD const*>(this)[156] & 0x20000) != 0;
-			}
-			else
-			{
-				rtlMirrored = (reinterpret_cast<DWORD const*>(this)[146] & 0x20000) != 0;
-			}
-
-			return rtlMirrored;
+			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 0x20000) != 0;
 		}
-		bool IsWindowMaximized()
+		DECLSPEC_PROJECTION bool IsWindowMaximized()
 		{
-			bool windowMaximized{ false };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				windowMaximized = (reinterpret_cast<DWORD const*>(this)[146] & 0x20) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				windowMaximized = (reinterpret_cast<DWORD const*>(this)[148] & 0x20) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				windowMaximized = (reinterpret_cast<DWORD const*>(this)[152] & 0x20) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				windowMaximized = (reinterpret_cast<DWORD const*>(this)[156] & 0x20) != 0;
-			}
-			else
-			{
-				windowMaximized = (reinterpret_cast<DWORD const*>(this)[146] & 0x20) != 0;
-			}
-
-			return windowMaximized;
+			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 0x20) != 0;
 		}
-		bool IsToolWindow()
+		DECLSPEC_PROJECTION bool IsToolWindow()
 		{
-			bool toolWindow{ false };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				toolWindow = (reinterpret_cast<DWORD const*>(this)[146] & 2) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				toolWindow = (reinterpret_cast<DWORD const*>(this)[148] & 2) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				toolWindow = (reinterpret_cast<DWORD const*>(this)[152] & 2) != 0;
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				toolWindow = (reinterpret_cast<DWORD const*>(this)[156] & 2) != 0;
-			}
-			else
-			{
-				toolWindow = (reinterpret_cast<DWORD const*>(this)[146] & 2) != 0;
-			}
-
-			return toolWindow;
+			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 2) != 0;
 		}
-		bool IsLoneButton()
+		DECLSPEC_PROJECTION bool IsLoneButton()
 		{
-			bool loneButton{ false };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				loneButton = (reinterpret_cast<DWORD const*>(this)[146] & 0xB00) == 0;
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				loneButton = (reinterpret_cast<DWORD const*>(this)[148] & 0xB00) == 0;
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				loneButton = (reinterpret_cast<DWORD const*>(this)[152] & 0xB00) == 0;
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				loneButton = (reinterpret_cast<DWORD const*>(this)[156] & 0xB00) == 0;
-			}
-			else
-			{
-				loneButton = (reinterpret_cast<DWORD const*>(this)[146] & 0xB00) == 0;
-			}
-
-			return loneButton;
+			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 0xB00) == 0;
 		}
 
-		bool HasNonClientArea() const
+		DECLSPEC_PROJECTION bool HasNonClientArea() const
 		{
-			bool hasNonClientArea{ false };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				hasNonClientArea = reinterpret_cast<DWORD const*>(this)[151] ||
-					reinterpret_cast<DWORD const*>(this)[152] ||
-					reinterpret_cast<DWORD const*>(this)[153] ||
-					reinterpret_cast<DWORD const*>(this)[154];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				hasNonClientArea = reinterpret_cast<DWORD const*>(this)[153] ||
-					reinterpret_cast<DWORD const*>(this)[154] ||
-					reinterpret_cast<DWORD const*>(this)[155] ||
-					reinterpret_cast<DWORD const*>(this)[156];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				hasNonClientArea = reinterpret_cast<DWORD const*>(this)[157] ||
-					reinterpret_cast<DWORD const*>(this)[158] ||
-					reinterpret_cast<DWORD const*>(this)[159] ||
-					reinterpret_cast<DWORD const*>(this)[160];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				hasNonClientArea = reinterpret_cast<DWORD const*>(this)[161] ||
-					reinterpret_cast<DWORD const*>(this)[162] ||
-					reinterpret_cast<DWORD const*>(this)[163] ||
-					reinterpret_cast<DWORD const*>(this)[164];
-			}
-			else
-			{
-				hasNonClientArea = reinterpret_cast<DWORD const*>(this)[151] ||
-					reinterpret_cast<DWORD const*>(this)[152] ||
-					reinterpret_cast<DWORD const*>(this)[153] ||
-					reinterpret_cast<DWORD const*>(this)[154];
-			}
-
-			return hasNonClientArea;
+			const auto base = Util::PointerExecuteUnsafe<CTopLevelWindow_HasNonClientArea_BaseDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return base[0] || base[1] || base[2] || base[3];
 		}
 		bool HasNonClientBackground(CWindowData* data = nullptr) const
 		{
@@ -1802,124 +823,37 @@ namespace OpenGlass::uDWM
 			return true;
 		}
 
-		CGlassColorizationResources* GetCaptionColorizationParameters() const
+		DECLSPEC_PROJECTION CGlassColorizationResources* GetCaptionColorizationParameters() const
 		{
-			CGlassColorizationResources* parameters{ nullptr };
-
-			if (g_buildNumber < os::build_w10_2004)
-			{
-				parameters = reinterpret_cast<CGlassColorizationResources* const*>(this)[72];
-			}
-			else if (g_buildNumber < os::build_w11_21h2)
-			{
-				parameters = reinterpret_cast<CGlassColorizationResources* const*>(this)[73];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				parameters = reinterpret_cast<CGlassColorizationResources* const*>(this)[75];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				parameters = reinterpret_cast<CGlassColorizationResources* const*>(this)[77];
-			}
-			else
-			{
-				parameters = reinterpret_cast<CGlassColorizationResources* const*>(this)[71];
-			}
-
-			return parameters;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetCaptionColorizationParameters_Index_Offsets, Util::OffsetBy<CGlassColorizationResources* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		CButton* GetButton(int index)
+		DECLSPEC_PROJECTION CButton* GetButton(int index)
 		{
-			CButton** button = nullptr;
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 61));
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 63));
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 8 * (index + 66));
-			}
-			else
-			{
-				button = reinterpret_cast<CButton**>(reinterpret_cast<ULONG_PTR>(this) + 488 + 8 * index);
-			}
-
-			if (button && *button)
-			{
-				return *button;
-			}
-
-			return nullptr;
+			const auto base = Util::PointerExecuteUnsafe<CTopLevelWindow_GetButton_BasePointerIndex_Offsets, Util::OffsetBy<BYTE*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			CButton** button = reinterpret_cast<CButton**>(base + index * sizeof(void*));
+			return (button && *button) ? *button : nullptr;
 		}
 		
-		DWORD GetFrameThickness(CWindowData* data = nullptr)
+		DECLSPEC_PROJECTION DWORD GetFrameThickness(CWindowData* data = nullptr)
 		{
-			if (!data)
-			{
+			if (!data) 
+			{ 
 				data = GetData();
 			}
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				return *reinterpret_cast<DWORD const*>(reinterpret_cast<ULONG_PTR>(data) + 96);
-			}
-			else
-			{
-				return *reinterpret_cast<DWORD const*>(reinterpret_cast<ULONG_PTR>(data) + 112);
-			}
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetFrameThickness_Offsets, Util::OffsetBy<DWORD const*>>(data, g_versionInfo.build, g_versionInfo.revision);
 		}
-		MARGINS& GetMarginsVisibleOutside(bool zoomed)
+		DECLSPEC_PROJECTION MARGINS& GetMarginsVisibleOutside(bool zoomed)
 		{
-			MARGINS* margins{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
+			if (zoomed)
 			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 644 : 628));
+				return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetMarginsVisibleOutside_Zoomed_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 660 : 644));
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 676 : 660));
-			}
-			else
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + (zoomed ? 636 : 620));
-			}
-
-			return *margins;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetMarginsVisibleOutside_Normal_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		MARGINS& GetBorderMargins()
+		DECLSPEC_PROJECTION MARGINS& GetBorderMargins()
 		{
-			MARGINS* margins{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 596);
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 612);
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 628);
-			}
-			else
-			{
-				margins = reinterpret_cast<MARGINS*>(reinterpret_cast<ULONG_PTR>(this) + 588);
-			}
-
-			return *margins;
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetBorderMargins_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CloneVisualTreeForLivePreview_Win10(
@@ -1953,7 +887,7 @@ namespace OpenGlass::uDWM
 			CTopLevelWindow** clonedWindow
 		)
 		{
-			if (g_buildNumber < os::build_w11_22h2) [[likely]]
+			if (g_versionInfo.build < os::build_w11_22h2) [[likely]]
 			{
 				return CloneVisualTreeForLivePreview_Win10(
 					windowFramesOnly,
@@ -2024,179 +958,82 @@ namespace OpenGlass::uDWM
 	{
 		CHAR reserved[136];
 
-		const RECT* GetWindowBoundingRect() const
+		DECLSPEC_PROJECTION const RECT* GetWindowBoundingRect() const
 		{
 			return reinterpret_cast<const RECT*>(this);
 		}
-		CRectangleGeometryProxy* GetWindowBoundingGeometry() const
+		DECLSPEC_PROJECTION CRectangleGeometryProxy* GetWindowBoundingGeometry() const
 		{
-			return reinterpret_cast<CRectangleGeometryProxy* const*>(this)[2];
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_GetWindowBoundingGeometry_Offsets, Util::OffsetBy<CRectangleGeometryProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CBaseLegacyMilBrushProxy* GetWindowVisualBrush() const
+		DECLSPEC_PROJECTION CBaseLegacyMilBrushProxy* GetWindowVisualBrush() const
 		{
-			return reinterpret_cast<CBaseLegacyMilBrushProxy* const*>(this)[4];
-		}
-
-		const RECT* GetGlassBoundingRect() const
-		{
-			return reinterpret_cast<const RECT*>(reinterpret_cast<ULONG_PTR>(this) + 40);
-		}
-		CRectangleGeometryProxy* GetGlassBoundingGeometry() const
-		{
-			return reinterpret_cast<CRectangleGeometryProxy* const*>(this)[7];
-		}
-		CBaseLegacyMilBrushProxy* GetGlassVisualBrush() const
-		{
-			return reinterpret_cast<CBaseLegacyMilBrushProxy* const*>(this)[9];
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_GetWindowVisualBrush_Offsets, Util::OffsetBy<CBaseLegacyMilBrushProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		HRGN GetReflectionRegion() const
+		DECLSPEC_PROJECTION const RECT* GetGlassBoundingRect() const
 		{
-			return reinterpret_cast<HRGN const*>(this)[12];
+			return Util::PointerExecuteUnsafe<LivePreviewResource_GetGlassBoundingRect_Offsets, Util::OffsetBy<const RECT*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CRgnGeometryProxy* GetReflectionGeometry() const
+		DECLSPEC_PROJECTION CRectangleGeometryProxy* GetGlassBoundingGeometry() const
 		{
-			return reinterpret_cast<CRgnGeometryProxy* const*>(this)[13];
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_GetGlassBoundingGeometry_Offsets, Util::OffsetBy<CRectangleGeometryProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		DECLSPEC_PROJECTION CBaseLegacyMilBrushProxy* GetGlassVisualBrush() const
+		{
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_GetGlassVisualBrush_Offsets, Util::OffsetBy<CBaseLegacyMilBrushProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		const RECT* GetMonitorRect() const
+		DECLSPEC_PROJECTION HRGN GetReflectionRegion() const
 		{
-			return reinterpret_cast<const RECT*>(this) + 7;
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_GetReflectionRegion_Offsets, Util::OffsetBy<HRGN const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		DECLSPEC_PROJECTION CRgnGeometryProxy* GetReflectionGeometry() const
+		{
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_GetReflectionGeometry_Offsets, Util::OffsetBy<CRgnGeometryProxy* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		bool IsWindowBoundingRectNotEmpty() const
+		DECLSPEC_PROJECTION const RECT* GetMonitorRect() const
 		{
-			return reinterpret_cast<bool* const*>(this)[128];
+			return reinterpret_cast<const RECT*>(reinterpret_cast<ULONG_PTR>(this) + Util::PointerExecuteUnsafe<LivePreviewResource_GetMonitorRect_Offsets, Util::OffsetBy<ULONG_PTR>>(this, g_versionInfo.build, g_versionInfo.revision));
 		}
-		bool IsGlassBoundingRectNotEmpty() const
+
+		DECLSPEC_PROJECTION bool IsWindowBoundingRectNotEmpty() const
 		{
-			return reinterpret_cast<bool* const*>(this)[129];
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_IsWindowBoundingRectNotEmpty_Index_Offsets, Util::OffsetBy<bool* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		DECLSPEC_PROJECTION bool IsGlassBoundingRectNotEmpty() const
+		{
+			return *Util::PointerExecuteUnsafe<LivePreviewResource_IsGlassBoundingRectNotEmpty_Index_Offsets, Util::OffsetBy<bool* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 	struct CLivePreview : CRenderDataVisual
 	{
-		CRenderDataVisual* GetThumbnailVisual() const
+		DECLSPEC_PROJECTION CRenderDataVisual* GetThumbnailVisual() const
 		{
-			CRenderDataVisual* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[62];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[63];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[59];
-			}
-			else
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[53];
-			}
-			
-			return visual;
+			return *Util::PointerExecuteUnsafe<CLivePreview_GetThumbnailVisual_Offsets, Util::OffsetBy<CRenderDataVisual* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CRenderDataVisual* GetGlassVisual() const
+		DECLSPEC_PROJECTION CRenderDataVisual* GetGlassVisual() const
 		{
-			CRenderDataVisual* visual{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[64];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[65];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[61];
-			}
-			else
-			{
-				visual = reinterpret_cast<CRenderDataVisual* const*>(this)[55];
-			}
-
-			return visual;
+			return *Util::PointerExecuteUnsafe<CLivePreview_GetGlassVisual_Offsets, Util::OffsetBy<CRenderDataVisual* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DynArray<LivePreviewResource>* GetLivePreviewResourceArray() const
+		DECLSPEC_PROJECTION DynArray<LivePreviewResource>* GetLivePreviewResourceArray() const
 		{
-			DynArray<LivePreviewResource>* array{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				array = reinterpret_cast<DynArray<LivePreviewResource>*>(reinterpret_cast<ULONG_PTR>(this) + 368);
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				array = reinterpret_cast<DynArray<LivePreviewResource>*>(reinterpret_cast<ULONG_PTR>(this) + 376);
-			}
-			else
-			{
-				array = reinterpret_cast<DynArray<LivePreviewResource>*>(reinterpret_cast<ULONG_PTR>(this) + 328);
-			}
-
-			return array;
+			return Util::PointerExecuteUnsafe<CLivePreview_GetLivePreviewResourceArray_Offsets, Util::OffsetBy<DynArray<LivePreviewResource>*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DynArray<LivePreviewVisual>* GetLivePreviewVisualArray() const
+		DECLSPEC_PROJECTION DynArray<LivePreviewVisual>* GetLivePreviewVisualArray() const
 		{
-			DynArray<LivePreviewVisual>* array{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				array = reinterpret_cast<DynArray<LivePreviewVisual>*>(reinterpret_cast<ULONG_PTR>(this) + 304);
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				array = reinterpret_cast<DynArray<LivePreviewVisual>*>(reinterpret_cast<ULONG_PTR>(this) + 312);
-			}
-			else
-			{
-				array = reinterpret_cast<DynArray<LivePreviewVisual>*>(reinterpret_cast<ULONG_PTR>(this) + 264);
-			}
-
-			return array;
+			return Util::PointerExecuteUnsafe<CLivePreview_GetLivePreviewVisualArray_Offsets, Util::OffsetBy<DynArray<LivePreviewVisual>*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		static bool IsWindowIncluded(const CWindowData* data)
+		DECLSPEC_PROJECTION static bool IsWindowIncluded(const CWindowData* data)
 		{
-			BYTE attribute{ 0 };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				attribute = reinterpret_cast<BYTE const*>(data)[611];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				attribute = reinterpret_cast<BYTE const*>(data)[675];
-			}
-			else
-			{
-				attribute = reinterpret_cast<BYTE const*>(data)[675];
-			}
-
-			return (attribute & 1) == 0;
+			const auto p = Util::PointerExecuteUnsafe<CLivePreview_IsWindowIncluded_ByteOffset_Offsets, Util::OffsetBy<BYTE const*>>(data, g_versionInfo.build, g_versionInfo.revision);
+			return (*p & 1) == 0;
 		}
-		static bool IsWindowCloneAsWindowFrames(const CWindowData* data)
+		DECLSPEC_PROJECTION static bool IsWindowCloneAsWindowFrames(const CWindowData* data)
 		{
-			DWORD attribute{ 0 };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				attribute = reinterpret_cast<DWORD const*>(data)[28];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				attribute = reinterpret_cast<DWORD const*>(data)[33];
-			}
-			else
-			{
-				attribute = reinterpret_cast<DWORD const*>(data)[32];
-			}
-
-			return attribute == 1;
+			return *Util::PointerExecuteUnsafe<CLivePreview_IsWindowCloneAsWindowFrames_DwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(data, g_versionInfo.build, g_versionInfo.revision) == 1;
 		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE _UpdateResources()
 		{
@@ -2209,34 +1046,34 @@ namespace OpenGlass::uDWM
 	};
 	struct CAnimatedGlassSheet : CVisual 
 	{
-		const RECT& GetSourceRect() const
+		DECLSPEC_PROJECTION const RECT& GetSourceRect() const
 		{
-			return reinterpret_cast<RECT const*>(this)[24];
+			return *Util::PointerExecuteUnsafe<CAnimatedGlassSheet_GetSourceRect_Offsets, Util::OffsetBy<RECT const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		const RECT& GetDestinationRect() const
+		DECLSPEC_PROJECTION const RECT& GetDestinationRect() const
 		{
-			return reinterpret_cast<RECT const*>(this)[25];
+			return *Util::PointerExecuteUnsafe<CAnimatedGlassSheet_GetDestinationRect_Offsets, Util::OffsetBy<RECT const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		const RECT& GetAdjustedDestinationRect()
+		DECLSPEC_PROJECTION const RECT& GetAdjustedDestinationRect()
 		{
-			return reinterpret_cast<RECT const*>(this)[26];
+			return *Util::PointerExecuteUnsafe<CAnimatedGlassSheet_GetAdjustedDestinationRect_Offsets, Util::OffsetBy<RECT const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		LONG GetAtlasPaddingTop() const
+		DECLSPEC_PROJECTION LONG GetAtlasPaddingTop() const
 		{
-			return reinterpret_cast<RECT const*>(this)[30].left;
+			return Util::PointerExecuteUnsafe<CAnimatedGlassSheet_GetAtlasPaddingTop_Rect_Offsets, Util::OffsetBy<RECT const*>>(this, g_versionInfo.build, g_versionInfo.revision)->left;
 		}
-		LONG GetAtlasPaddingLeft() const
+		DECLSPEC_PROJECTION LONG GetAtlasPaddingLeft() const
 		{
-			return reinterpret_cast<RECT const*>(this)[29].right;
+			return Util::PointerExecuteUnsafe<CAnimatedGlassSheet_GetAtlasPaddingLeft_Rect_Offsets, Util::OffsetBy<RECT const*>>(this, g_versionInfo.build, g_versionInfo.revision)->right;
 		}
-		LONG GetAtlasPaddingRight() const
+		DECLSPEC_PROJECTION LONG GetAtlasPaddingRight() const
 		{
-			return -reinterpret_cast<RECT const*>(this)[29].bottom;
+			return -Util::PointerExecuteUnsafe<CAnimatedGlassSheet_GetAtlasPaddingRight_Rect_Offsets, Util::OffsetBy<RECT const*>>(this, g_versionInfo.build, g_versionInfo.revision)->bottom;
 		}
-		LONG GetAtlasPaddingBottom() const
+		DECLSPEC_PROJECTION LONG GetAtlasPaddingBottom() const
 		{
-			return -reinterpret_cast<RECT const*>(this)[30].top;
+			return -Util::PointerExecuteUnsafe<CAnimatedGlassSheet_GetAtlasPaddingBottom_Rect_Offsets, Util::OffsetBy<RECT const*>>(this, g_versionInfo.build, g_versionInfo.revision)->top;
 		}
 	};
 	struct CWindowList : CBaseObject
@@ -2263,22 +1100,11 @@ namespace OpenGlass::uDWM
 		}
 		IDwmChannel* GetChannel() const
 		{
-			IDwmChannel* channel{ nullptr };
-
-			if (g_buildNumber < os::build_w10_1903)
+			if (g_versionInfo.build < os::build_w10_1903)
 			{
-				channel = reinterpret_cast<IDwmChannel*>(const_cast<CCompositor*>(this));
+				return reinterpret_cast<IDwmChannel*>(const_cast<CCompositor*>(this));
 			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				channel = reinterpret_cast<IDwmChannel* const*>(this)[2];
-			}
-			else
-			{
-				channel = reinterpret_cast<IDwmChannel* const*>(this)[3];
-			}
-
-			return channel;
+			return *Util::PointerExecuteUnsafe<CCompositor_GetChannel_Index_Offsets, Util::OffsetBy<IDwmChannel* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 	struct CDesktopManager
@@ -2290,178 +1116,55 @@ namespace OpenGlass::uDWM
 		{
 			return *s_pDesktopManagerInstance;
 		}
-		CLivePreview* GetLivePreview() const
+		DECLSPEC_PROJECTION CLivePreview* GetLivePreview() const
 		{
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				return reinterpret_cast<CLivePreview* const*>(this)[64];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				return reinterpret_cast<CLivePreview* const*>(this)[55];
-			}
-
-			return reinterpret_cast<CLivePreview* const*>(this)[57];
+			return *Util::PointerExecuteUnsafe<CDesktopManager_GetLivePreview_Index_Offsets, Util::OffsetBy<CLivePreview* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		CCompositor* GetCompositor() const
+		DECLSPEC_PROJECTION CCompositor* GetCompositor() const
 		{
-			CCompositor* compositor{ nullptr };
-
-			if (g_buildNumber < os::build_w11_22h2)
-			{
-				compositor = reinterpret_cast<CCompositor* const*>(this)[5];
-			}
-			else
-			{
-				compositor = reinterpret_cast<CCompositor* const*>(this)[6];
-			}
-
-			return compositor;
+			return *Util::PointerExecuteUnsafe<CDesktopManager_GetCompositor_Index_Offsets, Util::OffsetBy<CCompositor* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		HMIL_CONNECTION GetConnection() const
+		DECLSPEC_PROJECTION HMIL_CONNECTION GetConnection() const
 		{
-			HMIL_CONNECTION connection{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_w11_21h2)
 			{
-				connection = reinterpret_cast<HMIL_CONNECTION const*>(this)[6];
+				return *Util::PointerExecuteUnsafe<CDesktopManager_GetConnection_Index_Offsets, Util::OffsetBy<HMIL_CONNECTION const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else
-			{
-				connection = nullptr;
-			}
-
-			return connection;
+			return nullptr;
 		}
-		CWindowList* GetWindowList() const
+		DECLSPEC_PROJECTION CWindowList* GetWindowList() const
 		{
-			CWindowList* windowList{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				windowList = reinterpret_cast<CWindowList* const*>(this)[61];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				windowList = reinterpret_cast<CWindowList* const*>(this)[52];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				windowList = reinterpret_cast<CWindowList* const*>(this)[54];
-			}
-			else
-			{
-				windowList = reinterpret_cast<CWindowList* const*>(this)[53];
-			}
-
-			return windowList;
+			return *Util::PointerExecuteUnsafe<CDesktopManager_GetWindowList_Index_Offsets, Util::OffsetBy<CWindowList* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		IWICImagingFactory* GetWICFactory() const
+		DECLSPEC_PROJECTION IWICImagingFactory* GetWICFactory() const
 		{
-			IWICImagingFactory* factory{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[39];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[30];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[31];
-			}
-			else
-			{
-				factory = reinterpret_cast<IWICImagingFactory* const*>(this)[30];
-			}
-
-			return factory;
+			return *Util::PointerExecuteUnsafe<CDesktopManager_GetWICFactory_Index_Offsets, Util::OffsetBy<IWICImagingFactory* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		ID2D1Device* GetD2DDevice() const
+		DECLSPEC_PROJECTION ID2D1Device* GetD2DDevice() const
 		{
-			ID2D1Device* d2dDevice{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_w11_21h2)
 			{
-				d2dDevice = reinterpret_cast<ID2D1Device* const*>(this)[29];
+				return *Util::PointerExecuteUnsafe<CDesktopManager_GetD2DDevice_OnThis_Index_Offsets, Util::OffsetBy<ID2D1Device* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				d2dDevice = reinterpret_cast<ID2D1Device**>(reinterpret_cast<void* const*>(this)[6])[3];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				d2dDevice = reinterpret_cast<ID2D1Device**>(reinterpret_cast<void* const*>(this)[7])[3];
-			}
-			else
-			{
-				d2dDevice = reinterpret_cast<ID2D1Device**>(reinterpret_cast<void* const*>(this)[7])[4];
-			}
-
-			return d2dDevice;
+			auto graphicsManager = *Util::PointerExecuteUnsafe<CDesktopManager_GetGraphicsManager_Index_Offsets, Util::OffsetBy<void* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return graphicsManager ? *Util::PointerExecuteUnsafe<CGraphicsManager_GetD2DDevice_Index_Offsets, Util::OffsetBy<ID2D1Device**>>(graphicsManager, g_versionInfo.build, g_versionInfo.revision) : nullptr;
 		}
-		IDCompositionDesktopDevice* GetDCompDevice() const
+		DECLSPEC_PROJECTION IDCompositionDesktopDevice* GetDCompDevice() const
 		{
-			IDCompositionDesktopDevice* interopDevice{ nullptr };
-
-			if (g_buildNumber < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_w11_21h2)
 			{
-				interopDevice = reinterpret_cast<IDCompositionDesktopDevice* const*>(this)[27];
+				return *Util::PointerExecuteUnsafe<CDesktopManager_GetDCompDevice_OnThis_Index_Offsets, Util::OffsetBy<IDCompositionDesktopDevice* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				interopDevice = reinterpret_cast<IDCompositionDesktopDevice**>(reinterpret_cast<void* const*>(this)[5])[4];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				interopDevice = reinterpret_cast<IDCompositionDesktopDevice**>(reinterpret_cast<void* const*>(this)[6])[4];
-			}
-			else
-			{
-				interopDevice = reinterpret_cast<IDCompositionDesktopDevice**>(reinterpret_cast<void* const*>(this)[6])[4];
-			}
-
-			return interopDevice;
+			const auto interopManager = *Util::PointerExecuteUnsafe<CDesktopManager_GetInteropManager_Index_Offsets, Util::OffsetBy<void* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return interopManager ? *Util::PointerExecuteUnsafe<CInteropManager_GetDCompDevice_Index_Offsets, Util::OffsetBy<IDCompositionDesktopDevice**>>(interopManager, g_versionInfo.build, g_versionInfo.revision) : nullptr;
 		}
-		bool& GetIsHighContrastMode()
+		DECLSPEC_PROJECTION bool& GetIsHighContrastMode()
 		{
-			bool* highContrast{ nullptr };
-
-			if (g_buildNumber < os::build_w11_24h2)
-			{
-				highContrast = &reinterpret_cast<bool*>(this)[26];
-			}
-			else
-			{
-				highContrast = &reinterpret_cast<bool*>(this)[27];
-			}
-
-			return *highContrast;
+			return *Util::PointerExecuteUnsafe<CDesktopManager_GetIsHighContrastMode_BoolIndex_Offsets, Util::OffsetBy<bool*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		double GetDPIValue() const
+		DECLSPEC_PROJECTION double GetDPIValue() const
 		{
-			double value{ 1.0 };
-
-			if (g_buildNumber < os::build_w11_21h2)
-			{
-				value = reinterpret_cast<double const*>(this)[60];
-			}
-			else if (g_buildNumber < os::build_w11_22h2)
-			{
-				value = reinterpret_cast<double const*>(this)[51];
-			}
-			else if (g_buildNumber < os::build_w11_24h2)
-			{
-				value = reinterpret_cast<double const*>(this)[53];
-			}
-			else
-			{
-				value = reinterpret_cast<double const*>(this)[52];
-			}
-
-			return value;
+			return *Util::PointerExecuteUnsafe<CDesktopManager_GetDPIValue_Index_Offsets, Util::OffsetBy<double const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 
@@ -2496,7 +1199,7 @@ namespace OpenGlass::uDWM
 	}
 
 	inline auto g_projectionArray = make_projection_array(
-		g_buildNumber,
+		g_versionInfo.build,
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CSolidColorLegacyMilBrushProxy::Update, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CImageLegacyMilBrushProxy::Update, 0, 0),
@@ -2507,7 +1210,6 @@ namespace OpenGlass::uDWM
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetInsetFromParentLeft, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetDirtyFlags, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::RenderRecursive, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisualProxy::SetClip, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisualProxy::SetSize, os::build_w11_22h2, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::Remove, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::RemoveAll, 0, 0),

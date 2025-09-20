@@ -142,8 +142,8 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageR
 	);
 	m_prescaleAmount = 
 	{
-		DetermineOutputScale(wil::rect_width(imageRectangle)) * m_extraScaleAmount,
-		DetermineOutputScale(wil::rect_height(imageRectangle)) * m_extraScaleAmount
+		DetermineOutputScale(wil::rect_width(imageRectangle)),
+		DetermineOutputScale(wil::rect_height(imageRectangle))
 	};
 
 	D2D1_VECTOR_2F finalBlurAmount{ m_blurAmount, m_blurAmount };
@@ -170,11 +170,7 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageR
 	RETURN_IF_FAILED(
 		m_scaleDownEffect->SetValue(
 			D2D1_SCALE_PROP_INTERPOLATION_MODE,
-			static_cast<D2D1_SCALE_PROP>(
-				m_prescaleInteroplation == D2D1_SCALE_INTERPOLATION_MODE_FORCE_DWORD ?
-				k_optimizations[5 * m_optimization + 4] :
-				m_prescaleInteroplation
-			)
+			static_cast<D2D1_SCALE_PROP>(k_optimizations[5 * m_optimization + 4])
 		)
 	);
 	RETURN_IF_FAILED(
@@ -293,19 +289,9 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 			m_blurAmount = params->blurAmount;
 			break;
 		}
-		if (m_extraScaleAmount != params->extraScaleAmount)
-		{
-			m_extraScaleAmount = params->extraScaleAmount;
-			break;
-		}
 		if (m_optimization != params->optimization)
 		{
 			m_optimization = params->optimization;
-			break;
-		}
-		if (m_prescaleInteroplation != params->prescaleInteroplation)
-		{
-			m_prescaleInteroplation = params->prescaleInteroplation;
 			break;
 		}
 

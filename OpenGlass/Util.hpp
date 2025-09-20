@@ -33,6 +33,94 @@ namespace OpenGlass::Util
 		return *reinterpret_cast<PVOID*>(&ptr);
 	}
 
+	struct VersionInfo
+	{
+		ULONG build;
+		ULONG revision;
+	};
+
+	struct OffsetInfo
+	{
+		// offset valid until build is xxx, revision is xxx
+		LONGLONG offset;
+		ULONG build;
+		ULONG revision;
+	};
+
+	template <typename T>
+	struct DereferenceAt
+	{
+		using TPointerT = std::remove_const_t<T>*;
+
+		FORCEINLINE static auto operator()(const void* ptr, ULONGLONG offset)
+		{
+			return *TPointerT(ULONG_PTR(ptr) + offset);
+		}
+	};
+
+	template <typename T = void*>
+	struct OffsetBy
+	{
+		FORCEINLINE static auto operator()(const void* ptr, LONGLONG offset)
+		{
+			return T(ULONG_PTR(ptr) + offset);
+		}
+	};
+
+	template <ULONG build, ULONG revision>
+	FORCEINLINE constexpr bool VersionBefore(ULONG runtimeBuild, ULONG runtimeRevision)
+	{
+		if constexpr (!build)
+		{
+			return true;
+		}
+		if constexpr (!revision)
+		{
+			return runtimeBuild < build;
+		}
+		else
+		{
+			return (runtimeBuild < build) || (runtimeBuild == build && runtimeRevision < revision);
+		}
+	}
+
+	template <typename StorageT, size_t i = 0>
+	FORCEINLINE constexpr LONGLONG FindOffsetRecursive(ULONG build, ULONG revision)
+	{
+		constexpr auto offsetInfo = StorageT{}()[i];
+		static_assert((offsetInfo.build == 0 && offsetInfo.revision == 0) || offsetInfo.build != 0, "The offset array is malformed.");
+		
+		if constexpr (offsetInfo.build == 0)
+		{
+			static_assert(i + 1 == std::size(StorageT{}()), "The offset array is incorrectly truncated.");
+			return offsetInfo.offset;
+		}
+		else
+		{
+			if (VersionBefore<offsetInfo.build, offsetInfo.revision>(build, revision))
+			{
+				return offsetInfo.offset;
+			}
+			else if constexpr (i + 1 < std::size(StorageT{}()))
+			{
+				constexpr auto nextOffsetInfo = StorageT{}()[i + 1];
+				static_assert(VersionBefore<nextOffsetInfo.build, nextOffsetInfo.revision>(offsetInfo.build, offsetInfo.revision), "The offset array should be sorted in ascending order.");
+				return FindOffsetRecursive<StorageT, i + 1>(build, revision);
+			}
+			else
+			{
+				return 0xFFFFFFFFFFFFFFFF;
+			}
+		}
+	}
+	
+	template <typename StorageT, typename MethodT>
+	FORCEINLINE auto PointerExecuteUnsafe(const void* ptr, ULONG build, ULONG revision)
+	{
+		static const auto sc_offset = FindOffsetRecursive<StorageT>(build, revision);
+		return MethodT{}(ptr, sc_offset);
+	}
+
 	inline auto make_current_folder_file(std::wstring_view baseFileName)
 	{
 		const auto bufferSize = g_thisModulePath.size() + baseFileName.size() + 1;
@@ -94,10 +182,10 @@ namespace OpenGlass::Util
 	// type = ..., desktop created by CreateDesktop?
 	FORCEINLINE bool WINAPI GetDesktopID(ULONG_PTR type, ULONG_PTR* desktopID)
 	{
-		static const auto pfnGetDesktopID = reinterpret_cast<decltype(&GetDesktopID)>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDesktopID"));
-		if (pfnGetDesktopID) [[likely]]
+		static const auto sc_pfnGetDesktopID = reinterpret_cast<decltype(&GetDesktopID)>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDesktopID"));
+		if (sc_pfnGetDesktopID) [[likely]]
 		{
-			return pfnGetDesktopID(type, desktopID);
+			return sc_pfnGetDesktopID(type, desktopID);
 		}
 
 		return false;
@@ -174,7 +262,7 @@ namespace OpenGlass::Util
 		);
 	}
 
-	inline ULONG GetModuleBuildNumber(HMODULE moduleHandle)
+	inline VersionInfo GetModuleVersionInfo(HMODULE moduleHandle)
 	{
 		const auto moduleName = wil::GetModuleFileNameW<std::wstring, MAX_PATH>(moduleHandle);
 
@@ -192,7 +280,7 @@ namespace OpenGlass::Util
 
 		THROW_WIN32_IF(ERROR_INVALID_IMAGE_HASH, fileInfo->dwSignature != VS_FFI_SIGNATURE);
 
-		return HIWORD(fileInfo->dwFileVersionLS);
+		return { HIWORD(fileInfo->dwFileVersionLS), LOWORD(fileInfo->dwFileVersionLS) };
 	}
 
 	inline winrt::com_ptr<ID2D1Bitmap1> GetTargetBitmapFromDeviceContext(
@@ -373,6 +461,262 @@ namespace OpenGlass::Util
 
 		return S_OK;
 	}
+	class D3D11ContextStateGuard
+	{
+	private:
+		winrt::com_ptr<ID3D11DeviceContext> m_context;
+
+		// Vertex Shader State
+		winrt::com_ptr<ID3D11VertexShader> m_vs;
+		std::array<winrt::com_ptr<ID3D11Buffer>, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT> m_vsConstantBuffers;
+		std::array<winrt::com_ptr<ID3D11ShaderResourceView>, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT> m_vsSRVs;
+		std::array<winrt::com_ptr<ID3D11SamplerState>, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> m_vsSamplers;
+
+		// Pixel Shader State
+		winrt::com_ptr<ID3D11PixelShader> m_ps;
+		std::array<winrt::com_ptr<ID3D11Buffer>, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT> m_psConstantBuffers;
+		std::array<winrt::com_ptr<ID3D11ShaderResourceView>, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT> m_psSRVs;
+		std::array<winrt::com_ptr<ID3D11SamplerState>, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT> m_psSamplers;
+
+		// Input Assembler State
+		winrt::com_ptr<ID3D11InputLayout> m_inputLayout;
+		D3D11_PRIMITIVE_TOPOLOGY m_primitiveTopology;
+		std::array<winrt::com_ptr<ID3D11Buffer>, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> m_vertexBuffers;
+		std::array<UINT, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> m_vertexStrides;
+		std::array<UINT, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT> m_vertexOffsets;
+		winrt::com_ptr<ID3D11Buffer> m_indexBuffer;
+		DXGI_FORMAT m_indexFormat;
+		UINT m_indexOffset;
+
+		// Rasterizer State
+		winrt::com_ptr<ID3D11RasterizerState> m_rasterizerState;
+		std::array<D3D11_VIEWPORT, D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE> m_viewports;
+		UINT m_numViewports;
+		std::array<D3D11_RECT, D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE> m_scissorRects;
+		UINT m_numScissorRects;
+
+		// Output Merger State
+		std::array<winrt::com_ptr<ID3D11RenderTargetView>, D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT> m_renderTargetViews;
+		winrt::com_ptr<ID3D11DepthStencilView> m_depthStencilView;
+		winrt::com_ptr<ID3D11DepthStencilState> m_depthStencilState;
+		UINT m_stencilRef;
+		winrt::com_ptr<ID3D11BlendState> m_blendState;
+		std::array<FLOAT, 4> m_blendFactor;
+		UINT m_sampleMask;
+
+	public:
+		explicit D3D11ContextStateGuard(ID3D11DeviceContext* context)
+			: m_primitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED)
+			, m_indexFormat(DXGI_FORMAT_UNKNOWN)
+			, m_indexOffset(0)
+			, m_numViewports(0)
+			, m_numScissorRects(0)
+			, m_stencilRef(0)
+			, m_sampleMask(0)
+		{
+			m_context.copy_from(context);
+			SaveState();
+		}
+
+		~D3D11ContextStateGuard()
+		{
+			RestoreState();
+		}
+
+		D3D11ContextStateGuard(const D3D11ContextStateGuard&) = delete;
+		D3D11ContextStateGuard& operator=(const D3D11ContextStateGuard&) = delete;
+
+	private:
+		void SaveState()
+		{
+			if (!m_context) return;
+
+			// Save Vertex Shader State
+			ID3D11VertexShader* vs = nullptr;
+			m_context->VSGetShader(&vs, nullptr, nullptr);
+			m_vs.attach(vs);
+
+			ID3D11Buffer* vsBuffers[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
+			m_context->VSGetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, vsBuffers);
+			for (UINT i = 0; i < D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT; ++i)
+			{
+				m_vsConstantBuffers[i].attach(vsBuffers[i]);
+			}
+
+			ID3D11ShaderResourceView* vsSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+			m_context->VSGetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, vsSRVs);
+			for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; ++i)
+			{
+				m_vsSRVs[i].attach(vsSRVs[i]);
+			}
+
+			ID3D11SamplerState* vsSamplers[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
+			m_context->VSGetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, vsSamplers);
+			for (UINT i = 0; i < D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT; ++i)
+			{
+				m_vsSamplers[i].attach(vsSamplers[i]);
+			}
+
+			// Save Pixel Shader State
+			ID3D11PixelShader* ps = nullptr;
+			m_context->PSGetShader(&ps, nullptr, nullptr);
+			m_ps.attach(ps);
+
+			ID3D11Buffer* psBuffers[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
+			m_context->PSGetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, psBuffers);
+			for (UINT i = 0; i < D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT; ++i)
+			{
+				m_psConstantBuffers[i].attach(psBuffers[i]);
+			}
+
+			ID3D11ShaderResourceView* psSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+			m_context->PSGetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, psSRVs);
+			for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; ++i)
+			{
+				m_psSRVs[i].attach(psSRVs[i]);
+			}
+
+			ID3D11SamplerState* psSamplers[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
+			m_context->PSGetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, psSamplers);
+			for (UINT i = 0; i < D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT; ++i)
+			{
+				m_psSamplers[i].attach(psSamplers[i]);
+			}
+
+			// Save Input Assembler State
+			ID3D11InputLayout* inputLayout = nullptr;
+			m_context->IAGetInputLayout(&inputLayout);
+			m_inputLayout.attach(inputLayout);
+
+			m_context->IAGetPrimitiveTopology(&m_primitiveTopology);
+
+			ID3D11Buffer* vertexBuffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT] = {};
+			m_context->IAGetVertexBuffers(0, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT,
+				vertexBuffers, m_vertexStrides.data(), m_vertexOffsets.data());
+			for (UINT i = 0; i < D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT; ++i)
+			{
+				m_vertexBuffers[i].attach(vertexBuffers[i]);
+			}
+
+			ID3D11Buffer* indexBuffer = nullptr;
+			m_context->IAGetIndexBuffer(&indexBuffer, &m_indexFormat, &m_indexOffset);
+			m_indexBuffer.attach(indexBuffer);
+
+			// Save Rasterizer State
+			ID3D11RasterizerState* rasterizerState = nullptr;
+			m_context->RSGetState(&rasterizerState);
+			m_rasterizerState.attach(rasterizerState);
+
+			m_numViewports = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+			m_context->RSGetViewports(&m_numViewports, m_viewports.data());
+
+			m_numScissorRects = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+			m_context->RSGetScissorRects(&m_numScissorRects, m_scissorRects.data());
+
+			// Save Output Merger State
+			ID3D11RenderTargetView* renderTargetViews[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+			ID3D11DepthStencilView* depthStencilView = nullptr;
+			m_context->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, renderTargetViews, &depthStencilView);
+
+			for (UINT i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+			{
+				m_renderTargetViews[i].attach(renderTargetViews[i]);
+			}
+			m_depthStencilView.attach(depthStencilView);
+
+			ID3D11DepthStencilState* depthStencilState = nullptr;
+			m_context->OMGetDepthStencilState(&depthStencilState, &m_stencilRef);
+			m_depthStencilState.attach(depthStencilState);
+
+			ID3D11BlendState* blendState = nullptr;
+			m_context->OMGetBlendState(&blendState, m_blendFactor.data(), &m_sampleMask);
+			m_blendState.attach(blendState);
+		}
+
+		void RestoreState()
+		{
+			if (!m_context) return;
+
+			// Restore Vertex Shader State
+			m_context->VSSetShader(m_vs.get(), nullptr, 0);
+
+			ID3D11Buffer* vsBuffers[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
+			for (UINT i = 0; i < D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT; ++i)
+			{
+				vsBuffers[i] = m_vsConstantBuffers[i].get();
+			}
+			m_context->VSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, vsBuffers);
+
+			ID3D11ShaderResourceView* vsSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+			for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; ++i)
+			{
+				vsSRVs[i] = m_vsSRVs[i].get();
+			}
+			m_context->VSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, vsSRVs);
+
+			ID3D11SamplerState* vsSamplers[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
+			for (UINT i = 0; i < D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT; ++i)
+			{
+				vsSamplers[i] = m_vsSamplers[i].get();
+			}
+			m_context->VSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, vsSamplers);
+
+			// Restore Pixel Shader State
+			m_context->PSSetShader(m_ps.get(), nullptr, 0);
+
+			ID3D11Buffer* psBuffers[D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT] = {};
+			for (UINT i = 0; i < D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT; ++i)
+			{
+				psBuffers[i] = m_psConstantBuffers[i].get();
+			}
+			m_context->PSSetConstantBuffers(0, D3D11_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT, psBuffers);
+
+			ID3D11ShaderResourceView* psSRVs[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT] = {};
+			for (UINT i = 0; i < D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT; ++i)
+			{
+				psSRVs[i] = m_psSRVs[i].get();
+			}
+			m_context->PSSetShaderResources(0, D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT, psSRVs);
+
+			ID3D11SamplerState* psSamplers[D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT] = {};
+			for (UINT i = 0; i < D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT; ++i)
+			{
+				psSamplers[i] = m_psSamplers[i].get();
+			}
+			m_context->PSSetSamplers(0, D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT, psSamplers);
+
+			// Restore Input Assembler State
+			m_context->IASetInputLayout(m_inputLayout.get());
+			m_context->IASetPrimitiveTopology(m_primitiveTopology);
+
+			ID3D11Buffer* vertexBuffers[D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT] = {};
+			for (UINT i = 0; i < D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT; ++i)
+			{
+				vertexBuffers[i] = m_vertexBuffers[i].get();
+			}
+			m_context->IASetVertexBuffers(0, D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT,
+				vertexBuffers, m_vertexStrides.data(), m_vertexOffsets.data());
+
+			m_context->IASetIndexBuffer(m_indexBuffer.get(), m_indexFormat, m_indexOffset);
+
+			// Restore Rasterizer State
+			m_context->RSSetState(m_rasterizerState.get());
+			m_context->RSSetViewports(m_numViewports, m_viewports.data());
+			m_context->RSSetScissorRects(m_numScissorRects, m_scissorRects.data());
+
+			// Restore Output Merger State
+			ID3D11RenderTargetView* renderTargetViews[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+			for (UINT i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+			{
+				renderTargetViews[i] = m_renderTargetViews[i].get();
+			}
+			m_context->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT,
+				renderTargetViews, m_depthStencilView.get());
+
+			m_context->OMSetDepthStencilState(m_depthStencilState.get(), m_stencilRef);
+			m_context->OMSetBlendState(m_blendState.get(), m_blendFactor.data(), m_sampleMask);
+		}
+	};
 }
 namespace OpenGlass
 {
@@ -464,6 +808,16 @@ namespace OpenGlass
 
 	namespace RectF
 	{
+		FORCEINLINE D2D1_RECT_L ToRectL(const D2D1_RECT_F& rectangle)
+		{
+			return
+			{
+				static_cast<LONG>(std::floor(rectangle.left)),
+				static_cast<LONG>(std::floor(rectangle.top)),
+				static_cast<LONG>(std::ceil(rectangle.right)),
+				static_cast<LONG>(std::ceil(rectangle.bottom))
+			};
+		}
 		FORCEINLINE D2D1_RECT_F TransformRect(const D2D1_RECT_F& rectangle, const D2D1_MATRIX_3X2_F& matrix)
 		{
 			const auto matrixHelper = D2D1::Matrix3x2F::ReinterpretBaseType(&matrix);

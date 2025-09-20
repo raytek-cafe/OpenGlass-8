@@ -485,7 +485,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_CloneVisualTreeFo
 		if (auto button = This->GetButton(i))
 		{
 			// HACK: we need to allow the cloning of buttons after this function for close/minimize
-			if (uDWM::g_buildNumber < os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 			{
 				button->SetExcludeSubtree(false);
 			}
@@ -510,13 +510,13 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackg
 
 	auto& highContrastMode = uDWM::CDesktopManager::GetInstance()->GetIsHighContrastMode();
 	const auto old_highContrastMode = highContrastMode;
-	if (uDWM::g_buildNumber >= os::build_w11_21h2)
+	if (uDWM::g_versionInfo.build >= os::build_w11_21h2)
 	{
 		highContrastMode = true;
 	}
 	const auto highContrastFakeScope = wil::scope_exit([&highContrastMode, old_highContrastMode]
 	{
-		if (uDWM::g_buildNumber >= os::build_w11_21h2)
+		if (uDWM::g_versionInfo.build >= os::build_w11_21h2)
 		{
 			highContrastMode = old_highContrastMode;
 		}
@@ -852,13 +852,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_ValidateVisual(uD
 		LOG_IF_FAILED(UpdateReflectionViewport(This));
 	});
 
-	if (uDWM::g_buildNumber < os::build_w11_21h2)
-	{
-		return g_CTopLevelWindow_ValidateVisual_Org(This);
-	}
-
-	bool hasNonClient = This->HasNonClientBackground(data);
-	if (!hasNonClient)
+	if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 	{
 		return g_CTopLevelWindow_ValidateVisual_Org(This);
 	}
@@ -875,11 +869,11 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_ValidateVisual(uD
 	const auto old_textColorOverride = textColorOverride;
 	const auto old_extendedFrameMargins = extendedFrameMargins;
 	const auto old_borderUpdatesSuppressed = borderUpdatesSuppressed;
-	const auto disableModernFrames = Shared::g_disableModernBorders;
+	const auto disableModernFrames = Shared::g_disableModernBorders && This->HasNonClientBackground(data);
 	const auto windowBorder = This->GetWindowBorder();
 	
-	g_systemBackdrop = (uDWM::g_buildNumber == os::build_w11_21h2 && old_systemBackdropType) || (uDWM::g_buildNumber > os::build_w11_21h2 && old_systemBackdropType >= DWMSBT_MAINWINDOW);
-	systemBackdropType = (uDWM::g_buildNumber == os::build_w11_21h2 ? DWMSBT_AUTO : DWMSBT_NONE);
+	g_systemBackdrop = (uDWM::g_versionInfo.build == os::build_w11_21h2 && old_systemBackdropType) || (uDWM::g_versionInfo.build > os::build_w11_21h2 && old_systemBackdropType >= DWMSBT_MAINWINDOW);
+	systemBackdropType = (uDWM::g_versionInfo.build == os::build_w11_21h2 ? DWMSBT_AUTO : DWMSBT_NONE);
 	captionColorOverride = 0;
 	borderColorOverride = 0;
 	textColorOverride = 0;
@@ -1015,7 +1009,7 @@ void GlassFrameHandler::Startup()
 			g_CButton_SetSize_Org_Address = reinterpret_cast<decltype(g_CButton_SetSize_Org_Address)>(&vf);
 			HookHelper::WritePointer(g_CButton_SetSize_Org_Address, MyCButton_SetSize, &g_CButton_SetSize_Org);
 		}
-		if (vf == CAtlasedRectsVisual_CloneVisualTree_Org && uDWM::g_buildNumber <= os::build_w11_21h2)
+		if (vf == CAtlasedRectsVisual_CloneVisualTree_Org && uDWM::g_versionInfo.build <= os::build_w11_21h2)
 		{
 			g_CButton_CloneVisualTree_Org_Address = reinterpret_cast<decltype(g_CButton_CloneVisualTree_Org_Address)>(&vf);
 			HookHelper::WritePointer(g_CButton_CloneVisualTree_Org_Address, MyCButton_CloneVisualTree, &g_CButton_CloneVisualTree_Org);
@@ -1023,7 +1017,7 @@ void GlassFrameHandler::Startup()
 	}
 
 
-	if (uDWM::g_buildNumber >= os::build_w11_21h2)
+	if (uDWM::g_versionInfo.build >= os::build_w11_21h2)
 	{
 		UCHAR* CTopLevelWindow_UpdateWindowVisuals_Instructions{ nullptr };
 		UCHAR* CDesktopManager_IsHighContrastMode_Instructions{ nullptr };
@@ -1075,7 +1069,7 @@ void GlassFrameHandler::Startup()
 		} while (i);
 
 		CTopLevelWindow_UpdateWindowVisuals_Instructions = CTopLevelWindow_UpdateWindowVisuals_Instructions_Previous;
-		if (uDWM::g_buildNumber < os::build_w11_24h2)
+		if (uDWM::g_versionInfo.build < os::build_w11_24h2)
 		{
 			i = 450'000;
 			do
@@ -1149,7 +1143,7 @@ void GlassFrameHandler::Startup()
 		}
 	}
 
-	if (uDWM::g_buildNumber < os::build_w11_24h2)
+	if (uDWM::g_versionInfo.build < os::build_w11_24h2)
 	{
 		g_CreateRoundRectRgn_Org = reinterpret_cast<decltype(g_CreateRoundRectRgn_Org)>(HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "CreateRoundRectRgn", MyCreateRoundRectRgn));
 	}
@@ -1170,7 +1164,7 @@ void GlassFrameHandler::Startup()
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateNCAreaPositionsAndSizes_Org, MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_UpdateClientBlur_Org, MyCTopLevelWindow_UpdateClientBlur);
 			
-			if (uDWM::g_buildNumber <= os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build <= os::build_w11_21h2)
 			{
 				HookHelper::Detours::Attach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
 			}
@@ -1182,7 +1176,7 @@ void GlassFrameHandler::Startup()
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_Destructor_Org, MyCTopLevelWindow_Destructor);
 			HookHelper::Detours::Attach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
 
-			if (uDWM::g_buildNumber >= os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build >= os::build_w11_21h2)
 			{
 				HookHelper::Detours::Attach(&g_SetMargin_Org, MySetMargin);
 			}
@@ -1209,7 +1203,7 @@ void GlassFrameHandler::Shutdown()
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_Destructor_Org, MyCTopLevelWindow_Destructor);
 			HookHelper::Detours::Detach(&g_CTopLevelWindow_ValidateVisual_Org, MyCTopLevelWindow_ValidateVisual);
 
-			if (uDWM::g_buildNumber <= os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build <= os::build_w11_21h2)
 			{
 				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win10);
 			}
@@ -1218,7 +1212,7 @@ void GlassFrameHandler::Shutdown()
 				HookHelper::Detours::Detach(&g_CTopLevelWindow_CloneVisualTreeForLivePreview_Org, MyCTopLevelWindow_CloneVisualTreeForLivePreview_Win11);
 			}
 
-			if (uDWM::g_buildNumber >= os::build_w11_21h2)
+			if (uDWM::g_versionInfo.build >= os::build_w11_21h2)
 			{
 				HookHelper::Detours::Detach(&g_SetMargin_Org, MySetMargin);
 			}
@@ -1228,7 +1222,7 @@ void GlassFrameHandler::Shutdown()
 	SwitchToThread();
 
 	HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "ExtCreateRegion", g_ExtCreateRegion_Org);
-	if (uDWM::g_buildNumber < os::build_w11_24h2)
+	if (uDWM::g_versionInfo.build < os::build_w11_24h2)
 	{
 		HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "CreateRoundRectRgn", g_CreateRoundRectRgn_Org);
 	}

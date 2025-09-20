@@ -3,62 +3,15 @@
 #include "OSHelper.hpp"
 #include "Util.hpp"
 
-#define MAKE_FUNCTION_PROJECTION_TUPLE(function, min_build, max_build) \
-ProjectionEntry \
-{ \
-	UCHAR{ 1 }, \
-	LPCSTR{ #function }, \
-	Util::force_cast_from(&function), \
-	PVOID{ nullptr }, \
-	ULONG{ min_build }, \
-	ULONG{ max_build }, \
-}
-#define MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(function, name, min_build, max_build) \
-ProjectionEntry \
-{ \
-	UCHAR{ 1 }, \
-	LPCSTR{ name }, \
-	Util::force_cast_from(&function), \
-	PVOID{ nullptr }, \
-	ULONG{ min_build }, \
-	ULONG{ max_build }, \
-}
-
-#define MAKE_VARIABLE_PROJECTION_TUPLE(variable, min_build, max_build) \
-ProjectionEntry \
-{ \
-	UCHAR{ 2 }, \
-	LPCSTR{ #variable }, \
-	Util::force_cast_from(&variable), \
-	PVOID{ nullptr }, \
-	ULONG{ min_build }, \
-	ULONG{ max_build }, \
-}
-#define MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(variable, name, min_build, max_build) \
-ProjectionEntry \
-{ \
-	UCHAR{ 2 }, \
-	LPCSTR{ name }, \
-	Util::force_cast_from(&variable), \
-	PVOID{ nullptr }, \
-	ULONG{ min_build }, \
-	ULONG{ max_build }, \
-}
-
-#define MAKE_EMPTY_PROJECTION_TUPLE(name, min_build, max_build) \
-ProjectionEntry \
-{ \
-	UCHAR{ 0 }, \
-	LPCSTR{ name }, \
-	PVOID{ nullptr }, \
-	PVOID{ nullptr }, \
-	ULONG{ min_build }, \
-	ULONG{ max_build }, \
-}
-
 namespace OpenGlass
 {
-	using ProjectionEntry = std::tuple<UCHAR, LPCSTR, PVOID, PVOID, ULONG, ULONG>;
+	enum class ProjectionType : UCHAR
+	{
+		Variable = 0,
+		Function = 1 << 0,
+		Optional = 1 << 1
+	};
+	using ProjectionEntry = std::tuple<ProjectionType, LPCSTR, PVOID, PVOID, ULONG, ULONG>;
 
 	template <size_t N>
 	struct ProjectionArray : std::array<ProjectionEntry, N>
@@ -93,7 +46,7 @@ namespace OpenGlass
 			[[maybe_unused]] auto& [type, name, from, to, min_build, max_build] = entry;
 			to = symbolAddress;
 
-			if (type == 1)
+			if (type == ProjectionType::Function)
 			{
 				UCHAR jmpInstructionBytes[]
 				{
@@ -113,7 +66,7 @@ namespace OpenGlass
 					sizeof(jmpInstructionBytes)
 				);
 			}
-			if (type == 2)
+			if (type == ProjectionType::Variable && from)
 			{
 				*reinterpret_cast<PVOID*>(from) = to;
 			}
@@ -226,7 +179,7 @@ namespace OpenGlass
 					continue;
 				}
 
-				if (!std::get<3>(entry))
+				if (!std::get<3>(entry) && !(static_cast<UCHAR>(std::get<0>(entry)) & static_cast<UCHAR>(ProjectionType::Optional)))
 				{
 					missingFunctionsOrVariables.append(prefix);
 					missingFunctionsOrVariables.append(std::get<1>(entry));
@@ -268,3 +221,67 @@ namespace OpenGlass
 #define DECLSPEC_PROJECTION DECLSPEC_NOINLINE inline
 #define HANDLE_PROJECTION_FUNCTION(function, ...) \
 (reinterpret_cast<StubFunctionOf<decltype(&function)>::type>(Util::compile_time_hash(#function, 0ull))(Util::force_cast_from(&function), ##__VA_ARGS__))
+
+#define MAKE_FUNCTION_PROJECTION_TUPLE(function, min_build, max_build) \
+OpenGlass::ProjectionEntry \
+{ \
+	OpenGlass::ProjectionType::Function, \
+	LPCSTR{ #function }, \
+	Util::force_cast_from(&function), \
+	PVOID{ nullptr }, \
+	ULONG{ min_build }, \
+	ULONG{ max_build }, \
+}
+#define MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(function, name, min_build, max_build) \
+OpenGlass::ProjectionEntry \
+{ \
+	OpenGlass::ProjectionType::Function, \
+	LPCSTR{ name }, \
+	Util::force_cast_from(&function), \
+	PVOID{ nullptr }, \
+	ULONG{ min_build }, \
+	ULONG{ max_build }, \
+}
+
+#define MAKE_VARIABLE_PROJECTION_TUPLE(variable, min_build, max_build) \
+OpenGlass::ProjectionEntry \
+{ \
+	OpenGlass::ProjectionType::Variable, \
+	LPCSTR{ #variable }, \
+	Util::force_cast_from(&variable), \
+	PVOID{ nullptr }, \
+	ULONG{ min_build }, \
+	ULONG{ max_build }, \
+}
+#define MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(variable, name, min_build, max_build) \
+OpenGlass::ProjectionEntry \
+{ \
+	OpenGlass::ProjectionType::Variable, \
+	LPCSTR{ name }, \
+	Util::force_cast_from(&variable), \
+	PVOID{ nullptr }, \
+	ULONG{ min_build }, \
+	ULONG{ max_build }, \
+}
+
+#define MAKE_EMPTY_PROJECTION_TUPLE(name, min_build, max_build) \
+OpenGlass::ProjectionEntry \
+{ \
+	OpenGlass::ProjectionType::Variable, \
+	LPCSTR{ name }, \
+	PVOID{ nullptr }, \
+	PVOID{ nullptr }, \
+	ULONG{ min_build }, \
+	ULONG{ max_build }, \
+}
+
+#define MAKE_OPTIONAL_EMPTY_PROJECTION_TUPLE(name, min_build, max_build) \
+OpenGlass::ProjectionEntry \
+{ \
+	static_cast<OpenGlass::ProjectionType>(static_cast<UCHAR>(OpenGlass::ProjectionType::Variable) | static_cast<UCHAR>(OpenGlass::ProjectionType::Optional)), \
+	LPCSTR{ name }, \
+	PVOID{ nullptr }, \
+	PVOID{ nullptr }, \
+	ULONG{ min_build }, \
+	ULONG{ max_build }, \
+}

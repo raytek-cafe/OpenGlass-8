@@ -4,8 +4,10 @@
 #include "dwmcoreProjection.hpp"
 #include "Shared.hpp"
 #include "GlassKernel.hpp"
+#include "GlassIntegrity.hpp"
 #include "GlassRenderer.hpp"
 #include "GlassRealizer.hpp"
+#include "D3DGlassRealizer.hpp"
 #include "ReflectionRealizer.hpp"
 #include "AeroColorizationEffect.hpp"
 #include "D2DPrivates.hpp"
@@ -106,6 +108,7 @@ namespace OpenGlass::GlassRenderer
 	
 	enum RenderFlag
 	{
+		RenderFlag_SolidColor,
 		RenderFlag_Backdrop,
 		RenderFlag_Reflection
 	};
@@ -115,6 +118,7 @@ namespace OpenGlass::GlassRenderer
 		winrt::com_ptr<ID2D1SolidColorBrush> m_brush{};
 		CD2DBuffer m_buffer{};
 		CGlassRealizer m_glassRealizer{};
+		CD3DGlassRealizer m_d3dGlassRealizer{};
 		CReflectionRealizer m_reflectionRealizer{};
 		winrt::com_ptr<ID2D1Effect> m_materialEffect{ nullptr };
 #ifdef BUILD_BETA
@@ -126,6 +130,9 @@ namespace OpenGlass::GlassRenderer
 	CGlassInput g_glassInput{};
 	CReflectionInput g_reflectionInput{};
 	D2D1_RECT_F g_drawingWorldBounds{};
+	D2D1_RECT_F g_samplingWorldBoundsWithShapeClipped{};
+	D2D1_RECT_F g_samplingWorldBounds{};
+	dwmcore::CDrawingContext* g_drawingContextNoRef{};
 	std::bitset<4> g_renderFlag{};
 
 	wil::critical_section g_lock{};
@@ -149,6 +156,7 @@ namespace OpenGlass::GlassRenderer
 		const dwmcore::CShape* shape, 
 		const dwmcore::CMILMatrix* matrix,
 		D2D1_RECT_F& drawingWorldBounds,
+		D2D1_RECT_F& shapeWorldBounds,
 		std::unique_ptr<D2D1_RECT_F[]>& rectangles,
 		UINT& rectanglesCount,
 		bool& shapeIsRectangles
@@ -172,10 +180,8 @@ namespace OpenGlass::GlassRenderer
 
 		if (renderingShape && !renderingShape->IsEmpty()) [[likely]]
 		{
-			D2D1_RECT_F shapeWorldBounds;
 			shape->GetTightBounds(&shapeWorldBounds, matrix);
 			drawingContext->GetClipBoundsWorld(&drawingWorldBounds);
-			RectF::IntersectUnsafe(drawingWorldBounds, shapeWorldBounds);
 			
 			if (renderingShape->IsRectangles(&rectanglesCount)) [[likely]]
 			{
@@ -202,6 +208,7 @@ namespace OpenGlass::GlassRenderer
 
 		return renderingShape;
 	}
+
 }
 
 template <typename T>
@@ -238,13 +245,9 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCRenderData_TryDrawCommandAsDrawList(
 			) ||
 			(
 				HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex]) == dwmcore::CImageLegacyMilBrush::vftable &&
-				static_cast<dwmcore::CImageLegacyMilBrush*>(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex])->GetImageSource() == nullptr
+				static_cast<dwmcore::CImageLegacyMilBrush*>(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex])->GetImageSource() == nullptr &&
+				wil::rect_is_empty(static_cast<dwmcore::CImageLegacyMilBrush*>(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->brushIndex])->GetViewbox())
 			)
-		) &&
-		(
-			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CRegionGeometry::vftable ||
-			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CRectangleGeometry::vftable ||
-			HookHelper::vftbl_of(This->GetResources()->data[static_cast<dwmcore::CDrawGeometryCommand*>(resources->data)->geometryIndex]) == dwmcore::CCombinedGeometry::vftable
 		)
 	)
 	{
@@ -375,8 +378,8 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	}
 
 	const auto drawingContext = This->GetDrawingContext();
-	const auto occlusionConctext = drawingContext->GetOcclusionContext();
-	const auto d2dContext = drawingContext->GetD2DContext();
+	const auto occlusionContext = drawingContext->GetOcclusionContext();
+	const auto d2dContext = drawingContext->GetD3DDevice()->GetD2DContext();
 	const auto context = d2dContext->GetDeviceContext();
 	const auto matrix = drawingContext->GetWorldTransform();
 	const auto currentVisual = drawingContext->GetCurrentVisualHelper();
@@ -390,20 +393,46 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 
 	UINT rectanglesCount;
 	std::unique_ptr<D2D1_RECT_F[]> rectangles;
+	D2D1_RECT_F shapeWorldBounds;
 
 	const auto renderingShape = GetShapeRenderingData(
 		drawingContext,
 		geometryShape.get(),
 		matrix,
 		g_drawingWorldBounds,
+		shapeWorldBounds,
 		rectangles,
 		rectanglesCount,
 		g_shapeIsRectangles
 	);
 
+	if (!renderingShape || renderingShape->IsEmpty())
+	{
+		return S_OK;
+	}
+
+	const auto renderTargetBitmap = Util::GetTargetBitmapFromDeviceContext(context);
+	if (!renderTargetBitmap)
+	{
+		return S_OK;
+	}
+
+	const auto renderTargetSize = renderTargetBitmap->GetSize();
+	const D2D1_RECT_F renderTargetBounds
+	{
+		0.f,
+		0.f,
+		renderTargetSize.width,
+		renderTargetSize.height
+	};
+
+	D2D1_RECT_F renderingShapeBounds{};
+	RETURN_IF_FAILED(renderingShape->GetTightBounds(&renderingShapeBounds, nullptr));
+	RectF::IntersectUnsafe(g_drawingWorldBounds, renderingShapeBounds);
+	RectF::IntersectUnsafe(g_drawingWorldBounds, renderTargetBounds);
 	if (
-		occlusionConctext &&
-		occlusionConctext->GetArrayBasedCoverageSet()->IsCovered(
+		occlusionContext &&
+		occlusionContext->GetArrayBasedCoverageSet()->IsCovered(
 			g_drawingWorldBounds,
 			drawingContext->GetD2DContextOwner()->GetCurrentZ()
 		)
@@ -412,6 +441,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		return S_OK;
 	}
 
+	LOG_IF_FAILED(drawingContext->ApplyRenderStateInternal(false));
 	d2dContext->EnsureBeginDraw();
 	const auto lockScope = g_lock.lock();
 	if (g_disabled)
@@ -419,6 +449,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		return S_OK;
 	}
 
+	g_drawingContextNoRef = drawingContext;
 	g_currentDeviceResources = &g_deviceResources.try_emplace(d2dContext).first->second;
 	RETURN_IF_FAILED(
 		drawingContext->PushTransformInternal(
@@ -432,7 +463,10 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	{
 		drawingContext->PopTransformInternal(true);
 		g_currentDeviceResources = nullptr;
+		g_drawingContextNoRef = nullptr;
 	});
+
+	D2D1_COLOR_F color{};
 	
 	if (HookHelper::vftbl_of(brush) == dwmcore::CImageLegacyMilBrush::vftable)
 	{
@@ -451,21 +485,19 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		g_renderFlag.set(RenderFlag_Reflection, true);
 	}
 
-	const auto renderTargetBitmap = Util::GetTargetBitmapFromDeviceContext(context);
-
 	if (HookHelper::vftbl_of(brush) == dwmcore::CSolidColorLegacyMilBrush::vftable)
 	{
 		const auto solidColorBrush = static_cast<dwmcore::CSolidColorLegacyMilBrush*>(brush);
 		const auto opacity = solidColorBrush->GetRealizedOpacity();
-		auto color = Color::scRGBTosRGB(solidColorBrush->GetRealizedColor());
-
+		color = Color::scRGBTosRGB(solidColorBrush->GetRealizedColor());
+		
 		if (color.a == 0.f || opacity == 0.f)
 		{
 			return S_OK;
 		}
 
 		const auto extendedAmount = !desktopTree || GlassKernel::IsCurrentCVIFullyTransparent() ? 0.f : GlassKernel::GetBlurExtendedAmount();
-		const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionConctext);
+		const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionContext);
 		
 		// try render glass
 		if (
@@ -475,9 +507,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		{
 			const auto active = (color.a == 0.50f);
 			
-			D2D1_RECT_F shapeWorldBounds;
-			RETURN_IF_FAILED(geometryShape->GetTightBounds(&shapeWorldBounds, matrix));
-
 			// uDWM!CGlassColorizationParameters::AdjustWindowColorization (Windows 7)
 			float glassOpacity, blurBalance, afterglowBalance, colorBalance;
 			GlassKernel::CalculateRealizedAeroParams(
@@ -500,29 +529,16 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				glassCoverageSet
 			)
 			{
-				RETURN_IF_FAILED(drawingContext->FlushD2D());
-				if (
-					glassCoverageSet->IsFullyCovered(
-						shapeWorldBounds,
-						drawingContext->GetD2DContextOwner()->GetCurrentZ()
-					) ||
-					GlassKernel::IsCVIPresent()
-				)
-				{
-					g_glassInput.params.extraScaleAmount = 0.8f;
-					g_glassInput.params.prescaleInteroplation = D2D1_SCALE_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
-					g_glassInput.params.optimization = D2D1_GAUSSIANBLUR_OPTIMIZATION_SPEED;
-					g_glassInput.drawImageInterpolationMode = D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR;
-				}
-				else
-				{
-					g_glassInput.params.extraScaleAmount = 1.f;
-					g_glassInput.params.prescaleInteroplation = D2D1_SCALE_INTERPOLATION_MODE_FORCE_DWORD;
-					g_glassInput.params.optimization = Shared::g_blurOptimization;
-					g_glassInput.drawImageInterpolationMode = D2D1_INTERPOLATION_MODE_LINEAR;
-				}
+				g_samplingWorldBounds = g_drawingWorldBounds;
+				g_samplingWorldBounds.left -= extendedAmount;
+				g_samplingWorldBounds.top -= extendedAmount;
+				g_samplingWorldBounds.right += extendedAmount;
+				g_samplingWorldBounds.bottom += extendedAmount;
+				RectF::IntersectUnsafe(g_samplingWorldBounds, renderTargetBounds);
+				g_samplingWorldBoundsWithShapeClipped = g_samplingWorldBounds;
+				RectF::IntersectUnsafe(g_samplingWorldBoundsWithShapeClipped, shapeWorldBounds);
 
-				g_glassInput.sourceBitmap = renderTargetBitmap.get();
+				g_glassInput.params.optimization = Shared::g_blurOptimization;
 				g_glassInput.rectangles = std::span{ rectangles.get(), rectanglesCount };
 				g_glassInput.buffer = &g_currentDeviceResources->m_buffer;
 				// effect settings
@@ -534,6 +550,7 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				g_glassInput.params.afterglowBalance = afterglowBalance;
 				g_glassInput.params.blurBalance = blurBalance;
 
+				LOG_IF_FAILED(drawingContext->FlushD2D());
 				g_renderFlag.set(RenderFlag_Backdrop, true);
 			}
 			else
@@ -569,34 +586,35 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 			}
 		}
 
-		if (!g_renderFlag.any())
+		if (!g_renderFlag.test(RenderFlag_Backdrop))
 		{
 			color.a *= opacity;
 			if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), color)))
 			{
-				if (!g_currentDeviceResources->m_brush)
-				{
-					context->CreateSolidColorBrush({}, g_currentDeviceResources->m_brush.put());
-				}
-				g_currentDeviceResources->m_brush->SetColor(color);
-				drawingContext->FillShapeWithBrush(renderingShape.get(), g_currentDeviceResources->m_brush.get());
+				g_renderFlag.set(RenderFlag_SolidColor, true);
 			}
 		}
 	}
 
 	if (g_renderFlag.any())
 	{
+		if (!g_currentDeviceResources->m_brush)
+		{
+			RETURN_IF_FAILED(context->CreateSolidColorBrush({}, g_currentDeviceResources->m_brush.put()));
+		}
+		g_currentDeviceResources->m_brush->SetColor(color);
+
 		if (!g_ID2D1DeviceContext_FillGeometry_Org)
 		{
 			g_ID2D1DeviceContext_FillGeometry_Org_Address = reinterpret_cast<decltype(g_ID2D1DeviceContext_FillGeometry_Org_Address)>(&HookHelper::vftbl_of(context)[0x17]);
 			HookHelper::WritePointer(
-				g_ID2D1DeviceContext_FillGeometry_Org_Address, 
+				g_ID2D1DeviceContext_FillGeometry_Org_Address,
 				MyID2D1DeviceContext_FillGeometry,
 				&g_ID2D1DeviceContext_FillGeometry_Org
 			);
 		}
 
-		return drawingContext->FillShapeWithBrush(renderingShape.get(), nullptr);
+		return drawingContext->FillShapeWithBrush(renderingShape.get(), g_currentDeviceResources->m_brush.get());
 	}
 
 	return S_OK;
@@ -609,9 +627,13 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	ID2D1Brush* opacityBrush
 )
 {
-	if (brush || !g_currentDeviceResources)
+	if (!g_currentDeviceResources)
 	{
 		return g_ID2D1DeviceContext_FillGeometry_Org(This, geometry, brush, opacityBrush);
+	}
+	if (g_renderFlag.test(RenderFlag_SolidColor))
+	{
+		g_ID2D1DeviceContext_FillGeometry_Org(This, geometry, brush, opacityBrush);
 	}
 
 	const auto primitiveBlend = This->GetPrimitiveBlend();
@@ -642,12 +664,39 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	}
 	if (g_renderFlag.test(RenderFlag_Backdrop))
 	{
-		LOG_IF_FAILED(
-			g_currentDeviceResources->m_glassRealizer.Render(
-				This,
-				g_glassInput
-			)
-		);
+		if (!Shared::g_useD3DRendering)
+		{
+			LOG_IF_FAILED(
+				g_currentDeviceResources->m_glassRealizer.Render(
+					This,
+					g_glassInput
+				)
+			);
+		}
+		else
+		{
+			#pragma warning(suppress:26813)
+			if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				const auto deviceTarget = g_drawingContextNoRef->GetDeviceTarget();
+				const auto deviceTexture = deviceTarget->GetDeviceTexture();
+
+				LOG_IF_FAILED(
+					g_currentDeviceResources->m_d3dGlassRealizer.Render(
+						g_drawingContextNoRef->GetD3DDevice()->GetDevice(),
+						g_drawingContextNoRef->GetD3DDevice()->GetImmediateContext(),
+						deviceTexture->GetTexture2D(),
+						deviceTarget->GetRenderTargetView(),
+						deviceTexture->GetShaderResourceView(),
+						geometry,
+						g_drawingWorldBounds,
+						g_samplingWorldBounds,
+						g_glassInput.params,
+						g_shapeIsRectangles
+					)
+				);
+			}
+		}
 
 		if (Shared::g_materialIntensity)
 		{
@@ -740,18 +789,29 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCWindowNode_RenderImage(
 	const auto hwnd = This->GetHwnd();
 	if (
 		(
-			RegisterWindowMessageW(L"WorkerW") == GetClassWord(hwnd, GCW_ATOM) ||
-			RegisterWindowMessageW(L"Progman") == GetClassWord(hwnd, GCW_ATOM)
-		) &&
-		FindWindowExW(hwnd, nullptr, L"SHELLDLL_DefView", nullptr)
+			(
+				RegisterWindowMessageW(L"WorkerW") == GetClassWord(hwnd, GCW_ATOM) ||
+				RegisterWindowMessageW(L"Progman") == GetClassWord(hwnd, GCW_ATOM)
+			) &&
+			FindWindowExW(hwnd, nullptr, L"SHELLDLL_DefView", nullptr)
+		) ||
+		(
+			RegisterWindowMessageW(L"SHELLDLL_DefView") == GetClassWord(hwnd, GCW_ATOM) &&
+			RegisterWindowMessageW(L"Progman") == GetClassWord(GetParent(hwnd), GCW_ATOM)
+		)
 	)
 	{
 		LOG_IF_FAILED(drawingContext->FlushD2D());
 
-		const auto d2dContext = drawingContext->GetD2DContext();
+		const auto d2dContext = drawingContext->GetD3DDevice()->GetD2DContext();
 		const auto context = d2dContext->GetDeviceContext();
 		const auto lockScope = g_lock.lock();
 		if (g_disabled)
+		{
+			return S_OK;
+		}
+
+		if (!context)
 		{
 			return S_OK;
 		}
@@ -854,6 +914,8 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCWindowNode_RenderImage(
 			static_cast<float>(monitorInfo.rcWork.right) - 9.f - wil::rect_width(g_textLayoutBox) - 24.f,
 			static_cast<float>(monitorInfo.rcWork.bottom) - 9.f - wil::rect_height(g_textLayoutBox) - 24.f,
 		};
+		const auto deviceTransform = drawingContext->GetDeviceTransform()->GetD2DMatrix();
+		origin = D2D1::Matrix3x2F::ReinterpretBaseType(&deviceTransform)->TransformPoint(origin);
 		context->DrawImage(
 			deviceResources.m_textGlowImage.get(),
 			&origin,
@@ -1066,7 +1128,7 @@ void GlassRenderer::Startup()
 
 	if (!g_drawGeometryCommandType)
 	{
-		switch (dwmcore::g_buildNumber)
+		switch (dwmcore::g_versionInfo.build)
 		{
 		case os::build_w10_2004:
 		{
@@ -1125,6 +1187,7 @@ void GlassRenderer::Startup()
 		} while (i);
 	}
 	g_glassInput.drawingWorldBounds = &g_drawingWorldBounds;
+	g_glassInput.samplingWorldBoundsShapeClipped = &g_samplingWorldBoundsWithShapeClipped;
 
 #ifdef BUILD_BETA
 	THROW_IF_FAILED(
@@ -1150,7 +1213,7 @@ void GlassRenderer::Startup()
 	THROW_IF_FAILED(g_dwriteTextFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP));
 	std::wstring watermarkText
 	{
-		L"Aero Glass For Windows 10+ (Beta 01) \n"
+		L"Aero Glass For Windows 10+ (Test 15) \n"
 		L"For testing purposes only. Do not distribute. \n"
 		L"https://github.com/ALTaleX531/OpenGlass "
 	};
@@ -1179,7 +1242,7 @@ void GlassRenderer::Startup()
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
-			if (dwmcore::g_buildNumber < os::build_w11_21h2)
+			if (dwmcore::g_versionInfo.build < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Attach(&g_CRenderData_TryDrawCommandAsDrawList_Org, MyCRenderData_TryDrawCommandAsDrawList_Win10);
 			}
@@ -1188,14 +1251,14 @@ void GlassRenderer::Startup()
 				HookHelper::Detours::Attach(&g_CRenderData_TryDrawCommandAsDrawList_Org, MyCRenderData_TryDrawCommandAsDrawList_Win11);
 			}
 
-			if (dwmcore::g_buildNumber < os::build_w11_21h2)
+			if (dwmcore::g_versionInfo.build < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Attach(
 					&g_CRenderData_DrawImageResource_FillMode_Org,
 					MyCRenderData_DrawImageResource_FillMode_Win10
 				);
 			}
-			else if (dwmcore::g_buildNumber < os::build_w11_24h2)
+			else if (dwmcore::g_versionInfo.build < os::build_w11_24h2)
 			{
 				HookHelper::Detours::Attach(
 					&g_CRenderData_DrawImageResource_FillMode_Org,
@@ -1223,7 +1286,7 @@ void GlassRenderer::Shutdown()
 	THROW_IF_FAILED(
 		HookHelper::Detours::Write([]()
 		{
-			if (dwmcore::g_buildNumber < os::build_w11_21h2)
+			if (dwmcore::g_versionInfo.build < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Detach(&g_CRenderData_TryDrawCommandAsDrawList_Org, MyCRenderData_TryDrawCommandAsDrawList_Win10);
 			}
@@ -1232,14 +1295,14 @@ void GlassRenderer::Shutdown()
 				HookHelper::Detours::Detach(&g_CRenderData_TryDrawCommandAsDrawList_Org, MyCRenderData_TryDrawCommandAsDrawList_Win11);
 			}
 
-			if (dwmcore::g_buildNumber < os::build_w11_21h2)
+			if (dwmcore::g_versionInfo.build < os::build_w11_21h2)
 			{
 				HookHelper::Detours::Detach(
 					&g_CRenderData_DrawImageResource_FillMode_Org,
 					MyCRenderData_DrawImageResource_FillMode_Win10
 				);
 			}
-			else if (dwmcore::g_buildNumber < os::build_w11_24h2)
+			else if (dwmcore::g_versionInfo.build < os::build_w11_24h2)
 			{
 				HookHelper::Detours::Detach(
 					&g_CRenderData_DrawImageResource_FillMode_Org,

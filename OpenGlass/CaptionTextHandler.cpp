@@ -921,7 +921,7 @@ void CaptionTextHandler::DestroyDeviceResources()
 	g_textGlowRT = nullptr;
 	g_textGlowD2DBitmap = nullptr;
 
-	if (uDWM::g_buildNumber < os::build_w11_22h2)
+	if (uDWM::g_versionInfo.build < os::build_w11_22h2)
 	{
 		return;
 	}
@@ -973,7 +973,7 @@ void CaptionTextHandler::Startup()
 		return;
 	}
 
-	if (uDWM::g_buildNumber < os::build_w11_22h2)
+	if (uDWM::g_versionInfo.build < os::build_w11_22h2)
 	{
 		wil::unique_hmodule wincodecsMoudle{ LoadLibraryExW(L"WindowsCodecs.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32) };
 		THROW_LAST_ERROR_IF_NULL(wincodecsMoudle);
@@ -1071,7 +1071,7 @@ void CaptionTextHandler::Shutdown()
 		return;
 	}
 
-	if (uDWM::g_buildNumber < os::build_w11_22h2)
+	if (uDWM::g_versionInfo.build < os::build_w11_22h2)
 	{
 		if (g_CText_scalar_deleting_destructor_Org)
 		{

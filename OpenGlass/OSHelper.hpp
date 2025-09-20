@@ -192,26 +192,12 @@ namespace OpenGlass::os
 		build_w11_22h2 = 22621,
 		build_w11_23h2 = 22631,
 		build_w11_24h2 = 26100,
+		build_w11_25h2 = 26200,
 	};
-	constexpr auto build_min = build_w10_2004;
-	constexpr auto build_max = build_w11_23h2;
-
-	FORCEINLINE bool IsOpenGlassSupported()
+	enum os_revision : ULONG
 	{
-		const std::array supportList
-		{
-			build_w10_2004,
-			build_w10_20h2,
-			build_w10_21h1,
-			build_w10_21h2,
-			build_w10_22h2,
-			build_w11_21h2,
-			build_w11_22h2,
-			build_w11_23h2,
-			build_w11_24h2,
-		};
-		return std::find(supportList.begin(), supportList.end(), os::buildNumber) != supportList.end();
-	}
+		revision_24h2_with_25h2_code_staged = 4484
+	};
 }
 
 #pragma warning(pop)

@@ -75,7 +75,7 @@ STDAPI StartupService() noexcept
 	HRESULT hr
 	{
 		rootFolder->GetTask(
-			_bstr_t{L"OpenGlass Legacy Host"},
+			_bstr_t{L"OpenGlass Host"},
 			registeredTask.put()
 		)
 	};
@@ -121,7 +121,7 @@ STDAPI ShutdownService() noexcept
 	HRESULT hr
 	{
 		rootFolder->GetTask(
-			_bstr_t{L"OpenGlass Legacy Host"},
+			_bstr_t{L"OpenGlass Host"},
 			registeredTask.put()
 		)
 	};
@@ -207,7 +207,7 @@ STDAPI InstallApp() noexcept
 	winrt::com_ptr<IRegisteredTask> registeredTask{ nullptr };
 	RETURN_IF_FAILED(
 		rootFolder->RegisterTaskDefinition(
-			_bstr_t{ L"OpenGlass Legacy Host" },
+			_bstr_t{ L"OpenGlass Host" },
 			taskDefinition.get(),
 			TASK_CREATE_OR_UPDATE,
 			_variant_t{},
@@ -232,7 +232,7 @@ STDAPI InstallApp() noexcept
 		wil::reg::set_value_string_nothrow(
 			key.get(),
 			nullptr,
-			L"OpenGlass Legacy Host"
+			L"OpenGlass Host"
 		)
 	);
 	RETURN_IF_FAILED(
@@ -255,7 +255,7 @@ STDAPI InstallApp() noexcept
 		wil::reg::set_value_string_nothrow(
 			key.get(),
 			nullptr,
-			L"OpenGlass Legacy Host"
+			L"OpenGlass Host"
 		)
 	);
 	RETURN_IF_FAILED(
@@ -326,7 +326,7 @@ STDAPI UninstallApp() noexcept
 	HRESULT hr
 	{
 		rootFolder->DeleteTask(
-			_bstr_t{ L"OpenGlass Legacy Host" },
+			_bstr_t{ L"OpenGlass Host" },
 			0
 		)
 	};

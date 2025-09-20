@@ -11,12 +11,11 @@ namespace OpenGlass
 	struct CGlassInput
 	{
 		CAeroParams params;
-		D2D1_INTERPOLATION_MODE drawImageInterpolationMode;
 
 		const D2D1_RECT_F* drawingWorldBounds;
+		const D2D1_RECT_F* samplingWorldBoundsShapeClipped;
 		std::span<D2D1_RECT_F> rectangles;
 
-		ID2D1Bitmap1* sourceBitmap;
 		CD2DBuffer* buffer;
 		bool zeroCopyOptimization;
 	};

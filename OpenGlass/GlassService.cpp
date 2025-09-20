@@ -10,8 +10,9 @@ using namespace OpenGlass;
 namespace OpenGlass::GlassService
 {
 	typedef wil::unique_any<PACL, decltype(&::LocalFree), ::LocalFree> unique_hlocal_acl;
-	constexpr auto c_pipeName = L"\\\\.\\pipe\\Global\\OpenGlassLegacyHostPipe";
+	constexpr auto c_pipeName = L"\\\\.\\pipe\\Global\\OpenGlassHostPipe";
 	std::unordered_map<DWORD, std::chrono::steady_clock::time_point> g_dwmInjectionMap{};
+	std::unordered_set<DWORD> g_dwmInjectionBlackList{};
 
 	ThreadStatus g_injectionThreadStatus{ ThreadStatus::Stopped };
 	ThreadStatus g_serverThreadStatus{ ThreadStatus::Stopped };
@@ -140,7 +141,7 @@ HRESULT GlassService::InjectOpenGlassDLL(DWORD processId, bool inject)
 		RETURN_IF_WIN32_BOOL_FALSE(WriteProcessMemory(processHandle.get(), remoteAddress, static_cast<LPCVOID>(Util::g_thisModulePath.c_str()), bufferSize, nullptr));
 	}
 
-	static const auto s_pfnNtCreateThreadEx = reinterpret_cast<NTSTATUS(NTAPI*)(PHANDLE, ACCESS_MASK, LPVOID, HANDLE, LPTHREAD_START_ROUTINE, LPVOID, ULONG, SIZE_T, SIZE_T, SIZE_T, LPVOID)>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtCreateThreadEx"));
+	static const auto sc_pfnNtCreateThreadEx = reinterpret_cast<NTSTATUS(NTAPI*)(PHANDLE, ACCESS_MASK, LPVOID, HANDLE, LPTHREAD_START_ROUTINE, LPVOID, ULONG, SIZE_T, SIZE_T, SIZE_T, LPVOID)>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtCreateThreadEx"));
 	
 	wil::unique_handle threadHandle{ nullptr };
 	const auto startRoutine =
@@ -153,7 +154,7 @@ HRESULT GlassService::InjectOpenGlassDLL(DWORD processId, bool inject)
 		);
 	NTSTATUS ntstatus
 	{ 
-		s_pfnNtCreateThreadEx(
+		sc_pfnNtCreateThreadEx(
 			threadHandle.put(), 
 			PROCESS_ALL_ACCESS, 
 			nullptr, 
@@ -189,7 +190,7 @@ HRESULT GlassService::InjectOpenGlassDLL(DWORD processId, bool inject)
 			RETURN_HR(E_ACCESSDENIED);
 		}
 
-		ntstatus = s_pfnNtCreateThreadEx(
+		ntstatus = sc_pfnNtCreateThreadEx(
 			threadHandle.put(), 
 			PROCESS_ALL_ACCESS, 
 			nullptr, 
@@ -354,7 +355,7 @@ HRESULT GlassService::RunInjectionThread()
 				return true;
 			}
 
-			if (!IsDwmProcess(processId))
+			if (!IsDwmProcess(processId) || g_dwmInjectionBlackList.find(processId) != g_dwmInjectionBlackList.end())
 			{
 				return true;
 			}
@@ -397,6 +398,7 @@ HRESULT GlassService::RunInjectionThread()
 						if (response == IDIGNORE)
 						{
 							g_dwmInjectionMap.erase(it);
+							g_dwmInjectionBlackList.emplace(processId);
 							return false;
 						}
 					}

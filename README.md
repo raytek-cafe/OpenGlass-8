@@ -3,16 +3,22 @@
 This utility returns the full glass effect to the window frame, just like [glass8](http://www.msfn.org/board/forum/180-aero-glass-for-windows-8/) did.
 
 > [!NOTE]  
-> Currently only the following **official** versions of **64-bit** Windows (not including server edition) are fully supported.
+> Currently only the following **64-bit** Windows (not including server edition) from general availability channel are fully supported.
 > - Windows 10 20H2
 > - Windows 10 21H2
 > - Windows 10 22H2
 > - Windows 11 21H2
 > - Windows 11 22H2
 > - Windows 11 23H2
-> - ~~Windows 11 24h2~~
+> - Windows 11 24H2
+> - Windows 11 25H2
 > 
-> Windows 11 24H2 has very weird version control, simply detecting the build number is no longer enough, function inlining behavior, and class member offsets may change at every revision number. This means that if you're using 24H2, OpenGlass might work for you—but it's more likely that it won't.
+> Tested on:
+> - Windows 10 22H2 19045.5131 [x]
+> - Windows 11 21H2 22000.2416 [x]
+> - Windows 11 22H2 22621.3296 [x]
+> - Windows 11 24H2 26100.6584 [x]
+> - Windows 11 25H2 26200.6584 [x]
 
 > [!IMPORTANT]  
 > This software is intended for advanced users only. If you are a beginner and you do not have deeper knowledge of Windows (such as registry editing etc.) you should not install this software.  
@@ -25,7 +31,7 @@ This utility returns the full glass effect to the window frame, just like [glass
 4. When you use it for the first time or just after updating your system, OpenGlass will try to download the symbol files and you will see its symbol downloading dialog, just be patient for about 15s. When the symbol files are ready, enjoy!
 5. If OpenGlass is unable to download symbols, you can try running the `symchk-prepare-symbols.cmd`.
 6. When you want to stop using OpenGlass or update the version of OpenGlass, running `shutdown.cmd` will remove the effects of OpenGlass for you and exit the host process. At this time, you can either replace the OpenGlass files or continue to run `uninstall.cmd` and manually delete the remaining files to complete the uninstallation.
-7. When your desktop freezes, you can try pressing <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> to force the DWM process to terminate and generate a crash dump.
+7. When your desktop freezes, you can try pressing <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> to force the DWM process to terminate and generate a crash dump.
 8. When you experience a crash, OpenGlass is supposed to generate a large memory dump file in the `dumps` directory of the folder where it is located, please submit it to the developer if possible, this can help fix known or potential issues.
 
 ## What are the DWM symbols and where to get them? <br>I see "Your DWM is incompatible" message. What to do?
@@ -73,7 +79,9 @@ You can change the settings of OpenGlass via editing the Windows registry.
 | BlurOptimization | DWORD | Quality of gaussian blur<br><br><ul><li>0x0=Speed first (default)</li><li>0x1=Balance</li><li>0x2=Quality first</li></ul>  |
 | RoundRectRadius | DWORD | The radius of glass geometry, Win8=0, Win7=6 | 
 | CustomThemeMaterial | String | path to file with texture that is rendered (tiled) above glass regions (default is Acrylic noise texture) |
-| MaterialOpacity  | DWORD | opacity of material texture (default = 0) |
+| MaterialOpacity | DWORD | opacity of material texture (default = 0) |
+| UseDirect3DRendering | DWORD | Set 1 to use d3d11 as glass renderer backend. (default = 0)<br><br>ℹ️ Only valid when `GlassType`=0x1 |
+| GlassSafetyZoneMode | DWORD | Set 0 to disable glass safety zone. (default = 1) |
 
 ### Theme settings
 | Key Name | Type | Description | 
