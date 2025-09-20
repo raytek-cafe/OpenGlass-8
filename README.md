@@ -14,11 +14,11 @@ This utility returns the full glass effect to the window frame, just like [glass
 > - Windows 11 25H2
 > 
 > Tested on:
-> - Windows 10 22H2 19045.5131 [x]
-> - Windows 11 21H2 22000.2416 [x]
-> - Windows 11 22H2 22621.3296 [x]
-> - Windows 11 24H2 26100.6584 [x]
-> - Windows 11 25H2 26200.6584 [x]
+> - [x] Windows 10 22H2 Build 19045.5131 
+> - [x] Windows 11 21H2 Build 22000.2416 
+> - [x] Windows 11 22H2 Build 22621.3296 
+> - [x] Windows 11 24H2 Build 26100.6584 
+> - [x] Windows 11 25H2 Build 26200.6584 
 
 > [!IMPORTANT]  
 > This software is intended for advanced users only. If you are a beginner and you do not have deeper knowledge of Windows (such as registry editing etc.) you should not install this software.  
