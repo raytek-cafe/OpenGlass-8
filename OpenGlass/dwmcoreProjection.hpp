@@ -92,18 +92,6 @@ namespace OpenGlass::dwmcore
 			return HANDLE_PROJECTION_FUNCTION(CMatrixStack::GetTopByReference);
 		}
 	};
-	struct CBaseClipStack
-	{
-		DECLSPEC_PROJECTION D2D1_RECT_F STDMETHODCALLTYPE Clip(
-			const D2D1_RECT_F& inputRect
-		) const
-		{
-			return HANDLE_PROJECTION_FUNCTION(
-				CBaseClipStack::Clip,
-				inputRect
-			);
-		}
-	};
 
 	struct CZOrderedRect
 	{
@@ -693,10 +681,6 @@ namespace OpenGlass::dwmcore
 
 			return result;
 		}
-		DECLSPEC_PROJECTION CBaseClipStack* GetClipStack() const
-		{
-			return Util::PointerExecuteUnsafe<COcclusionContext_GetClipStack_Offsets, Util::OffsetBy<CBaseClipStack* const>>(this, g_versionInfo.build, g_versionInfo.revision);
-		}
 		DECLSPEC_PROJECTION CArrayBasedCoverageSet* GetArrayBasedCoverageSet() const
 		{
 			return Util::PointerExecuteUnsafe<COcclusionContext_GetArrayBasedCoverageSet_Offsets, Util::OffsetBy<CArrayBasedCoverageSet* const>>(this, g_versionInfo.build, g_versionInfo.revision);
@@ -760,7 +744,6 @@ namespace OpenGlass::dwmcore
 		MAKE_VARIABLE_PROJECTION_TUPLE(CMILMatrix::Identity, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CMILMatrix::Multiply, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CMatrixStack::GetTopByReference, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CBaseClipStack::Clip, 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::CopyShape, 0, 0),
 

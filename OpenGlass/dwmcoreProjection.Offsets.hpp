@@ -563,33 +563,6 @@ namespace OpenGlass::dwmcore
 			};
 		}
 	};
-	struct COcclusionContext_GetClipStack_Offsets
-	{
-		consteval static auto operator()()
-		{
-			return std::array
-			{
-				Util::OffsetInfo
-				{
-					.offset = 136,
-					.build = os::build_w11_21h2,
-					.revision = 0
-				},
-				Util::OffsetInfo
-				{
-					.offset = 144,
-					.build = os::build_w11_24h2,
-					.revision = 0
-				},
-				Util::OffsetInfo
-				{
-					.offset = 128,
-					.build = 0,
-					.revision = 0
-				}
-			};
-		}
-	};
 	struct COcclusionContext_GetArrayBasedCoverageSet_Offsets
 	{
 		consteval static auto operator()()

@@ -528,7 +528,6 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_DrawGeometry(
 		{
 			D2D1_RECT_F bounds{};
 			RETURN_IF_FAILED(geometryShape->GetTightBounds(&bounds, occlusionContext->GetWorldTransform()));
-			bounds = occlusionContext->GetClipStack()->Clip(bounds);
 			if (
 				!wil::rect_is_empty(bounds) &&
 				std::fabs(wil::rect_height(bounds) * wil::rect_width(bounds)) > 1.f
