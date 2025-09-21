@@ -1258,7 +1258,7 @@ void GlassRenderer::Startup()
 					MyCRenderData_DrawImageResource_FillMode_Win10
 				);
 			}
-			else if (dwmcore::g_versionInfo.build < os::build_w11_24h2)
+			else if (Util::VersionBefore<os::build_w11_24h2, os::revision_24h2_rtm_1>(dwmcore::g_versionInfo.build, dwmcore::g_versionInfo.revision))
 			{
 				HookHelper::Detours::Attach(
 					&g_CRenderData_DrawImageResource_FillMode_Org,
@@ -1302,7 +1302,7 @@ void GlassRenderer::Shutdown()
 					MyCRenderData_DrawImageResource_FillMode_Win10
 				);
 			}
-			else if (dwmcore::g_versionInfo.build < os::build_w11_24h2)
+			else if (Util::VersionBefore<os::build_w11_24h2, os::revision_24h2_rtm_1>(dwmcore::g_versionInfo.build, dwmcore::g_versionInfo.revision))
 			{
 				HookHelper::Detours::Detach(
 					&g_CRenderData_DrawImageResource_FillMode_Org,

@@ -196,6 +196,7 @@ namespace OpenGlass::os
 	};
 	enum os_revision : ULONG
 	{
+		revision_24h2_rtm_1 = 2454,
 		revision_24h2_with_25h2_code_staged = 4484
 	};
 }
