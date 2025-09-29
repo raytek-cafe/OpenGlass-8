@@ -118,6 +118,7 @@ namespace OpenGlass::GlassFrameHandler
 	std::unordered_map<UCHAR*, std::vector<UCHAR>> g_instructionsToReplace{};
 	std::unordered_map<UCHAR*, std::vector<UCHAR>> g_instructionsBackup{};
 	
+	uDWM::CTopLevelWindow* g_window{ nullptr };
 	wil::unique_hrgn g_combinedRgn{ nullptr };
 	RECT g_roundedBounds{};
 	bool g_systemBackdrop{ false };
@@ -415,8 +416,18 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCGlassColorizationParameters_Adju
 )
 {
 	const auto active = (flag & 1) != 0;
+	const auto maximized = g_window ? g_window->TreatAsMaximized() : false;
 
-	This->color = Color::ToArgb(GlassKernel::CalculateWindowColorization(active));
+	This->color = Color::ToArgb(
+		GlassKernel::RealizeWindowColorization(
+			GlassKernel::GetBlendingBaseColor(Shared::IsTransparencyDisabled(), Shared::IsOpaqueOnMaximized(maximized)),
+			GlassKernel::GetBlendingSourceColor(active),
+			GlassKernel::GetColorizationBlendingOpacity(active, maximized),
+			Shared::IsTransparencyDisabled() || Shared::IsOpaqueOnMaximized(maximized),
+			false
+		).effectiveBlendColor
+	);
+	//This->color = Color::ToArgb(GlassKernel::CalculateWindowColorization(active, maximized));
 	This->afterglow = 0;
 	This->colorBalance = 100;
 	This->afterglowBalance = 0;
@@ -609,7 +620,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaBackg
 		}
 
 		auto color = This->GetCaptionColorizationParameters()->getArgbcolor();
-		color.a = active ? 0.50f : 0.25f;
+		color.a = GlassKernel::AlphaChannelReinterpreter(active, This->TreatAsMaximized()).ToFloat();
 		if (auto captionBrush = This->GetCaptionBrush(); captionBrush)
 		{
 			RETURN_IF_FAILED(captionBrush->Update(1.0, color));
@@ -721,7 +732,7 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateClientBlur(
 	const auto hr = g_CTopLevelWindow_UpdateClientBlur_Org(This);
 	const auto active = This->TreatAsActiveWindow();
 	auto color = This->GetCaptionColorizationParameters()->getArgbcolor();
-	color.a = active ? 0.50f : 0.25f;
+	color.a = GlassKernel::AlphaChannelReinterpreter(active, This->TreatAsMaximized()).ToFloat();
 
 	if (auto clientBlurBrush = This->GetClientBlurBrush(); clientBlurBrush)
 	{
@@ -847,8 +858,10 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_ValidateVisual(uD
 		return g_CTopLevelWindow_ValidateVisual_Org(This);
 	}
 
+	g_window = This;
 	const auto updateReflectionBeforeLeave = wil::scope_exit([This]
 	{
+		g_window = nullptr;
 		LOG_IF_FAILED(UpdateReflectionViewport(This));
 	});
 
@@ -1155,7 +1168,7 @@ void GlassFrameHandler::Startup()
 	g_ExtCreateRegion_Org = reinterpret_cast<decltype(g_ExtCreateRegion_Org)>(HookHelper::WriteIAT(uDWM::g_moduleHandle, "gdi32.dll", "ExtCreateRegion", MyExtCreateRegion));
 
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Attach(&g_CGlassColorizationParameters_AdjustWindowColorization_Org, MyCGlassColorizationParameters_AdjustWindowColorization);
 			HookHelper::Detours::Attach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);
@@ -1192,7 +1205,7 @@ void GlassFrameHandler::Shutdown()
 	}
 
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Detach(&g_CGlassColorizationParameters_AdjustWindowColorization_Org, MyCGlassColorizationParameters_AdjustWindowColorization);
 			HookHelper::Detours::Detach(&g_ResourceHelper_CreateGeometryFromHRGN_Org, MyResourceHelper_CreateGeometryFromHRGN);

@@ -223,7 +223,7 @@ HRESULT GlassService::ControlThread(
 	{
 		RETURN_LAST_ERROR_IF(
 			QueueUserAPC(
-				[](ULONG_PTR status)
+				[](ULONG_PTR status) static
 				{
 					g_injectionThreadStatus = static_cast<ThreadStatus>(status);
 				},
@@ -281,7 +281,7 @@ HRESULT GlassService::RunInjectionThread()
 	#pragma warning(suppress:6387)
 	RETURN_IF_NTSTATUS_FAILED(RtlAdjustPrivilege(SE_DEBUG_PRIVILEGE, true, false, &result));
 
-	auto WalkDwmProcesses = [](std::function<bool(DWORD)>&& callback)
+	auto WalkDwmProcesses = [](std::function<bool(DWORD)>&& callback) static
 	{
 		wil::unique_handle snapshot{ CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
 		PROCESSENTRY32W pe{ sizeof(pe) };
@@ -418,7 +418,7 @@ HRESULT GlassService::RunInjectionThread()
 	} 
 	while (g_injectionThreadStatus != ThreadStatus::Stopped);
 
-	WalkDwmProcesses([](DWORD processId) -> bool
+	WalkDwmProcesses([](DWORD processId) static -> bool
 	{
 		if (IsOpenGlassAlreadyLoaded(processId))
 		{

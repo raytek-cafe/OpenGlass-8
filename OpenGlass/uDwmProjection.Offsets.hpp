@@ -251,6 +251,15 @@ namespace OpenGlass::uDWM
 			};
 		}
 	};
+	struct CWindowData_GetClientBlurAttribute_Offsets {
+		consteval static auto operator()() {
+			return std::array{
+				Util::OffsetInfo{ .offset = 609, .build = os::build_w11_21h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 665, .build = os::build_w11_22h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 673, .build = 0, .revision = 0 }
+			};
+		}
+	};
 	struct CWindowData_GetExtendedFrameMargins_Offsets {
 		consteval static auto operator()(){
 			return std::array{
@@ -604,6 +613,7 @@ namespace OpenGlass::uDWM
 	struct CDesktopManager_GetWindowList_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 61 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 52 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 54 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 53 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_GetWICFactory_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 39 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 30 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 31 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 30 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_GetIsHighContrastMode_BoolIndex_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 26, .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 27, .build = 0, .revision = 0 } }; } };
+	struct CDesktopManager_HasMaximizedWindows_BoolIndex_Offsets { consteval static auto operator()() { return std::array{ Util::OffsetInfo{ .offset = 21, .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_GetDPIValue_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 60 * (LONGLONG)sizeof(double), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 51 * (LONGLONG)sizeof(double), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 53 * (LONGLONG)sizeof(double), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 52 * (LONGLONG)sizeof(double), .build = 0, .revision = 0 } }; } };
 
 	// Pre-21H2 direct fields on DesktopManager

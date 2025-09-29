@@ -34,8 +34,8 @@ IDB_REFLECTION          PNG                     "reflection.png"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 2,2,2,2046
- PRODUCTVERSION 2,2,2,2046
+ FILEVERSION 2,3,0,2079
+ PRODUCTVERSION 2,3,0,2079
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -52,12 +52,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "ALTaleX"
             VALUE "FileDescription", "Aero Glass extension for Desktop Window Manager"
-            VALUE "FileVersion", "2.2.2.2046"
+            VALUE "FileVersion", "2.3.0.2079"
             VALUE "InternalName", "Aero Glass for Win10+"
             VALUE "LegalCopyright", "Copyright (C) 2024-2025 ALTaleX"
             VALUE "OriginalFilename", "OpenGlass.dll"
             VALUE "ProductName", "Aero Glass for Win10+"
-            VALUE "ProductVersion", "2.2.2.2046"
+            VALUE "ProductVersion", "2.3.0.2079"
         END
     END
     BLOCK "VarFileInfo"
@@ -122,9 +122,9 @@ BEGIN
     IDS_STRING103           "显示详细信息"
     IDS_STRING104           "隐藏详细信息"
     IDS_STRING105           "该版本的 OpenGlass 不支持您的系统。\n仍然继续吗？"
-    IDS_STRING106           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM (0x%X)。\n\n我们尝试从微软服务器下载合适的符号文件，但是失败了。\n您现在想再试一次吗？"
+    IDS_STRING106           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM (0x%X)。\n\n我们尝试从微软服务器下载合适的符号文件，但是失败了。\n您现在想再试一次吗？\n\n!!! 不要反馈因为这不是BUG !!!"
     IDS_STRING107           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM (0x%X)。\n\nDbgHelp API 在解析符号过程中出现错误。\n您现在想再试一次吗？"
-    IDS_STRING108           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM (0x80004001)。\n\n!!! 这不是BUG而是目前不支持你的系统 !!!"
+    IDS_STRING108           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM 因必要符号的缺失。\n\n!!! 这不是BUG而是目前不支持你的系统 !!!"
     IDS_STRING109           "DWM 在注入后不到 30 秒崩溃，DLL 注入已暂停。\n\n要中止 OpenGlass 服务进程以结束之后所有的注入，请单击“中止”。\n要再试一次，请单击“重试”。\n要排除这个 DWM 进程，请点击“忽略”。"
     IDS_STRING110           "该任务会为您将 DLL 注入 DWM，并确保 OpenGlass 能正确加载用户配置。"
     IDS_STRING111           "正在下载符号文件..."
@@ -152,10 +152,10 @@ BEGIN
     IDS_STRING103           "顯示詳細資訊"
     IDS_STRING104           "隱藏詳細資訊"
     IDS_STRING105           "該版本的 OpenGlass 不支援閣下的系統。\n仍然繼續嗎？"
-    IDS_STRING106           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM (0x%X)。\n\n我們嘗試從 Microsoft 伺服器下載合適的符號檔案，但是失敗了。\n閣下現在想再試一次嗎？"
+    IDS_STRING106           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM (0x%X)。\n\n我們嘗試從 Microsoft 伺服器下載合適的符號檔案，但是失敗了。\n閣下現在想再試一次嗎？\n\n!!! 不要報告因爲這不是BUG !!!"
     IDS_STRING107           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM (0x%X)。\n\nDbgHelp API 在解析符號過程中出現錯誤。\n閣下現在想再試一次嗎？"
-    IDS_STRING108           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM (0x80004001)。\n\n!!! 這不是BUG而是目前不支援你的系統 !!!"
-    IDS_STRING109           "DWM 在注入后不到 30 秒崩潰，DLL 注入已暫停。\n\n要中止 OpenGlass 服務進程以結束之後一切之注入，請按一下“中止”。\n要再試一次，請按一下“重試”。\n要排除這個 DWM 進程，請按一下“忽略”。"
+    IDS_STRING108           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM 因必要符號之缺失。\n\n!!! 這不是BUG而是目前不支援你的系統 !!!"
+    IDS_STRING109           "DWM 在注入后不到 30 秒崩潰，DLL 注入已暫停。\n\n要中止 OpenGlass 服務進程以結束過後一切之注入，請按一下“中止”。\n要再試一次，請按一下“重試”。\n要排除這個 DWM 進程，請按一下“忽略”。"
     IDS_STRING110           "該任務會為閣下將 DLL 注入 DWM，並確保 OpenGlass 能正確加載用戶設定。"
     IDS_STRING111           "正在下載符號檔案..."
 END
@@ -182,9 +182,9 @@ BEGIN
     IDS_STRING103           "Show details"
     IDS_STRING104           "Hide details"
     IDS_STRING105           "Your system version is NOT supported by this version of OpenGlass. \nContinue anyway?"
-    IDS_STRING106           "OpenGlass does not know how to hook your version of DWM (0x%X).\n\nWe tried to download appropriate symbols files from Microsoft server but it failed.\nDo you want to retry it now?"
+    IDS_STRING106           "OpenGlass does not know how to hook your version of DWM (0x%X).\n\nWe tried to download appropriate symbols files from Microsoft server but it failed.\nDo you want to retry it now?\n\n!!! DO NOT REPORT THIS BECAUSE THIS IS NOT A BUG !!!"
     IDS_STRING107           "OpenGlass does not know how to hook your version of DWM (0x%X).\n\nThe DbgHelp API fails during symbol parsing.\nDo you want to retry it now?"
-    IDS_STRING108           "OpenGlass does not know how to hook your version of DWM (0x80004001).\n\n!!! THIS IS NOT A BUG BUT YOUR SYSTEM IS NOT YET SUPPORTED !!!"
+    IDS_STRING108           "OpenGlass does not know how to hook your version of DWM due to missing required symbols.\n\n!!! THIS IS NOT A BUG BUT YOUR SYSTEM IS NOT YET SUPPORTED !!!"
     IDS_STRING109           "DWM crashed less than 30 seconds after injection, DLL injection has been suspended.\n\nClick ""Abort"" to shut down the OpenGlass service process and end all subsequent injections.\nClick ""Retry"" to inject again.\nClick ""Ignore"" to exclude this DWM process."
     IDS_STRING110           "This task injects DLL into DWM for you and also maintains that user settings are correctly loaded."
     IDS_STRING111           "Downloading symbol files..."

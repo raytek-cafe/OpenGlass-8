@@ -34,14 +34,32 @@ namespace OpenGlass::Shared
 	inline D2D1_COLOR_F g_color{};
 	inline D2D1_COLOR_F g_colorInactive{};
 
+	// vista: 1.f
+	// w7: 1.f
+	inline float g_colorizationBlendingOpacity{};
+	// vista: 0.55f
+	// w7: 0.4f
+	inline float g_colorizationBlendingOpacityInactive{};
+	// vista: 0.75f
+	// w7: 1.f
+	inline float g_colorizationBlendingOpacityMaximized{};
+	// vista: 0.75f
+	// w7: 0.4f
+	inline float g_colorizationBlendingOpacityInactiveMaximized{};
+
+	inline enum OpaqueBlendPriority : UINT
+	{
+		Vista,
+		Win7
+	} g_opaqueBlendPriority{ 0 };
 	inline bool g_opaqueBlend{};
 	inline D2D1_COLOR_F g_opaqueBlendColor{};
-	// exclusively used by aero backdrop - begin
+	inline D2D1_COLOR_F g_opaqueBlendColorMaximized{};
+
 	inline float g_colorBalance{};
 	inline float g_afterglowBalance{};
 	inline float g_blurBalance{};
 	inline D2D1_COLOR_F g_afterglow{};
-	// exclusively used by aero backdrop - end
 
 	inline BITMAPINFO g_textGlowBitmapInfo{};
 	inline PVOID g_textGlowBitmapPixels{};
@@ -75,36 +93,19 @@ namespace OpenGlass::Shared
 
 		return false;
 	}
-	FORCEINLINE bool IsGlassFullyOpaque()
+	FORCEINLINE bool IsOpaqueOnMaximized(bool maximized)
 	{
-		if (IsTransparencyDisabled())
-		{
-			return true;
-		}
-		if (
-			g_type == GlassType::Blur &&
-			g_glassOpacity == 1.f &&
-			g_glassOpacityInactive == 1.f
-		)
-		{
-			return true;
-		}
-
-		return false;
+		return maximized && g_opaqueBlendColorMaximized.a != 0.f;
 	}
 	FORCEINLINE bool IsGlassFullyOpaque(
-		float glassOpacity,
+		float alpha,
 		float blurBalance,
 		float afterglowBalance
 	)
 	{
-		if (IsTransparencyDisabled())
-		{
-			return true;
-		}
 		if (
 			g_type == GlassType::Blur &&
-			glassOpacity == 1.f
+			alpha == 1.f
 		)
 		{
 			return true;

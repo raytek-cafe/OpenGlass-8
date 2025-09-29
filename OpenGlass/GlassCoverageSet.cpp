@@ -26,8 +26,9 @@ namespace OpenGlass::GlassCoverageSetFactory
 			const D2D1_RECT_F& coverage,
 			int depth
 		) const override;
-		bool STDMETHODCALLTYPE IsOverlapped(
-			const D2D1_RECT_F& coverage
+		bool STDMETHODCALLTYPE IsVisible(
+			const D2D1_RECT_F& coverage,
+			const dwmcore::CArrayBasedCoverageSet* occlusionCoverageSet
 		) const override;
 	};
 }
@@ -63,7 +64,7 @@ bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsF
 
 		if (
 			!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
-			std::fabs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
+			std::abs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
 
 			coverage.left >= zorderedRect.m_transformedRect.left &&
 			coverage.top >= zorderedRect.m_transformedRect.top &&
@@ -92,7 +93,7 @@ bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsP
 
 		if (
 			!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
-			std::fabs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
+			std::abs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
 
 			RectF::DoesIntersectUnsafe(zorderedRect.m_transformedRect, coverage)
 		)
@@ -104,17 +105,19 @@ bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsP
 	return false;
 }
 
-bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsOverlapped(
-	const D2D1_RECT_F& coverage
+bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsVisible(
+	const D2D1_RECT_F& coverage,
+	const dwmcore::CArrayBasedCoverageSet* occlusionCoverageSet
 ) const
 {
 	for (const auto& zorderedRect : m_array.views())
 	{
 		if (
 			!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
-			std::fabs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
+			std::abs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
 
-			RectF::DoesIntersectUnsafe(zorderedRect.m_transformedRect, coverage)
+			RectF::DoesIntersectUnsafe(zorderedRect.m_transformedRect, coverage) &&
+			!occlusionCoverageSet->IsCovered(coverage, zorderedRect.m_depth)
 		)
 		{
 			return true;

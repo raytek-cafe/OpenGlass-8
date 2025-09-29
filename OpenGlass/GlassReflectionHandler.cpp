@@ -376,7 +376,7 @@ void GlassReflectionHandler::Startup()
 	uDWM::g_projectionArray.ApplyToVariable("CLivePreview::_UpdateInstructions", g_CLivePreview__UpdateInstructions_Org);
 	
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 			{
@@ -401,7 +401,7 @@ void GlassReflectionHandler::Shutdown()
 	}
 
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 			{

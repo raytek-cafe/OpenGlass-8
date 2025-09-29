@@ -129,7 +129,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 )
 {
 	int result{ 0 };
-	auto drawTextCallback = [](HDC hdc, LPWSTR pszText, int cchText, LPRECT prc, UINT dwFlags, LPARAM lParam) -> int
+	auto drawTextCallback = [](HDC hdc, LPWSTR pszText, int cchText, LPRECT prc, UINT dwFlags, LPARAM lParam) static -> int
 	{
 		return *reinterpret_cast<int*>(lParam) = g_DrawTextW_Org(hdc, pszText, cchText, prc, dwFlags);
 	};
@@ -169,7 +169,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 		(LPARAM)&result
 	};
 
-	const auto calcGlowClipRect = [](LPCRECT lprc, RECT& glowClipRect, bool mirrored)
+	const auto calcGlowClipRect = [](LPCRECT lprc, RECT& glowClipRect, bool mirrored) static
 	{
 		const auto visibleMarginsLeft = g_window->GetMarginsVisibleOutside(g_window->IsWindowMaximized()).cxLeftWidth;
 		if (!mirrored)
@@ -237,7 +237,8 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 				)
 			);
 		}
-		winrt::com_ptr<ID2D1DeviceContext> context = g_textGlowRT.as<ID2D1DeviceContext>();
+		winrt::com_ptr<ID2D1DeviceContext> context{};
+		THROW_IF_FAILED(g_textGlowRT->QueryInterface(context.put()));
 		if (!g_textGlowD2DBitmap)
 		{
 			THROW_IF_FAILED(
@@ -997,7 +998,7 @@ void CaptionTextHandler::Startup()
 		uDWM::g_projectionArray.ApplyToVariable("CText::InitializeVisualTreeClone", g_CText_InitializeVisualTreeClone_Org);
 		
 		THROW_IF_FAILED(
-			HookHelper::Detours::Write([]()
+			HookHelper::Detours::Write([]() static
 			{
 				HookHelper::Detours::Attach(&g_CChannel_MatrixTransformUpdate_Org, MyCChannel_MatrixTransformUpdate);
 				HookHelper::Detours::Attach(&g_CText_ValidateResources_Org, MyCText_ValidateResources);
@@ -1026,10 +1027,13 @@ void CaptionTextHandler::Startup()
 		THROW_IF_FAILED(uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(dcompDevicePartner.put()));
 		winrt::com_ptr<abi::ICompositionGraphicsDevice> graphicsDevice{ nullptr };
 
-		const auto compositor = dcompDevicePartner.as<abi::ICompositor>();
+		winrt::com_ptr<abi::ICompositor> compositor{};
+		THROW_IF_FAILED(dcompDevicePartner->QueryInterface(compositor.put()));
 
+		winrt::com_ptr<abi::ICompositorInterop> compositorInterop{};
+		THROW_IF_FAILED(compositor->QueryInterface(compositorInterop.put()));
 		THROW_IF_FAILED(
-			compositor.as<abi::ICompositorInterop>()->CreateGraphicsDevice(
+			compositorInterop->CreateGraphicsDevice(
 				uDWM::CDesktopManager::GetInstance()->GetD2DDevice(),
 				graphicsDevice.put()
 			)
@@ -1045,7 +1049,9 @@ void CaptionTextHandler::Startup()
 		winrt::com_ptr<abi::ICompositionSurfaceBrush> surfaceBrush{ nullptr };
 		THROW_IF_FAILED(compositor->CreateSurfaceBrush(surfaceBrush.put()));
 
-		g_ICompositionSurfaceBrush2_put_Offset_Org_Address = &HookHelper::vftbl_of<decltype(g_ICompositionSurfaceBrush2_put_Offset_Org)>(surfaceBrush.as<abi::ICompositionSurfaceBrush2>().get())[11];
+		winrt::com_ptr<abi::ICompositionSurfaceBrush2> surfaceBrush2{ nullptr };
+		THROW_IF_FAILED(surfaceBrush->QueryInterface(surfaceBrush2.put()));
+		g_ICompositionSurfaceBrush2_put_Offset_Org_Address = &HookHelper::vftbl_of<decltype(g_ICompositionSurfaceBrush2_put_Offset_Org)>(surfaceBrush2.get())[11];
 		HookHelper::WritePointer(
 			g_ICompositionSurfaceBrush2_put_Offset_Org_Address,
 			MyICompositionSurfaceBrush2_put_Offset,
@@ -1056,7 +1062,7 @@ void CaptionTextHandler::Startup()
 		uDWM::g_projectionArray.ApplyToVariable("CDWriteText::InitializeVisualTreeClone", g_CDWriteText_InitializeVisualTreeClone_Org);
 
 		THROW_IF_FAILED(
-			HookHelper::Detours::Write([]()
+			HookHelper::Detours::Write([]() static
 			{
 				HookHelper::Detours::Attach(&g_CDWriteText_ValidateVisual_Org, MyCDWriteText_ValidateVisual);
 				HookHelper::Detours::Attach(&g_CDWriteText_InitializeVisualTreeClone_Org, MyCDWriteText_InitializeVisualTreeClone);
@@ -1082,7 +1088,7 @@ void CaptionTextHandler::Shutdown()
 		}
 
 		THROW_IF_FAILED(
-			HookHelper::Detours::Write([]()
+			HookHelper::Detours::Write([]() static
 			{
 				HookHelper::Detours::Detach(&g_CChannel_MatrixTransformUpdate_Org, MyCChannel_MatrixTransformUpdate);
 				HookHelper::Detours::Detach(&g_CText_ValidateResources_Org, MyCText_ValidateResources);
@@ -1124,7 +1130,7 @@ void CaptionTextHandler::Shutdown()
 		}
 
 		THROW_IF_FAILED(
-			HookHelper::Detours::Write([]()
+			HookHelper::Detours::Write([]() static
 			{
 				HookHelper::Detours::Detach(&g_CDWriteText_ValidateVisual_Org, MyCDWriteText_ValidateVisual);
 				HookHelper::Detours::Detach(&g_CDWriteText_InitializeVisualTreeClone_Org, MyCDWriteText_InitializeVisualTreeClone);

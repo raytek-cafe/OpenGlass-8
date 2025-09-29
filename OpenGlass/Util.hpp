@@ -15,11 +15,6 @@ namespace OpenGlass::Util
 		return 0 == *str ? seed : compile_time_hash(str + 1, seed ^ (*str + 0x9e3779b9 + (seed << 6) + (seed >> 2)));
 	}
 
-	FORCEINLINE auto to_error_string(HRESULT hr)
-	{
-		return winrt::hresult_error{ hr }.message();
-	}
-
 	template <typename T>
 	FORCEINLINE constexpr auto force_cast_to(PVOID ptr)
 	{

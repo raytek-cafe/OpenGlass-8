@@ -222,7 +222,7 @@ HRESULT CD3DGlassRealizer::EnsureMeshBuffersCapacity(
 	size_t& indexCapacity
 )
 {
-	auto growTo = [](size_t cur, size_t req) noexcept -> size_t 
+	auto growTo = [](size_t cur, size_t req) static noexcept -> size_t
 	{
 		if (req <= cur) return cur;
 		size_t cap = (cur == 0 ? 128ull : cur);
@@ -318,10 +318,10 @@ HRESULT CD3DGlassRealizer::Tessellate(
 	);
 
 	const auto capacity = tessellationSink->GetTriangles().size() * 3;
-	vertices.reserve(capacity);
-	indices.reserve(capacity);
+	vertices.reserve(vertices.size() + capacity);
+	indices.reserve(indices.size() + capacity);
 
-	WORD baseVertexIndex{ 0 };
+	WORD baseVertexIndex = static_cast<WORD>(vertices.size());
 	for (const auto& triangles : tessellationSink->GetTriangles())
 	{
 		vertices.emplace_back(
@@ -400,32 +400,34 @@ HRESULT CD3DGlassRealizer::Render(
 	);
 	if (!shapeIsRectangles)
 	{
+		D2D1_RECT_F geometryBounds{};
+		RETURN_IF_FAILED(geometry->GetBounds(nullptr, &geometryBounds));
 		vertices2.reserve(4);
 		indices2.reserve(6);
 
 		vertices2.emplace_back(
-			samplingWorldbounds.left,
-			samplingWorldbounds.top,
-			samplingWorldbounds.left / m_backBufferWidth,
-			samplingWorldbounds.top / m_backBufferHeight
+			geometryBounds.left,
+			geometryBounds.top,
+			geometryBounds.left / m_backBufferWidth,
+			geometryBounds.top / m_backBufferHeight
 		);
 		vertices2.emplace_back(
-			samplingWorldbounds.right,
-			samplingWorldbounds.top,
-			samplingWorldbounds.right / m_backBufferWidth,
-			samplingWorldbounds.top / m_backBufferHeight
+			geometryBounds.right,
+			geometryBounds.top,
+			geometryBounds.right / m_backBufferWidth,
+			geometryBounds.top / m_backBufferHeight
 		);
 		vertices2.emplace_back(
-			samplingWorldbounds.right,
-			samplingWorldbounds.bottom,
-			samplingWorldbounds.right / m_backBufferWidth,
-			samplingWorldbounds.bottom / m_backBufferHeight
+			geometryBounds.right,
+			geometryBounds.bottom,
+			geometryBounds.right / m_backBufferWidth,
+			geometryBounds.bottom / m_backBufferHeight
 		);
 		vertices2.emplace_back(
-			samplingWorldbounds.left,
-			samplingWorldbounds.bottom,
-			samplingWorldbounds.left / m_backBufferWidth,
-			samplingWorldbounds.bottom / m_backBufferHeight
+			geometryBounds.left,
+			geometryBounds.bottom,
+			geometryBounds.left / m_backBufferWidth,
+			geometryBounds.bottom / m_backBufferHeight
 		);
 
 		indices2.push_back(0);
@@ -445,7 +447,7 @@ HRESULT CD3DGlassRealizer::Render(
 		RETURN_IF_FAILED(widenedGeometry->Open(sink.put()));
 		RETURN_IF_FAILED(
 			geometry->Widen(
-				7.f,
+				7.5f,
 				nullptr,
 				nullptr,
 				1.f,
@@ -453,19 +455,16 @@ HRESULT CD3DGlassRealizer::Render(
 			)
 		);
 		RETURN_IF_FAILED(sink->Close());
-		ID2D1Geometry* geometries[]{ geometry, widenedGeometry.get() };
-		winrt::com_ptr<ID2D1GeometryGroup> geometryGroup{};
 		RETURN_IF_FAILED(
-			factory->CreateGeometryGroup(
-				D2D1_FILL_MODE_WINDING,
-				geometries,
-				std::size(geometries),
-				geometryGroup.put()
+			Tessellate(
+				geometry,
+				vertices2,
+				indices2
 			)
 		);
 		RETURN_IF_FAILED(
 			Tessellate(
-				geometryGroup.get(),
+				widenedGeometry.get(),
 				vertices2,
 				indices2
 			)
@@ -559,10 +558,10 @@ HRESULT CD3DGlassRealizer::Render(
 
 	clipRect = RectF::ToRectL(
 		{
-			samplingWorldbounds.left * 0.5f,
-			samplingWorldbounds.top,
-			samplingWorldbounds.right * 0.5f,
-			samplingWorldbounds.bottom
+			samplingWorldbounds.left * 0.5f - 0.5f,
+			samplingWorldbounds.top - 0.5f,
+			samplingWorldbounds.right * 0.5f + 0.5f,
+			samplingWorldbounds.bottom + 0.5f
 		}
 	);
 	context1->RSSetScissorRects(1, &clipRect);

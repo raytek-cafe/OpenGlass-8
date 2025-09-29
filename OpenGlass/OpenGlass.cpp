@@ -261,7 +261,7 @@ DWORD OpenGlass::SymbolLoaderUIThreadEntryPoint(PVOID)
 	);
 
 	wil::unique_hicon icon{ LoadIconW(GetModuleHandleW(L"shell32.dll"), MAKEINTRESOURCEW(18)) };
-	auto callback = [](HWND hwnd, UINT uNotification, [[maybe_unused]] WPARAM wParam, [[maybe_unused]] LPARAM lParam, LONG_PTR lpRefData) -> HRESULT
+	auto callback = [](HWND hwnd, UINT uNotification, [[maybe_unused]] WPARAM wParam, [[maybe_unused]] LPARAM lParam, LONG_PTR lpRefData) static -> HRESULT
 	{
 		const auto taskbarList = reinterpret_cast<ITaskbarList4*>(lpRefData);
 		switch (uNotification)
@@ -582,8 +582,8 @@ bool OpenGlass::InitializeProjectionBySymbols()
 	}
 
 	std::string missingFunctionsOrVariables{};
-	uDWM::g_projectionArray.ReportMissing(missingFunctionsOrVariables, "[uDWM.dll] ");
-	dwmcore::g_projectionArray.ReportMissing(missingFunctionsOrVariables, "[dwmcore.dll] ");
+	uDWM::g_projectionArray.ReportMissing(missingFunctionsOrVariables, "uDWM.dll!");
+	dwmcore::g_projectionArray.ReportMissing(missingFunctionsOrVariables, "dwmcore.dll!");
 	if (!missingFunctionsOrVariables.empty())
 	{
 		missingFunctionsOrVariables.pop_back();
@@ -635,12 +635,7 @@ DWORD WINAPI OpenGlass::UnInitializationThreadEntryPoint(PVOID)
 
 void OpenGlass::Startup()
 {
-	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
-	{
-		return;
-	}
-
-	wil::SetResultLoggingCallback([](const wil::FailureInfo& failure) noexcept
+	wil::SetResultLoggingCallback([](const wil::FailureInfo& failure) static noexcept
 	{
 		WCHAR logMessage[MAX_PATH]{};
 		if (FAILED(wil::GetFailureLogString(logMessage, MAX_PATH, failure)))
@@ -656,9 +651,10 @@ void OpenGlass::Startup()
 
 	g_old = SetUnhandledExceptionFilter(TopLevelExceptionFilter);
 
+	#pragma warning(suppress : 6387)
 	g_RaiseFailFastException_Org = reinterpret_cast<decltype(g_RaiseFailFastException_Org)>(GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "RaiseFailFastException"));
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Attach(&g_RaiseFailFastException_Org, MyRaiseFailFastException);
 		})
@@ -788,7 +784,7 @@ void OpenGlass::Shutdown()
 	GlassEngine::RedrawAll();
 
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Detach(&g_RaiseFailFastException_Org, MyRaiseFailFastException);
 		})

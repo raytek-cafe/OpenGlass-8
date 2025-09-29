@@ -108,7 +108,7 @@ namespace OpenGlass::ButtonGlowHandler
 			uDWM::g_projectionArray.ApplyToVariable("CButton::UpdateCrossfade", CButton_UpdateCrossfade_orig);
 
 			THROW_IF_FAILED(
-				HookHelper::Detours::Write([]()
+				HookHelper::Detours::Write([]() static
 				{
 					HookHelper::Detours::Attach(&CVisual_SetDirtyFlags_orig, CVisual_SetDirtyFlags_hook);
 					HookHelper::Detours::Attach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);
@@ -123,7 +123,7 @@ namespace OpenGlass::ButtonGlowHandler
 		if (uDWM::g_versionInfo.build < os::build_w11_21h2)
 		{
 			THROW_IF_FAILED(
-				HookHelper::Detours::Write([]()
+				HookHelper::Detours::Write([]() static
 				{
 					HookHelper::Detours::Detach(&CVisual_SetDirtyFlags_orig, CVisual_SetDirtyFlags_hook);
 					HookHelper::Detours::Detach(&CTopLevelWindow_CreateGlyphsFromAtlas, CTopLevelWindow_CreateGlyphsFromAtlas_Hook);

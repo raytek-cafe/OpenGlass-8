@@ -7,6 +7,7 @@
 #include "GlassRenderer.hpp"
 #include "GlassIntegrity.hpp"
 #include "CaptionTextHandler.hpp"
+#include "CustomThemeAtlasLoader.hpp"
 
 using namespace OpenGlass;
 namespace OpenGlass::GlassKernel
@@ -34,7 +35,6 @@ namespace OpenGlass::GlassKernel
 	decltype(&MyCXXX_ReleaseXXX) g_CXXX_ReleaseXXX_Org{ nullptr };
 
 	ULONG g_old_dwOverlayTestMode{};
-	ULONGLONG g_old_BackdropBlurCachingThrottleQPCTimeDelta{};
 	size_t g_CVIHierarchy{};
 	HWND g_hwnd{};
 
@@ -87,58 +87,177 @@ namespace OpenGlass::GlassKernel
 		}
 	}
 
-	D2D1_COLOR_F CalculateWindowColorization(bool active)
+
+	float GetColorizationBlendingOpacity(bool active, bool maximized)
 	{
-		auto color = active ? Shared::g_color : Shared::g_colorInactive;
-		if (Shared::IsTransparencyDisabled())
+		if (active && !maximized)
 		{
-			if (Shared::g_type == Shared::GlassType::Blur)
+			return Shared::g_colorizationBlendingOpacity;
+		}
+		else if (active && maximized)
+		{
+			return Shared::g_colorizationBlendingOpacityMaximized;
+		}
+		else if (!active && !maximized)
+		{
+			return Shared::g_colorizationBlendingOpacityInactive;
+		}
+		else if (!active && maximized)
+		{
+			return Shared::g_colorizationBlendingOpacityInactiveMaximized;
+		}
+
+		return 0.f;
+	}
+	D2D1_COLOR_F GetBlendingBaseColor(bool opaque, bool opaqueByMaximization)
+	{
+		D2D1_COLOR_F color{};
+
+		if (Shared::g_opaqueBlendPriority == Shared::OpaqueBlendPriority::Vista)
+		{
+			if (opaqueByMaximization)
 			{
-				const auto glassOpacity = active ? Shared::g_glassOpacity : Shared::g_glassOpacityInactive;
-				color.r = (1.f - glassOpacity) * Shared::g_opaqueBlendColor.r + color.r * glassOpacity;
-				color.g = (1.f - glassOpacity) * Shared::g_opaqueBlendColor.g + color.g * glassOpacity;
-				color.b = (1.f - glassOpacity) * Shared::g_opaqueBlendColor.b + color.b * glassOpacity;
+				color = Shared::g_opaqueBlendColorMaximized;
+				color.a = 1.f;
 			}
-			#pragma warning(suppress:26813)
-			if (Shared::g_type == Shared::GlassType::Aero)
+			else if (opaque)
 			{
-				const auto magicFactor = active ? 1.f : 0.4f;
-				color.r = (1.f - Shared::g_colorBalance * magicFactor) * Shared::g_opaqueBlendColor.r + color.r * Shared::g_colorBalance * magicFactor;
-				color.g = (1.f - Shared::g_colorBalance * magicFactor) * Shared::g_opaqueBlendColor.g + color.g * Shared::g_colorBalance * magicFactor;
-				color.b = (1.f - Shared::g_colorBalance * magicFactor) * Shared::g_opaqueBlendColor.b + color.b * Shared::g_colorBalance * magicFactor;
+				color = Shared::g_opaqueBlendColor;
+				color.a = 1.f;
+			}
+			else
+			{
+				color = {};
+			}
+		}
+		else
+		{
+			if (opaque)
+			{
+				color = Shared::g_opaqueBlendColor;
+				color.a = 1.f;
+			}
+			else if (opaqueByMaximization)
+			{
+				color = Shared::g_opaqueBlendColorMaximized;
+				color.a = 1.f;
+			}
+			else
+			{
+				color = {};
 			}
 		}
 
 		return color;
 	}
+	D2D1_COLOR_F GetBlendingSourceColor(bool active)
+	{
+		if (Shared::g_type == Shared::GlassType::Blur)
+		{
+			const auto& color = active ? Shared::g_color : Shared::g_colorInactive;
+			return
+			{
+				color.r,
+				color.g,
+				color.b,
+				active ? Shared::g_glassOpacity : Shared::g_glassOpacityInactive
+			};
+		}
+		#pragma warning(suppress:26813)
+		else if (Shared::g_type == Shared::GlassType::Aero)
+		{
+			return
+			{
+				Shared::g_color.r,
+				Shared::g_color.g,
+				Shared::g_color.b,
+				Shared::g_colorBalance
+			};
+		}
 
-	void CalculateRealizedAeroParams(
-		bool active,
-		float extendedAmount,
-		float& glassOpacity,
-		float& blurBalance,
-		float& afterglowBalance,
-		float* colorBalance
+		return {};
+	}
+	CRealizedGlassColorizationParameters RealizeWindowColorization(
+		const D2D1_COLOR_F& baseColor,
+		const D2D1_COLOR_F& srcColor,
+		float colorizationOpacity,
+		bool opaque,
+		bool livePreview
 	)
 	{
-		const auto magicFactor = active ? 1.f : 0.4f;
-		const auto translucent = !Shared::IsTransparencyDisabled();
-		glassOpacity = active ? Shared::g_glassOpacity : Shared::g_glassOpacityInactive;
-		blurBalance = !translucent ? 0.f : (extendedAmount ? (1.f - ((1.f - Shared::g_blurBalance) * magicFactor)) : Shared::g_blurBalance);
-		afterglowBalance = !translucent ? 0.f : Shared::g_afterglowBalance;
-		if (colorBalance)
+		CRealizedGlassColorizationParameters parameters{};
+
+		if (Shared::g_type == Shared::GlassType::Blur)
 		{
-			*colorBalance = (1.f - Shared::g_colorBalance * magicFactor) * (!translucent ? 1.f : 0.f) + Shared::g_colorBalance * magicFactor;
+			parameters.color = srcColor;
+			parameters.color.a *= colorizationOpacity;
+
+			float a = (1.f - parameters.color.a) * baseColor.a + parameters.color.a;
+			parameters.color.r = ((1.f - parameters.color.a) * baseColor.r * baseColor.a + parameters.color.r * parameters.color.a) / a;
+			parameters.color.g = ((1.f - parameters.color.a) * baseColor.g * baseColor.a + parameters.color.g * parameters.color.a) / a;
+			parameters.color.b = ((1.f - parameters.color.a) * baseColor.b * baseColor.a + parameters.color.b * parameters.color.a) / a;
+			parameters.color.a = a;
+
+			parameters.effectiveBlendColor = parameters.color;
 		}
+		#pragma warning(suppress:26813)
+		else if (Shared::g_type == Shared::GlassType::Aero)
+		{
+			// uDWM!CGlassColorizationParameters::AdjustWindowColorization (Windows 7)
+			parameters.afterglowBalance = Shared::g_afterglowBalance * (1.f - baseColor.a);
+			parameters.blurBalance = Shared::g_blurBalance * (1.f - baseColor.a);
+
+			parameters.afterglow = Shared::g_afterglow;
+			parameters.color = srcColor;
+			parameters.color.a *= colorizationOpacity;
+
+			float a = (1.f - parameters.color.a) * baseColor.a + parameters.color.a;
+			parameters.color.r = ((1.f - parameters.color.a) * baseColor.r * baseColor.a + parameters.color.r * parameters.color.a) / a;
+			parameters.color.g = ((1.f - parameters.color.a) * baseColor.g * baseColor.a + parameters.color.g * parameters.color.a) / a;
+			parameters.color.b = ((1.f - parameters.color.a) * baseColor.b * baseColor.a + parameters.color.b * parameters.color.a) / a;
+			parameters.color.a = a;
+
+			if (opaque)
+			{
+				parameters.blurBalance = 0.f;
+			}
+			else if (!livePreview)
+			{
+				parameters.blurBalance = 1.f - (1.f - parameters.blurBalance) * colorizationOpacity;
+			}
+
+			parameters.colorBalance = parameters.color.a;
+			parameters.afterglowBalance = parameters.afterglowBalance;
+			parameters.blurBalance = parameters.blurBalance;
+
+			// dwmcore!CCapturedGlassColorizationParameters::GetEffectivescRGBBlendColor (Windows 7)
+			parameters.effectiveBlendColor = parameters.color;
+			if (opaque)
+			{
+				parameters.effectiveBlendColor.r *= parameters.colorBalance;
+				parameters.effectiveBlendColor.g *= parameters.colorBalance;
+				parameters.effectiveBlendColor.b *= parameters.colorBalance;
+				parameters.effectiveBlendColor.a = 1.f;
+			}
+			else
+			{
+				const auto alpha = std::max(1.f - parameters.blurBalance, 0.1f);
+				parameters.effectiveBlendColor =
+				{
+					std::clamp((parameters.effectiveBlendColor.r * parameters.colorBalance + parameters.afterglow.r * parameters.afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
+					std::clamp((parameters.effectiveBlendColor.g * parameters.colorBalance + parameters.afterglow.g * parameters.afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
+					std::clamp((parameters.effectiveBlendColor.b * parameters.colorBalance + parameters.afterglow.b * parameters.afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
+					alpha
+				};
+			}
+		}
+
+		return parameters;
 	}
 
-	bool IsCVIPresent()
-	{
-		return g_CVIHierarchy;
-	}
 	bool IsCurrentCVIFullyTransparent()
 	{
-		return IsCVIPresent() && !g_hwnd;
+		return g_CVIHierarchy && !g_hwnd;
 	}
 }
 
@@ -218,7 +337,7 @@ void GlassKernel::RedrawAllTopLevelWindow()
 
 float GlassKernel::GetBlurExtendedAmount()
 {
-	if (Shared::IsGlassFullyOpaque())
+	if (Shared::IsTransparencyDisabled())
 	{
 		return 0.f;
 	}
@@ -228,7 +347,7 @@ float GlassKernel::GetBlurExtendedAmount()
 	}
 	if (Shared::g_useD3DRendering)
 	{
-		return 7.f;
+		return 8.f;
 	}
 
 	return Shared::g_blurAmount * 3.f + 0.5f;
@@ -281,19 +400,171 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 		Shared::g_colorInactive = Color::FromArgb(GlassEngine::GetDwordFromRegistry(L"ColorizationColorInactive", value));
 
 		Shared::g_opaqueBlend = static_cast<int>(GlassEngine::GetDwordFromRegistry(L"ColorizationOpaqueBlend"));
+		Shared::g_opaqueBlendPriority = static_cast<Shared::OpaqueBlendPriority>(GlassEngine::GetDwordFromRegistry(L"ColorizationOpaqueBlendPriority"));
 		Shared::g_opaqueBlendColor = Color::FromArgb(GlassEngine::GetDwordFromRegistry(L"ColorizationOpaqueBlendColor", 0xFFDFDFDF));
-		
+		Shared::g_opaqueBlendColorMaximized = Color::FromArgb(GlassEngine::GetDwordFromRegistry(L"ColorizationOpaqueBlendColorMaximized", 0), false);
+		if (Shared::g_opaqueBlendColorMaximized.a > 0.f)
+		{
+			Shared::g_opaqueBlendColorMaximized.a = std::min(Shared::g_opaqueBlendColorMaximized.a, 1.f);
+		}
+
 		Shared::g_useD3DRendering = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"UseDirect3DRendering", 0));
+	}
+
+	if (type & GlassEngine::UpdateType::Backdrop || type & GlassEngine::UpdateType::Theme)
+	{
+		DWORD value{};
+
+		value = GlassEngine::GetDwordFromRegistry(L"ColorizationBlendingOpacity", 0xFFFFFFFD);
+		if (value == 0xFFFFFFFD)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 100;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 100;
+			}
+		}
+		else if (value == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 100;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 100;
+			}
+		}
+		else if (value == 0xFFFFFFFF)
+		{
+			const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
+			if (themeHandle)
+			{
+				value = 100;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 1, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&value));
+			}
+		}
+		Shared::g_colorizationBlendingOpacity = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
+
+		value = GlassEngine::GetDwordFromRegistry(L"ColorizationBlendingOpacityInactive", 0xFFFFFFFD);
+		if (value == 0xFFFFFFFD)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 100;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 40;
+			}
+		}
+		else if (value == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 55;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 40;
+			}
+		}
+		else if (value == 0xFFFFFFFF)
+		{
+			const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
+			if (themeHandle)
+			{
+				value = 100;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 2, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&value));
+			}
+		}
+		Shared::g_colorizationBlendingOpacityInactive = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
+
+		value = GlassEngine::GetDwordFromRegistry(L"ColorizationBlendingOpacityMaximized", 0xFFFFFFFD);
+		if (value == 0xFFFFFFFD)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 100;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 100;
+			}
+		}
+		else if (value == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 75;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 100;
+			}
+		}
+		else if (value == 0xFFFFFFFF)
+		{
+			const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
+			if (themeHandle)
+			{
+				value = 100;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 3, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&value));
+			}
+		}
+		Shared::g_colorizationBlendingOpacityMaximized = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
+
+		value = GlassEngine::GetDwordFromRegistry(L"ColorizationBlendingOpacityInactiveMaximized", 0xFFFFFFFD);
+		if (value == 0xFFFFFFFD)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 100;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 40;
+			}
+		}
+		else if (value == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				value = 75;
+			}
+			#pragma warning(suppress:26813)
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				value = 40;
+			}
+		}
+		else if (value == 0xFFFFFFFF)
+		{
+			const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
+			if (themeHandle)
+			{
+				value = 100;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 4, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&value));
+			}
+		}
+		Shared::g_colorizationBlendingOpacityInactiveMaximized = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
 	}
 }
 
 void GlassKernel::Startup()
 {
 	g_old_dwOverlayTestMode = *dwmcore::CCommonRegistryData::m_dwOverlayTestMode;
-	g_old_BackdropBlurCachingThrottleQPCTimeDelta = *dwmcore::CCommonRegistryData::m_backdropBlurCachingThrottleQPCTimeDelta;
 	*dwmcore::CCommonRegistryData::m_dwOverlayTestMode = 0x5;
-	*dwmcore::CCommonRegistryData::m_backdropBlurCachingThrottleQPCTimeDelta = 0;
-
 	g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address = reinterpret_cast<decltype(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address)>(&(HookHelper::vftbl_of(uDWM::CDesktopManager::GetInstance()->GetDCompDevice())[4]));
 	HookHelper::WritePointer(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address, MyIDCompositionDesktopDevice_WaitForCommitCompletion, &g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org);
 
@@ -310,7 +581,7 @@ void GlassKernel::Startup()
 	}
 
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Attach(&g_CCachedVisualImage_CCachedTarget_Update_Org, MyCCachedVisualImage_CCachedTarget_Update);
 			HookHelper::Detours::Attach(&g_CDrawingContext_PreSubgraph_Org, MyCDrawingContext_PreSubgraph);
@@ -323,7 +594,7 @@ void GlassKernel::Startup()
 void GlassKernel::Shutdown()
 {
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Detach(&g_CCachedVisualImage_CCachedTarget_Update_Org, MyCCachedVisualImage_CCachedTarget_Update);
 			HookHelper::Detours::Detach(&g_CDrawingContext_PreSubgraph_Org, MyCDrawingContext_PreSubgraph);
@@ -334,8 +605,6 @@ void GlassKernel::Shutdown()
 
 	HookHelper::WritePointer(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address, g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org);
 	
-	*dwmcore::CCommonRegistryData::m_backdropBlurCachingThrottleQPCTimeDelta = g_old_BackdropBlurCachingThrottleQPCTimeDelta;
 	*dwmcore::CCommonRegistryData::m_dwOverlayTestMode = g_old_dwOverlayTestMode;
-
 	GlassReflectionBrush::Shutdown();
 }

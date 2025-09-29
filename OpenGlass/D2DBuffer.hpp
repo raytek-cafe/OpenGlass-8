@@ -50,14 +50,6 @@ namespace OpenGlass
 						m_buffer.put()
 					)
 				);
-
-				/*OutputDebugStringW(
-					std::format(
-						L"d2d buffer created: [{} x {}]\n",
-						m_size.width,
-						m_size.height
-					).c_str()
-				);*/
 			}
 			if (!m_bufferAlphaPremultiplied)
 			{
@@ -81,7 +73,7 @@ namespace OpenGlass
 						reinterpret_cast<D2D1_BITMAP_PROPERTIES*>(&bitmapProperties),
 						sharedBitmap.put()
 					);
-					m_bufferAlphaPremultiplied = sharedBitmap.as<ID2D1Bitmap1>();
+					RETURN_IF_FAILED(sharedBitmap->QueryInterface(m_bufferAlphaPremultiplied.put()));
 				}
 			}
 

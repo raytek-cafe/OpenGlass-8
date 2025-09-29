@@ -5,18 +5,78 @@
 
 namespace OpenGlass::GlassKernel
 {
+	class AlphaChannelReinterpreter
+	{
+		std::bitset<16> m_flag{};
+	public:
+		bool GetIsValid() const
+		{
+			return m_flag.test(0);
+		}
+		bool GetIsActive() const
+		{
+			return m_flag.test(1);
+		}
+		bool GetIsMaximized() const
+		{
+			return m_flag.test(2);
+		}
+		void SetIsActive(bool value)
+		{
+			m_flag.set(1, value);
+		}
+		void SetIsMaximized(bool value)
+		{
+			m_flag.set(2, value);
+		}
+
+		float ToFloat() const
+		{
+			const auto value = ((m_flag.to_ulong() << 8) | 0x3F000001);
+			return *reinterpret_cast<float const*>(&value);
+		}
+		AlphaChannelReinterpreter(float value)
+		{
+			if ((*reinterpret_cast<DWORD const*>(&value) & 0xFF0000FF) == 0x3F000001)
+			{
+				m_flag = (*reinterpret_cast<DWORD const*>(&value) & 0x00FFFF00) >> 8;
+				m_flag.set(0);
+			}
+		}
+		AlphaChannelReinterpreter(
+			bool active,
+			bool maximized
+		)
+		{
+			SetIsActive(active);
+			SetIsMaximized(maximized);
+		}
+	};
+
 	void RedrawAllTopLevelWindow();
 	float GetBlurExtendedAmount();
-	D2D1_COLOR_F CalculateWindowColorization(bool active);
-	void CalculateRealizedAeroParams(
-		bool active,
-		float extendedAmount,
-		float& glassOpacity,
-		float& blurBalance,
-		float& afterglowBalance,
-		float* colorBalance
+
+	struct CRealizedGlassColorizationParameters
+	{
+		D2D1_COLOR_F color;
+		D2D1_COLOR_F afterglow;
+		float colorBalance;
+		float afterglowBalance;
+		float blurBalance;
+
+		D2D1_COLOR_F effectiveBlendColor;
+	};
+	float GetColorizationBlendingOpacity(bool active, bool maximized);
+	D2D1_COLOR_F GetBlendingBaseColor(bool opaque, bool opaqueByMaximization);
+	D2D1_COLOR_F GetBlendingSourceColor(bool active);
+	CRealizedGlassColorizationParameters RealizeWindowColorization(
+		const D2D1_COLOR_F& baseColor,
+		const D2D1_COLOR_F& srcColor,
+		float colorizationOpacity,
+		bool opaque,
+		bool livePreview
 	);
-	bool IsCVIPresent();
+
 	bool IsCurrentCVIFullyTransparent();
 
 	void Update(GlassEngine::UpdateType type);

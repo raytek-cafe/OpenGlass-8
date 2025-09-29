@@ -111,8 +111,15 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
 			)
 		);
 
-		auto glassColor = Color::sRGBToscRGB(GlassKernel::CalculateWindowColorization(true));
-		glassColor.a = 0.5f;
+		const auto opaque = Shared::IsTransparencyDisabled();
+		auto glassColor = GlassKernel::RealizeWindowColorization(
+			GlassKernel::GetBlendingBaseColor(opaque, false),
+			GlassKernel::GetBlendingSourceColor(true),
+			GlassKernel::GetColorizationBlendingOpacity(true, false),
+			opaque,
+			false
+		).effectiveBlendColor;
+		glassColor.a = GlassKernel::AlphaChannelReinterpreter(true, false).ToFloat();
 		RETURN_IF_FAILED(brush->Update(1.0, glassColor));
 		winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
 		RETURN_IF_FAILED(
@@ -212,7 +219,7 @@ void AccentOverrider::Startup()
 	uDWM::g_projectionArray.ApplyToVariable("CAccentBlurBehind::IsBlurBehindDirty", g_CAccentBlurBehind_IsBlurBehindDirty_Org);
 
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Attach(&g_CAccent_UpdateAccentPolicy_Org, MyCAccent_UpdateAccentPolicy);
 			HookHelper::Detours::Attach(&g_CAccent__UpdateSolidFill_Org, MyCAccent__UpdateSolidFill);
@@ -232,7 +239,7 @@ void AccentOverrider::Shutdown()
 	}
 
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Detach(&g_CAccent_UpdateAccentPolicy_Org, MyCAccent_UpdateAccentPolicy);
 			HookHelper::Detours::Detach(&g_CAccent__UpdateSolidFill_Org, MyCAccent__UpdateSolidFill);

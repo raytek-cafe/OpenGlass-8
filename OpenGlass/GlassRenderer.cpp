@@ -9,7 +9,6 @@
 #include "GlassRealizer.hpp"
 #include "D3DGlassRealizer.hpp"
 #include "ReflectionRealizer.hpp"
-#include "AeroColorizationEffect.hpp"
 #include "D2DPrivates.hpp"
 #include "GlassCoverageSet.hpp"
 
@@ -382,10 +381,11 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 	const auto d2dContext = drawingContext->GetD3DDevice()->GetD2DContext();
 	const auto context = d2dContext->GetDeviceContext();
 	const auto matrix = drawingContext->GetWorldTransform();
-	const auto currentVisual = drawingContext->GetCurrentVisualHelper();
-	const auto currentVisualTree = drawingContext->GetCurrentVisualTree();
-	const auto desktopTree = HookHelper::vftbl_of(currentVisualTree) != dwmcore::CDesktopTree::vftable ? currentVisual->GetDesktopTree() : currentVisualTree;
 	
+	if (!drawingContext->GetDeviceTarget())
+	{
+		return S_OK;
+	}
 	if (!context)
 	{
 		return S_OK;
@@ -411,25 +411,9 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		return S_OK;
 	}
 
-	const auto renderTargetBitmap = Util::GetTargetBitmapFromDeviceContext(context);
-	if (!renderTargetBitmap)
-	{
-		return S_OK;
-	}
-
-	const auto renderTargetSize = renderTargetBitmap->GetSize();
-	const D2D1_RECT_F renderTargetBounds
-	{
-		0.f,
-		0.f,
-		renderTargetSize.width,
-		renderTargetSize.height
-	};
-
 	D2D1_RECT_F renderingShapeBounds{};
 	RETURN_IF_FAILED(renderingShape->GetTightBounds(&renderingShapeBounds, nullptr));
 	RectF::IntersectUnsafe(g_drawingWorldBounds, renderingShapeBounds);
-	RectF::IntersectUnsafe(g_drawingWorldBounds, renderTargetBounds);
 	if (
 		occlusionContext &&
 		occlusionContext->GetArrayBasedCoverageSet()->IsCovered(
@@ -441,8 +425,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 		return S_OK;
 	}
 
-	LOG_IF_FAILED(drawingContext->ApplyRenderStateInternal(false));
-	d2dContext->EnsureBeginDraw();
 	const auto lockScope = g_lock.lock();
 	if (g_disabled)
 	{
@@ -451,17 +433,8 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 
 	g_drawingContextNoRef = drawingContext;
 	g_currentDeviceResources = &g_deviceResources.try_emplace(d2dContext).first->second;
-	RETURN_IF_FAILED(
-		drawingContext->PushTransformInternal(
-			nullptr,
-			dwmcore::CMILMatrix::Identity,
-			false,
-			true
-		)
-	);
 	const auto transformScope = wil::scope_exit([drawingContext]
 	{
-		drawingContext->PopTransformInternal(true);
 		g_currentDeviceResources = nullptr;
 		g_drawingContextNoRef = nullptr;
 	});
@@ -496,36 +469,38 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 			return S_OK;
 		}
 
-		const auto extendedAmount = !desktopTree || GlassKernel::IsCurrentCVIFullyTransparent() ? 0.f : GlassKernel::GetBlurExtendedAmount();
+		const auto extendedAmount = GlassKernel::IsCurrentCVIFullyTransparent() ? 0.f : GlassKernel::GetBlurExtendedAmount();
 		const auto glassCoverageSet = GlassCoverageSetFactory::GetOrCreate(occlusionContext);
-		
+		const auto reinterpreter = GlassKernel::AlphaChannelReinterpreter(color.a);
+
 		// try render glass
 		if (
 			opacity == 1.f &&
-			(color.a == 0.50f || color.a == 0.25f)
+			reinterpreter.GetIsValid()
 		)
 		{
-			const auto active = (color.a == 0.50f);
+			const auto active = reinterpreter.GetIsActive();
+			const auto maximized = reinterpreter.GetIsMaximized();
 			
-			// uDWM!CGlassColorizationParameters::AdjustWindowColorization (Windows 7)
-			float glassOpacity, blurBalance, afterglowBalance, colorBalance;
-			GlassKernel::CalculateRealizedAeroParams(
-				active,
-				extendedAmount,
-				glassOpacity,
-				blurBalance,
-				afterglowBalance,
-				&colorBalance
+			const auto opaque = Shared::IsTransparencyDisabled() || Shared::IsOpaqueOnMaximized(maximized);
+			const auto realizedGlassColorizationParameters = GlassKernel::RealizeWindowColorization(
+				GlassKernel::GetBlendingBaseColor(Shared::IsTransparencyDisabled(), Shared::IsOpaqueOnMaximized(maximized)),
+				GlassKernel::GetBlendingSourceColor(active),
+				GlassKernel::GetColorizationBlendingOpacity(active, maximized),
+				opaque,
+				extendedAmount == 0.f
 			);
 			if (
-				const auto opaque = Shared::IsGlassFullyOpaque(
-					glassOpacity,
-					blurBalance,
-					afterglowBalance
-				);
-				!opaque &&
+				!(
+					Shared::IsTransparencyDisabled() ||
+					Shared::IsOpaqueOnMaximized(maximized) ||
+					Shared::IsGlassFullyOpaque(
+						realizedGlassColorizationParameters.color.a,
+						realizedGlassColorizationParameters.blurBalance,
+						realizedGlassColorizationParameters.afterglowBalance
+					)
+				) &&
 				extendedAmount &&
-				renderTargetBitmap &&
 				glassCoverageSet
 			)
 			{
@@ -534,7 +509,6 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				g_samplingWorldBounds.top -= extendedAmount;
 				g_samplingWorldBounds.right += extendedAmount;
 				g_samplingWorldBounds.bottom += extendedAmount;
-				RectF::IntersectUnsafe(g_samplingWorldBounds, renderTargetBounds);
 				g_samplingWorldBoundsWithShapeClipped = g_samplingWorldBounds;
 				RectF::IntersectUnsafe(g_samplingWorldBoundsWithShapeClipped, shapeWorldBounds);
 
@@ -545,54 +519,23 @@ HRESULT STDMETHODCALLTYPE GlassRenderer::MyCDrawingContext_DrawGeometry(
 				g_glassInput.params.blurAmount = Shared::g_blurAmount;
 				g_glassInput.params.color = color;
 				g_glassInput.params.color.a = 1.f;
-				g_glassInput.params.colorBalance = (Shared::g_type == Shared::GlassType::Blur) ? glassOpacity : colorBalance;
-				g_glassInput.params.afterglow = Shared::g_afterglow;
-				g_glassInput.params.afterglowBalance = afterglowBalance;
-				g_glassInput.params.blurBalance = blurBalance;
+				g_glassInput.params.colorBalance = (Shared::g_type == Shared::GlassType::Blur) ? realizedGlassColorizationParameters.color.a : realizedGlassColorizationParameters.colorBalance;
+				g_glassInput.params.afterglow = realizedGlassColorizationParameters.afterglow;
+				g_glassInput.params.afterglowBalance = realizedGlassColorizationParameters.afterglowBalance;
+				g_glassInput.params.blurBalance = realizedGlassColorizationParameters.blurBalance;
 
-				LOG_IF_FAILED(drawingContext->FlushD2D());
 				g_renderFlag.set(RenderFlag_Backdrop, true);
 			}
 			else
 			{
-				if (Shared::g_type == Shared::GlassType::Blur)
-				{
-					color.a = opaque ? 1.f : glassOpacity;
-				}
-
-				#pragma warning(suppress:26813)
-				if (Shared::g_type == Shared::GlassType::Aero)
-				{
-					// dwmcore!CCapturedGlassColorizationParameters::GetEffectivescRGBBlendColor (Windows 7)
-					if (opaque)
-					{
-						color.r *= colorBalance;
-						color.g *= colorBalance;
-						color.b *= colorBalance;
-						color.a = 1.f;
-					}
-					else
-					{
-						const auto alpha = std::max(1.f - blurBalance, 0.1f);
-						color =
-						{
-							std::clamp((color.r * colorBalance + Shared::g_afterglow.r * afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
-							std::clamp((color.g * colorBalance + Shared::g_afterglow.g * afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
-							std::clamp((color.b * colorBalance + Shared::g_afterglow.b * afterglowBalance * 0.6f) / alpha, 0.f, 1.f),
-							alpha
-						};
-					}
-				}
+				color = realizedGlassColorizationParameters.effectiveBlendColor;
 			}
 		}
 
 		if (!g_renderFlag.test(RenderFlag_Backdrop))
 		{
 			color.a *= opacity;
-			if (FAILED(drawingContext->FillShapeWithSolidColor(renderingShape.get(), color)))
-			{
-				g_renderFlag.set(RenderFlag_SolidColor, true);
-			}
+			g_renderFlag.set(RenderFlag_SolidColor, true);
 		}
 	}
 
@@ -631,15 +574,14 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	{
 		return g_ID2D1DeviceContext_FillGeometry_Org(This, geometry, brush, opacityBrush);
 	}
-	if (g_renderFlag.test(RenderFlag_SolidColor))
-	{
-		g_ID2D1DeviceContext_FillGeometry_Org(This, geometry, brush, opacityBrush);
-	}
 
 	const auto primitiveBlend = This->GetPrimitiveBlend();
 	const auto antialiasMode = This->GetAntialiasMode();
+	D2D1_MATRIX_3X2_F matrix{};
+	This->GetTransform(&matrix);
 	This->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_COPY);
 	This->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+	This->SetTransform(D2D1::IdentityMatrix());
 
 	bool ignoreLayer{ g_shapeIsRectangles };
 	if (!ignoreLayer)
@@ -662,8 +604,16 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 			nullptr
 		);
 	}
+	if (g_renderFlag.test(RenderFlag_SolidColor))
+	{
+		const auto primitiveBlendSolidColor = This->GetPrimitiveBlend();
+		This->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
+		g_ID2D1DeviceContext_FillGeometry_Org(This, geometry, brush, opacityBrush);
+		This->SetPrimitiveBlend(primitiveBlendSolidColor);
+	}
 	if (g_renderFlag.test(RenderFlag_Backdrop))
 	{
+		LOG_IF_FAILED(This->Flush());
 		if (!Shared::g_useD3DRendering)
 		{
 			LOG_IF_FAILED(
@@ -744,7 +694,7 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 	}
 	if (g_renderFlag.test(RenderFlag_Reflection))
 	{
-		const auto primitiveBlendPreReflection = This->GetPrimitiveBlend();
+		const auto primitiveBlendReflection = This->GetPrimitiveBlend();
 		This->SetPrimitiveBlend(D2D1_PRIMITIVE_BLEND_SOURCE_OVER);
 		LOG_IF_FAILED(
 			g_currentDeviceResources->m_reflectionRealizer.Render(
@@ -752,7 +702,7 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 				g_reflectionInput
 			)
 		);
-		This->SetPrimitiveBlend(primitiveBlendPreReflection);
+		This->SetPrimitiveBlend(primitiveBlendReflection);
 	}
 	if (!ignoreLayer)
 	{
@@ -761,6 +711,7 @@ void STDMETHODCALLTYPE GlassRenderer::MyID2D1DeviceContext_FillGeometry(
 
 	This->SetAntialiasMode(antialiasMode);
 	This->SetPrimitiveBlend(primitiveBlend);
+	This->SetTransform(matrix);
 
 	g_renderFlag.reset();
 }
@@ -1117,8 +1068,6 @@ void GlassRenderer::Update(GlassEngine::UpdateType type)
 
 void GlassRenderer::Startup()
 {
-	THROW_IF_FAILED(CAeroColorizationEffect::Register(*dwmcore::g_DeviceManager));
-
 	dwmcore::g_projectionArray.ApplyToVariable("CRenderData::TryDrawCommandAsDrawList", g_CRenderData_TryDrawCommandAsDrawList_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CRenderData::DrawImageResource_FillMode", g_CRenderData_DrawImageResource_FillMode_Org);
 	if constexpr (c_enableWatermarkHook)
@@ -1240,7 +1189,7 @@ void GlassRenderer::Startup()
 #endif
 	
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			if (dwmcore::g_versionInfo.build < os::build_w11_21h2)
 			{
@@ -1284,7 +1233,7 @@ void GlassRenderer::Startup()
 void GlassRenderer::Shutdown()
 {
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			if (dwmcore::g_versionInfo.build < os::build_w11_21h2)
 			{
@@ -1348,5 +1297,4 @@ void GlassRenderer::Shutdown()
 	const auto lockScope = g_lock.lock();
 	g_disabled = true;
 	g_deviceResources.clear();
-	THROW_IF_FAILED(CAeroColorizationEffect::UnRegister(*dwmcore::g_DeviceManager));
 }

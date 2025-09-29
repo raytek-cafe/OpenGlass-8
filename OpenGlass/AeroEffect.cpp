@@ -1,6 +1,5 @@
 #include "pch.h"
 #include "AeroEffect.hpp"
-#include "AeroColorizationEffect.hpp"
 
 using namespace OpenGlass;
 
@@ -8,6 +7,13 @@ HRESULT CAeroEffect::Initialize(ID2D1DeviceContext* context)
 {
 	m_customBlurEffect = winrt::make<CCustomBlurEffect>();
 
+	if (!s_factory)
+	{
+		winrt::com_ptr<ID2D1Factory> factory{};
+		context->GetFactory(factory.put());
+		RETURN_IF_FAILED(factory->QueryInterface(s_factory.put()));
+		RETURN_IF_FAILED(CAeroColorizationEffect::Register(s_factory.get()));
+	}
 	RETURN_IF_FAILED(
 		context->CreateEffect(
 			CLSID_AeroColorizationEffect,

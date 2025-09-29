@@ -1,6 +1,7 @@
 #pragma once
 #include "CustomBlurEffect.hpp"
 #include "BlurEffect.hpp"
+#include "AeroColorizationEffect.hpp"
 
 namespace OpenGlass
 {
@@ -18,6 +19,14 @@ namespace OpenGlass
 		winrt::com_ptr<IRenderingEffect> m_customBlurEffect{};
 		winrt::com_ptr<ID2D1Effect> m_colorizationEffect{};
 		winrt::com_ptr<ID2D1Effect> m_outputEffect{};
+		inline static winrt::com_ptr<ID2D1Factory1> s_factory{};
+		inline static const auto s_customEffectScope = wil::scope_exit([] static
+		{
+			if (s_factory)
+			{
+				LOG_IF_FAILED(CAeroColorizationEffect::UnRegister(s_factory.get()));
+			}
+		});
 
 		HRESULT Initialize(ID2D1DeviceContext* context);
 	public:

@@ -271,10 +271,6 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(VisualCollection::Remove, visual);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE RemoveAll()
-		{
-			return HANDLE_PROJECTION_FUNCTION(VisualCollection::RemoveAll);
-		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InsertRelative(
 			CVisual* visual,
 			CVisual* referenceVisual,
@@ -611,6 +607,14 @@ namespace OpenGlass::uDWM
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetNonClientAttribute_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
+		DECLSPEC_PROJECTION BYTE GetClientBlurAttribute() const
+		{
+			return *Util::PointerExecuteUnsafe<CWindowData_GetClientBlurAttribute_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		bool ShouldTransitionOnMaximized() const
+		{
+			return GetClientBlurAttribute() & 0x8;
+		}
 		DECLSPEC_PROJECTION MARGINS& GetExtendedFrameMargins()
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetExtendedFrameMargins_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
@@ -786,15 +790,15 @@ namespace OpenGlass::uDWM
 		{
 			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 0x20000) != 0;
 		}
-		DECLSPEC_PROJECTION bool IsWindowMaximized()
+		DECLSPEC_PROJECTION bool IsWindowMaximized() const
 		{
 			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 0x20) != 0;
 		}
-		DECLSPEC_PROJECTION bool IsToolWindow()
+		DECLSPEC_PROJECTION bool IsToolWindow() const
 		{
 			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 2) != 0;
 		}
-		DECLSPEC_PROJECTION bool IsLoneButton()
+		DECLSPEC_PROJECTION bool IsLoneButton() const
 		{
 			return (*Util::PointerExecuteUnsafe<CTopLevelWindow_StateDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision) & 0xB00) == 0;
 		}
@@ -822,6 +826,8 @@ namespace OpenGlass::uDWM
 
 			return true;
 		}
+
+		bool TreatAsMaximized() const;
 
 		DECLSPEC_PROJECTION CGlassColorizationResources* GetCaptionColorizationParameters() const
 		{
@@ -1162,11 +1168,27 @@ namespace OpenGlass::uDWM
 		{
 			return *Util::PointerExecuteUnsafe<CDesktopManager_GetIsHighContrastMode_BoolIndex_Offsets, Util::OffsetBy<bool*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
+		DECLSPEC_PROJECTION bool HasMaximizedWindows() const
+		{
+			return Util::PointerExecuteUnsafe<CDesktopManager_HasMaximizedWindows_BoolIndex_Offsets, Util::DereferenceAt<bool>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
 		DECLSPEC_PROJECTION double GetDPIValue() const
 		{
 			return *Util::PointerExecuteUnsafe<CDesktopManager_GetDPIValue_Index_Offsets, Util::OffsetBy<double const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
+	inline bool CTopLevelWindow::TreatAsMaximized() const
+	{
+		const auto data = GetData();
+
+		return 
+		IsWindowMaximized() || 
+		(
+			data &&
+			data->ShouldTransitionOnMaximized() &&
+			CDesktopManager::GetInstance()->HasMaximizedWindows()
+		);
+	}
 
 	namespace ResourceHelper
 	{
@@ -1212,7 +1234,6 @@ namespace OpenGlass::uDWM
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::RenderRecursive, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisualProxy::SetSize, os::build_w11_22h2, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::Remove, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::RemoveAll, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::InsertRelative, 0, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CText::ValidateResources", 0, os::build_w11_22h2),

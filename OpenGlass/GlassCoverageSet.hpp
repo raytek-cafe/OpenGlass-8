@@ -24,8 +24,9 @@ namespace OpenGlass
 			const D2D1_RECT_F& coverage,
 			int depth
 		) const = 0;
-		virtual bool STDMETHODCALLTYPE IsOverlapped(
-			const D2D1_RECT_F & coverage
+		virtual bool STDMETHODCALLTYPE IsVisible(
+			const D2D1_RECT_F& coverage,
+			const dwmcore::CArrayBasedCoverageSet* occlusionCoverageSet
 		) const = 0;
 	};
 

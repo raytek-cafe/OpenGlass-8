@@ -177,6 +177,10 @@ EXTERN_C int CALLBACK OpenGlass_RunDLL(
 	std::unique_ptr<WCHAR[]> convertedCommandLine{};
 	RETURN_IF_FAILED(Util::MB2WC(convertedCommandLine, lpCmdLine));
 
+	const auto to_error_string = [](HRESULT hr) static
+	{
+		return winrt::hresult_error{ hr }.message();
+	};
 	auto params = AnalyseCommandLine(convertedCommandLine.get());
 	switch (params.type)
 	{
@@ -190,7 +194,7 @@ EXTERN_C int CALLBACK OpenGlass_RunDLL(
 				nullptr,
 				nullptr,
 				Util::GetResourceStringView<IDS_STRING102>().data(),
-				Util::to_error_string(hr).c_str(),
+				to_error_string(hr).c_str(),
 				TDCBF_CLOSE_BUTTON,
 				TD_ERROR_ICON,
 				nullptr
@@ -208,7 +212,7 @@ EXTERN_C int CALLBACK OpenGlass_RunDLL(
 				nullptr,
 				nullptr,
 				Util::GetResourceStringView<IDS_STRING102>().data(),
-				Util::to_error_string(hr).c_str(),
+				to_error_string(hr).c_str(),
 				TDCBF_CLOSE_BUTTON,
 				FAILED(hr) ? TD_ERROR_ICON : TD_INFORMATION_ICON,
 				nullptr
@@ -226,7 +230,7 @@ EXTERN_C int CALLBACK OpenGlass_RunDLL(
 				nullptr,
 				nullptr,
 				Util::GetResourceStringView<IDS_STRING102>().data(),
-				Util::to_error_string(hr).c_str(),
+				to_error_string(hr).c_str(),
 				TDCBF_CLOSE_BUTTON,
 				FAILED(hr) ? TD_ERROR_ICON : TD_INFORMATION_ICON,
 				nullptr
@@ -244,7 +248,7 @@ EXTERN_C int CALLBACK OpenGlass_RunDLL(
 				nullptr,
 				nullptr,
 				Util::GetResourceStringView<IDS_STRING102>().data(),
-				Util::to_error_string(hr).c_str(),
+				to_error_string(hr).c_str(),
 				TDCBF_CLOSE_BUTTON,
 				FAILED(hr) ? TD_ERROR_ICON : TD_INFORMATION_ICON,
 				nullptr
@@ -279,7 +283,7 @@ EXTERN_C int CALLBACK OpenGlass_RunDLL(
 				nullptr,
 				nullptr,
 				Util::GetResourceStringView<IDS_STRING102>().data(),
-				Util::to_error_string(hr).c_str(),
+				to_error_string(hr).c_str(),
 				TDCBF_CLOSE_BUTTON,
 				TD_ERROR_ICON,
 				nullptr

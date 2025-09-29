@@ -41,19 +41,12 @@ namespace OpenGlass::dwmcore
 	struct CDirtyRegion;
 	struct CVisualTree : CResource {};
 	struct CDirtyRegion;
-	struct CDesktopTree : CVisualTree 
-	{
-		inline static PVOID* vftable{ nullptr };
-	};
+	struct CDesktopTree : CVisualTree {};
 	struct CVisual : CResource 
 	{
 		DECLSPEC_PROJECTION HWND STDMETHODCALLTYPE GetTopLevelWindow() const
 		{
 			return HANDLE_PROJECTION_FUNCTION(CVisual::GetTopLevelWindow);
-		}
-		DECLSPEC_PROJECTION CDesktopTree* STDMETHODCALLTYPE GetDesktopTree() const
-		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::GetDesktopTree);
 		}
 	};
 	struct CFloatResource : CResource {};
@@ -63,10 +56,6 @@ namespace OpenGlass::dwmcore
 		int flag;
 		inline static const CMILMatrix* Identity{ nullptr };
 
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE Multiply(const CMILMatrix& matrix) const
-		{
-			return HANDLE_PROJECTION_FUNCTION(CMILMatrix::Multiply, matrix);
-		}
 		D2D1_MATRIX_3X2_F GetD2DMatrix() const
 		{
 			return D2D1::Matrix3x2F(
@@ -188,7 +177,7 @@ namespace OpenGlass::dwmcore
 
 					if (
 						!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
-						std::fabs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
+						std::abs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
 
 						RectF::DoesIntersectUnsafe(zorderedRect.m_transformedRect, coverage)
 					)
@@ -569,6 +558,7 @@ namespace OpenGlass::dwmcore
 			return Util::PointerExecuteUnsafe<IDeviceTarget_GetDeviceTexture_Offsets, Util::OffsetBy<IDeviceTexture*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
+	struct COverlayContext : CResource {};
 	struct CDrawingContext
 	{
 		IDeviceTarget* GetDeviceTarget() const
@@ -578,6 +568,14 @@ namespace OpenGlass::dwmcore
 		CD3DDevice* GetD3DDevice() const
 		{
 			return reinterpret_cast<CD3DDevice* const*>(this)[5];
+		}
+		COverlayContext* GetOverlayContext() const
+		{
+			return reinterpret_cast<COverlayContext* const*>(this)[6];
+		}
+		D2D1_COLOR_F& GetClearColor() const
+		{
+			return *reinterpret_cast<D2D1_COLOR_F*>(reinterpret_cast<ULONG_PTR>(this) + 80);
 		}
 		DECLSPEC_PROJECTION IDrawingContext* GetInterface() const
 		{
@@ -605,14 +603,6 @@ namespace OpenGlass::dwmcore
 			return Util::PointerExecuteUnsafe<CDrawingContext_GetDeviceTransform_Offsets, Util::OffsetBy<CMILMatrix*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE PushTransformInternal(CVisual* visual, const CMILMatrix* matrix, bool unknown1, bool unknown2)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::PushTransformInternal, visual, matrix, unknown1, unknown2);
-		}
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE PopTransformInternal(bool popStack)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::PopTransformInternal, popStack);
-		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE GetUnOccludedWorldShape(const CShape* shape, int depth, CShape** worldShape) const
 		{
 			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::GetUnOccludedWorldShape, shape, depth, worldShape);
@@ -624,11 +614,6 @@ namespace OpenGlass::dwmcore
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE FillShapeWithBrush(const CShape* shape, const ID2D1Brush* brush)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::FillShapeWithBrush, shape, brush);
-		}
-		// this function cannot render the shape that is not consisted of rectangles
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE FillShapeWithSolidColor(const CShape* shape, const D2D1_COLOR_F& color)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::FillShapeWithSolidColor, shape, color);
 		}
 		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE FlushD2D()
 		{
@@ -700,7 +685,6 @@ namespace OpenGlass::dwmcore
 		}
 	};
 	struct CTreeDirty {};
-	struct COverlayContext : CResource {};
 	struct CWindowOcclusionInfo : CResource {};
 	struct CWindowNode : CResource
 	{
@@ -723,12 +707,9 @@ namespace OpenGlass::dwmcore
 		return HANDLE_PROJECTION_FUNCTION(GetCurrentFrameId);
 	}
 
-	inline ID2D1Factory8** g_DeviceManager{ nullptr };
-
 	namespace CCommonRegistryData
 	{
 		inline PULONG m_dwOverlayTestMode{ nullptr };
-		inline PULONGLONG m_backdropBlurCachingThrottleQPCTimeDelta{ nullptr };
 	}
 
 	inline auto g_projectionArray = make_projection_array(
@@ -736,13 +717,9 @@ namespace OpenGlass::dwmcore
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CChannel::MatrixTransformUpdate, 0, os::build_w11_22h2),
 
-		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CDesktopTree::vftable, "CDesktopTree::`vftable'", 0, 0),
-
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetTopLevelWindow, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::GetDesktopTree, 0, 0),
 
 		MAKE_VARIABLE_PROJECTION_TUPLE(CMILMatrix::Identity, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CMILMatrix::Multiply, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CMatrixStack::GetTopByReference, 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CShape::CopyShape, 0, 0),
@@ -762,12 +739,9 @@ namespace OpenGlass::dwmcore
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CD2DContext::DestroyDeviceResources", 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CD2DContext::EnsureBeginDraw, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PushTransformInternal, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::PopTransformInternal, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetUnOccludedWorldShape, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetClipBoundsWorld, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::FillShapeWithBrush, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::FillShapeWithSolidColor, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::FlushD2D, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::ApplyRenderStateInternal, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawingContext::GetCurrentVisual, 0, 0),
@@ -793,10 +767,7 @@ namespace OpenGlass::dwmcore
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(GetCurrentFrameId, 0, 0),
 		
-		MAKE_VARIABLE_PROJECTION_TUPLE(CCommonRegistryData::m_dwOverlayTestMode, 0, 0),
-		MAKE_VARIABLE_PROJECTION_TUPLE(CCommonRegistryData::m_backdropBlurCachingThrottleQPCTimeDelta, 0, 0),
-
-		MAKE_VARIABLE_PROJECTION_TUPLE(g_DeviceManager, 0, 0)
+		MAKE_VARIABLE_PROJECTION_TUPLE(CCommonRegistryData::m_dwOverlayTestMode, 0, 0)
 	);
 	
 	inline bool ParserCallback(PSYMBOL_INFO info, [[maybe_unused]] ULONG size)
@@ -805,29 +776,8 @@ namespace OpenGlass::dwmcore
 		UnDecorateSymbolName(info->Name, symbolName, std::size(symbolName), UNDNAME_NAME_ONLY);
 
 		if (
-			!strcmp(symbolName, "CCombinedGeometry::vftable") &&
-			!strstr(info->Name, "CGeometry")
-		)
-		{
-			return true;
-		}
-		if (
 			!strcmp(symbolName, "CRenderData::DrawImageResource_FillMode") &&
 			!strstr(info->Name, "PEBUD2D_RECT_F")
-		)
-		{
-			return true;
-		}
-		if (
-			!strcmp(symbolName, "CVisual::GetWorldTransform") &&
-			!strstr(info->Name, "W4WalkReason@@PEAVCMILMatrix@@PEA_N2@Z")
-		)
-		{
-			return true;
-		}
-		if (
-			!strcmp(symbolName, "CMILMatrix::Multiply") &&
-			strcmp(info->Name, "?Multiply@CMILMatrix@@QEAAXAEBV1@@Z") != 0
 		)
 		{
 			return true;

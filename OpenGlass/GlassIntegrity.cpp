@@ -254,7 +254,7 @@ void GlassIntegrity::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occlu
 
 				if (
 					!wil::rect_is_empty(occluder.m_transformedRect) &&
-					std::fabs(wil::rect_height(occluder.m_transformedRect) * wil::rect_width(occluder.m_transformedRect)) > 1.f &&
+					std::abs(wil::rect_height(occluder.m_transformedRect) * wil::rect_width(occluder.m_transformedRect)) > 1.f &&
 
 					RectF::DoesIntersectUnsafe(occluder.m_transformedRect, zorderRect->m_transformedRect)
 				)
@@ -323,7 +323,7 @@ void GlassIntegrity::ShrinkOccluderGlassAboved(dwmcore::COcclusionContext* occlu
 
 				if (
 					!wil::rect_is_empty(occluder.m_transformedRect) &&
-					std::fabs(wil::rect_height(occluder.m_transformedRect) * wil::rect_width(occluder.m_transformedRect)) > 1.f &&
+					std::abs(wil::rect_height(occluder.m_transformedRect) * wil::rect_width(occluder.m_transformedRect)) > 1.f &&
 
 					RectF::DoesIntersectUnsafe(occluder.m_transformedRect, zorderRect->m_transformedRect)
 				)
@@ -471,26 +471,30 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_DrawGeometry(
 
 	const auto solidColorBrush = static_cast<dwmcore::CSolidColorLegacyMilBrush*>(brush);
 	const auto color = solidColorBrush->GetRealizedColor();
-	const auto active = (color.a == 0.5f);
 	const auto extendedAmount = GlassKernel::GetBlurExtendedAmount();
+	const auto reinterpreter = GlassKernel::AlphaChannelReinterpreter(color.a);
+	const auto active = reinterpreter.GetIsActive();
+	const auto maximized = reinterpreter.GetIsMaximized();
+
 	if (
-		float glassOpacity, blurBalance, afterglowBalance;
+		GlassKernel::CRealizedGlassColorizationParameters realizedGlassColorizationParameters;
 		solidColorBrush->IsConstantOpaque() ||
 		(
-			(color.a == 0.50f || color.a == 0.25f) &&
+			reinterpreter.GetIsValid() &&
 			(
-				GlassKernel::CalculateRealizedAeroParams(
-					active,
-					extendedAmount,
-					glassOpacity,
-					blurBalance,
-					afterglowBalance,
-					nullptr
+				realizedGlassColorizationParameters = GlassKernel::RealizeWindowColorization(
+					GlassKernel::GetBlendingBaseColor(Shared::IsTransparencyDisabled(), Shared::IsOpaqueOnMaximized(maximized)),
+					GlassKernel::GetBlendingSourceColor(active),
+					GlassKernel::GetColorizationBlendingOpacity(active, maximized),
+					Shared::IsTransparencyDisabled() || Shared::IsOpaqueOnMaximized(maximized),
+					false
 				),
+				Shared::IsTransparencyDisabled() ||
+				Shared::IsOpaqueOnMaximized(maximized) ||
 				Shared::IsGlassFullyOpaque(
-					glassOpacity,
-					blurBalance,
-					afterglowBalance
+					realizedGlassColorizationParameters.color.a,
+					realizedGlassColorizationParameters.blurBalance,
+					realizedGlassColorizationParameters.afterglowBalance
 				)
 			)
 		)
@@ -519,7 +523,7 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_DrawGeometry(
 	}
 	// here are the glass regions
 	else if (
-		(color.a == 0.50f || color.a == 0.25f) &&
+		reinterpreter.GetIsValid() &&
 		extendedAmount
 	)
 	{
@@ -530,7 +534,7 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCOcclusionContext_DrawGeometry(
 			RETURN_IF_FAILED(geometryShape->GetTightBounds(&bounds, occlusionContext->GetWorldTransform()));
 			if (
 				!wil::rect_is_empty(bounds) &&
-				std::fabs(wil::rect_height(bounds) * wil::rect_width(bounds)) > 1.f
+				std::abs(wil::rect_height(bounds) * wil::rect_width(bounds)) > 1.f
 			)
 			{
 				glassCoverageSet->Add(
@@ -826,7 +830,7 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 			break;
 		}
 
-		const auto extendedAmount = GlassKernel::GetBlurExtendedAmount();
+		const auto extendedAmount = GlassKernel::IsCurrentCVIFullyTransparent() ? 0.f : GlassKernel::GetBlurExtendedAmount();
 		if (!extendedAmount)
 		{
 			break;
@@ -848,7 +852,7 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 			if (
 				(
 					!glassCoverageSet ||
-					!glassCoverageSet->IsOverlapped(transformedRect)
+					!glassCoverageSet->IsVisible(transformedRect, occlusionContext->GetArrayBasedCoverageSet())
 				) &&
 				!Shared::g_overrideAccent
 			)
@@ -857,11 +861,16 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 			}
 		}
 
-		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
 		const auto d2dContext = This->GetD3DDevice()->GetD2DContext();
 		const auto context = d2dContext->GetDeviceContext();
+		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
+		LOG_IF_FAILED(This->FlushD2D());
 		d2dContext->EnsureBeginDraw();
 
+		if (!This->GetDeviceTarget())
+		{
+			return S_OK;
+		}
 		if (!context)
 		{
 			break;
@@ -872,8 +881,6 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		{
 			break;
 		}
-
-		LOG_IF_FAILED(This->FlushD2D());
 
 		const auto lockScope = g_lock.lock();
 		if (g_disabled)
@@ -908,8 +915,8 @@ HRESULT STDMETHODCALLTYPE GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		hr = callback(extendedPixelRectangle);
 
 		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
-		d2dContext->EnsureBeginDraw();
 		LOG_IF_FAILED(This->FlushD2D());
+		d2dContext->EnsureBeginDraw();
 
 		safetyZoneLayer.Pop();
 
@@ -983,10 +990,6 @@ void GlassIntegrity::DestroyDeviceResources(dwmcore::CD2DContext* d2dContext)
 
 void GlassIntegrity::Update([[maybe_unused]] GlassEngine::UpdateType type)
 {
-	if (Shared::IsGlassFullyOpaque())
-	{
-		GlassCoverageSetFactory::Shutdown();
-	}
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
 		g_glassSafetyZoneMode = static_cast<GlassSafetyZoneMode>(std::clamp(GlassEngine::GetDwordFromRegistry(L"GlassSafetyZoneMode", 1), 0ul, 1ul));
@@ -1009,7 +1012,7 @@ void GlassIntegrity::Startup()
 	dwmcore::g_projectionArray.ApplyToVariable("CDrawingContext::DrawVisualTree", g_CDrawingContext_DrawVisualTree_Org);
 	
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Attach(&g_COcclusionContext_Compute_Org, MyCOcclusionContext_Compute);
 			HookHelper::Detours::Attach(&g_COcclusionContext_SetDeviceTransform_Org, MyCOcclusionContext_SetDeviceTransform);
@@ -1056,7 +1059,7 @@ void GlassIntegrity::Startup()
 void GlassIntegrity::Shutdown()
 {
 	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]()
+		HookHelper::Detours::Write([]() static
 		{
 			HookHelper::Detours::Detach(&g_COcclusionContext_Compute_Org, MyCOcclusionContext_Compute);
 			HookHelper::Detours::Detach(&g_COcclusionContext_SetDeviceTransform_Org, MyCOcclusionContext_SetDeviceTransform);
