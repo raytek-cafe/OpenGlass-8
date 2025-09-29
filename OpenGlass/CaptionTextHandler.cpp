@@ -102,7 +102,12 @@ namespace OpenGlass::CaptionTextHandler
 	COLORREF g_captionActiveColor{};
 	COLORREF g_captionInactiveColor{};
 	MARGINS g_contentMargins{}, g_sizingMargins{};
-	std::unordered_map<uDWM::CVisual*, bool> g_textVisualStateMap{};
+	struct CWindowState
+	{
+		bool active{};
+		bool maximized{};
+	};
+	std::unordered_map<uDWM::CVisual*, CWindowState> g_textVisualStateMap{};
 	winrt::com_ptr<ID2D1DCRenderTarget> g_textGlowRT{};
 	winrt::com_ptr<ID2D1Bitmap1> g_textGlowD2DBitmap{};
 	winrt::com_ptr<ID2D1Effect> g_textGlowEffect{};
@@ -110,6 +115,8 @@ namespace OpenGlass::CaptionTextHandler
 
 	float g_textOpacity{};
 	float g_textOpacityInactive{};
+	float g_textOpacityMaximized{};
+	float g_textOpacityInactiveMaximized{};
 	COLORREF g_textGlowColor{};
 
 	int g_textGlowSize{};
@@ -149,7 +156,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 	OffsetRect(lprc, g_textGlowSize, g_textGlowSize);
 	
 	const auto textColor = GetTextColor(hdc);
-	const auto textColorOverride = g_textVisualStateMap[g_textVisual] ? g_captionActiveColor : g_captionInactiveColor;
+	const auto textColorOverride = g_textVisualStateMap[g_textVisual].active ? g_captionActiveColor : g_captionInactiveColor;
 	DTTOPTS options
 	{
 		sizeof(DTTOPTS),
@@ -280,7 +287,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 				static_cast<float>(glowDrawRect.bottom)
 			),
 			g_sizingMargins,
-			Shared::g_textGlowMode == 2 ? (g_textVisualStateMap[g_dwriteTextVisual] ? g_textOpacity : g_textOpacityInactive) : 1.f
+			Shared::g_textGlowMode == 2 ? (g_textVisualStateMap[g_dwriteTextVisual].active ? (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityMaximized : g_textOpacity) : (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityInactiveMaximized :  g_textOpacityInactive)) : 1.f
 		);
 		LOG_IF_FAILED(g_textGlowRT->EndDraw());
 		/*{
@@ -384,7 +391,8 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCText_ValidateResources(uDWM::CT
 	}
 	if (g_window = uDWM::TryGetWindowFromVisual(This); g_window && g_window->GetData())
 	{
-		g_textVisualStateMap[This] = g_window->TreatAsActiveWindow();
+		g_textVisualStateMap[This].active = g_window->TreatAsActiveWindow();
+		g_textVisualStateMap[This].maximized = g_window->TreatAsMaximized();
 	}
 	g_textVisual = This;
 	const auto hr = g_CText_ValidateResources_Org(This);
@@ -456,7 +464,7 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 		solidColorBrush->SetColor(color);
 	});
 
-	const auto textColorOverride = g_textVisualStateMap[g_dwriteTextVisual] ? g_captionActiveColor : g_captionInactiveColor;
+	const auto textColorOverride = g_textVisualStateMap[g_dwriteTextVisual].active ? g_captionActiveColor : g_captionInactiveColor;
 	if (textColorOverride != 0xFFFFFFFF)
 	{
 		solidColorBrush->SetColor(Color::FromAbgr(textColorOverride));
@@ -646,7 +654,7 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 				g_textGlowD2DBitmap.get(),
 				glowRect,
 				g_sizingMargins,
-				Shared::g_textGlowMode == 2 ? (g_textVisualStateMap[g_dwriteTextVisual] ? g_textOpacity : g_textOpacityInactive) : 1.f
+				Shared::g_textGlowMode == 2 ? (g_textVisualStateMap[g_dwriteTextVisual].active ? (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityMaximized : g_textOpacity) : (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityInactiveMaximized : g_textOpacityInactive)) : 1.f
 			)
 		);
 		/*{
@@ -788,7 +796,8 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCDWriteText_ValidateVisual(uDWM:
 	}
 	if (g_window = uDWM::TryGetWindowFromVisual(This); g_window && g_window->GetData())
 	{
-		g_textVisualStateMap[This] = g_window->TreatAsActiveWindow();
+		g_textVisualStateMap[This].active = g_window->TreatAsActiveWindow();
+		g_textVisualStateMap[This].maximized = g_window->TreatAsMaximized();
 	}
 	g_dwriteTextVisual = This;
 	const auto hr = g_CDWriteText_ValidateVisual_Org(This);
@@ -948,6 +957,14 @@ void CaptionTextHandler::Update(GlassEngine::UpdateType type)
 			value = 100;
 			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 2, TMT_OPACITY, &value);
 			g_textOpacityInactive = value / 100.f;
+
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 3, TMT_OPACITY, &value);
+			g_textOpacityMaximized = value / 100.f;
+
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 4, TMT_OPACITY, &value);
+			g_textOpacityInactiveMaximized = value / 100.f;
 		}
 		CalculateRealizedTextGlowParams(Shared::g_textGlowMode);
 	}
