@@ -113,11 +113,12 @@ bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsV
 	for (const auto& zorderedRect : m_array.views())
 	{
 		if (
+			D2D1_RECT_F intersectedRect = zorderedRect.m_transformedRect;
 			!wil::rect_is_empty(zorderedRect.m_transformedRect) &&
 			std::abs(wil::rect_height(zorderedRect.m_transformedRect) * wil::rect_width(zorderedRect.m_transformedRect)) > 1.f &&
 
-			RectF::DoesIntersectUnsafe(zorderedRect.m_transformedRect, coverage) &&
-			!occlusionCoverageSet->IsCovered(coverage, zorderedRect.m_depth)
+			RectF::IntersectUnsafe(intersectedRect, coverage) &&
+			!occlusionCoverageSet->IsCovered(intersectedRect, zorderedRect.m_depth)
 		)
 		{
 			return true;
