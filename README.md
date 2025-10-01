@@ -4,6 +4,7 @@ This utility returns the full glass effect to the window frame, just like [glass
 
 > [!NOTE]  
 > Currently only the following **64-bit** Windows (not including server edition) from general availability channel are fully supported.
+> - Windows 10 20H1
 > - Windows 10 20H2
 > - Windows 10 21H2
 > - Windows 10 22H2
