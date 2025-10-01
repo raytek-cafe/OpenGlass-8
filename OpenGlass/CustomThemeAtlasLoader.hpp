@@ -37,6 +37,13 @@ namespace OpenGlass::CustomThemeAtlasLoader
 		int iPropId,
 		int* piVal
 	);
+	HRESULT STDMETHODCALLTYPE MyGetThemeColor(
+		HTHEME hTheme,
+		int iPartId,
+		int iStateId,
+		int iPropId,
+		COLORREF* pColor
+	);
 	HTHEME GetThemeHandle();
 
 	void Update(GlassEngine::UpdateType type);

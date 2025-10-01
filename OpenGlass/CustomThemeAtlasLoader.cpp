@@ -11,6 +11,7 @@ namespace OpenGlass::CustomThemeAtlasLoader
 	decltype(&MyGetThemeMargins) g_GetThemeMargins_Org{};
 	decltype(&MyGetThemeRect) g_GetThemeRect_Org{};
 	decltype(&MyGetThemeInt) g_GetThemeInt_Org{};
+	decltype(&MyGetThemeColor) g_GetThemeColor_Org{};
 
 	constexpr size_t make_theme_atlas_layout_key(
 		int iPartId,
@@ -174,6 +175,35 @@ HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeInt(
 	}
 
 	*piVal = it->second.cxLeftWidth;
+	return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeColor(
+	HTHEME hTheme,
+	int iPartId,
+	int iStateId,
+	int iPropId,
+	COLORREF* pColor
+)
+{
+	decltype(g_themeAtlasLayoutMap)::iterator it;
+	if (
+		hTheme != g_themeHandle.get() ||
+		(
+			it = g_themeAtlasLayoutMap.find(
+				make_theme_atlas_layout_key(
+					iPartId,
+					iStateId,
+					iPropId
+				)
+			)
+		) == g_themeAtlasLayoutMap.end()
+	)
+	{
+		return g_GetThemeColor_Org(hTheme, iPartId, iStateId, iPropId, pColor);
+	}
+
+	*pColor = RGB(it->second.cxLeftWidth, it->second.cxRightWidth, it->second.cyTopHeight);
 	return S_OK;
 }
 
@@ -428,6 +458,28 @@ void CustomThemeAtlasLoader::Update(GlassEngine::UpdateType type)
 			themeAtlasPath, 
 			themeAtlasLayoutPath
 		);
+
+		const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
+		if (themeHandle)
+		{
+			int value;
+
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 1, TMT_OPACITY, &value);
+			Shared::g_captionOpacity = value / 100.f;
+
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 2, TMT_OPACITY, &value);
+			Shared::g_captionOpacityInactive = value / 100.f;
+
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 3, TMT_OPACITY, &value);
+			Shared::g_captionOpacityMaximized = value / 100.f;
+
+			value = 100;
+			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 4, TMT_OPACITY, &value);
+			Shared::g_captionOpacityInactiveMaximized = value / 100.f;
+		}
 	}
 }
 
@@ -465,11 +517,20 @@ void CustomThemeAtlasLoader::Startup()
 			MyGetThemeInt
 		).second
 	);
+	g_GetThemeColor_Org = reinterpret_cast<decltype(g_GetThemeColor_Org)>(
+		HookHelper::WriteDelayloadIAT(
+			uDWM::g_moduleHandle,
+			"ext-ms-win-uxtheme-themes-l1-1-0.dll",
+			"GetThemeColor",
+			MyGetThemeColor
+		).second
+	);
 
 	PostMessageW(FindWindowW(L"DWM", nullptr), WM_THEMECHANGED, 0, 0);
 }
 void CustomThemeAtlasLoader::Shutdown()
 {
+	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-0.dll", "GetThemeColor", g_GetThemeColor_Org);
 	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-0.dll", "GetThemeInt", g_GetThemeInt_Org);
 	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-0.dll", "GetThemeMargins", g_GetThemeMargins_Org);
 	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-2.dll", "GetThemeRect", g_GetThemeRect_Org);

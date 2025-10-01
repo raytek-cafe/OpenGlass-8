@@ -47,6 +47,11 @@ namespace OpenGlass::Shared
 	// w7: 0.4f
 	inline float g_colorizationBlendingOpacityInactiveMaximized{};
 
+	inline float g_captionOpacity{};
+	inline float g_captionOpacityInactive{};
+	inline float g_captionOpacityMaximized{};
+	inline float g_captionOpacityInactiveMaximized{};
+
 	inline enum OpaqueBlendPriority : UINT
 	{
 		Vista,
@@ -70,6 +75,9 @@ namespace OpenGlass::Shared
 
 	inline float g_reflectionIntensity{};
 	inline float g_reflectionIntensityInactive{};
+	inline float g_reflectionIntensityMaximized{};
+	inline float g_reflectionIntensityInactiveMaximized{};
+
 	inline float g_reflectionParallaxIntensity{};
 	inline std::wstring g_reflectionTexturePath{};
 

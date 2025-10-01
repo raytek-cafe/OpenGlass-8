@@ -101,6 +101,8 @@ namespace OpenGlass::CaptionTextHandler
 	};
 	COLORREF g_captionActiveColor{};
 	COLORREF g_captionInactiveColor{};
+	COLORREF g_captionActiveColorMaximized{};
+	COLORREF g_captionInactiveColorMaximized{};
 	MARGINS g_contentMargins{}, g_sizingMargins{};
 	struct CWindowState
 	{
@@ -113,10 +115,6 @@ namespace OpenGlass::CaptionTextHandler
 	winrt::com_ptr<ID2D1Effect> g_textGlowEffect{};
 	winrt::com_ptr<ID2D1Effect> g_textMorphologyEffect{};
 
-	float g_textOpacity{};
-	float g_textOpacityInactive{};
-	float g_textOpacityMaximized{};
-	float g_textOpacityInactiveMaximized{};
 	COLORREF g_textGlowColor{};
 
 	int g_textGlowSize{};
@@ -277,6 +275,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 		};
 		g_textGlowRT->BindDC(hdc, &targetRect);
 		g_textGlowRT->BeginDraw();
+		const auto& windowState = g_textVisualStateMap[g_dwriteTextVisual];
 		Util::DrawNineGridBitmap(
 			context.get(),
 			g_textGlowD2DBitmap.get(),
@@ -287,7 +286,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 				static_cast<float>(glowDrawRect.bottom)
 			),
 			g_sizingMargins,
-			Shared::g_textGlowMode == 2 ? (g_textVisualStateMap[g_dwriteTextVisual].active ? (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityMaximized : g_textOpacity) : (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityInactiveMaximized :  g_textOpacityInactive)) : 1.f
+			Shared::g_textGlowMode == 2 ? (windowState.active ? (windowState.maximized ? Shared::g_captionOpacityMaximized : Shared::g_captionOpacity) : (windowState.maximized ? Shared::g_captionOpacityInactiveMaximized :  Shared::g_captionOpacityInactive)) : 1.f
 		);
 		LOG_IF_FAILED(g_textGlowRT->EndDraw());
 		/*{
@@ -648,13 +647,14 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 			textBoundingBox.right + static_cast<float>(g_contentMargins.cxRightWidth),
 			textBoundingBox.bottom + static_cast<float>(g_contentMargins.cyBottomHeight)
 		};
+		const auto& windowState = g_textVisualStateMap[g_dwriteTextVisual];
 		THROW_IF_FAILED(
 			Util::DrawNineGridBitmap(
 				This,
 				g_textGlowD2DBitmap.get(),
 				glowRect,
 				g_sizingMargins,
-				Shared::g_textGlowMode == 2 ? (g_textVisualStateMap[g_dwriteTextVisual].active ? (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityMaximized : g_textOpacity) : (g_textVisualStateMap[g_dwriteTextVisual].maximized ? g_textOpacityInactiveMaximized : g_textOpacityInactive)) : 1.f
+				Shared::g_textGlowMode == 2 ? (windowState.active ? (windowState.maximized ? Shared::g_captionOpacityMaximized : Shared::g_captionOpacity) : (windowState.maximized ? Shared::g_captionOpacityInactiveMaximized : Shared::g_captionOpacityInactive)) : 1.f
 			)
 		);
 		/*{
@@ -944,35 +944,36 @@ void CaptionTextHandler::Update(GlassEngine::UpdateType type)
 	if (type & GlassEngine::UpdateType::Theme)
 	{
 		g_textGlowD2DBitmap = nullptr;
-
-		const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
-		if (themeHandle)
-		{
-			int value;
-			
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 1, TMT_OPACITY, &value);
-			g_textOpacity = value / 100.f;
-
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 2, TMT_OPACITY, &value);
-			g_textOpacityInactive = value / 100.f;
-
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 3, TMT_OPACITY, &value);
-			g_textOpacityMaximized = value / 100.f;
-
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 4, TMT_OPACITY, &value);
-			g_textOpacityInactiveMaximized = value / 100.f;
-		}
 		CalculateRealizedTextGlowParams(Shared::g_textGlowMode);
 	}
-	if (type & GlassEngine::UpdateType::Backdrop)
+	if ((type & GlassEngine::UpdateType::Theme) || (type & GlassEngine::UpdateType::Backdrop))
 	{
 		g_centerCaption = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"CenterCaption", FALSE));
 		g_captionActiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaption", 0xFFFFFFFF);
 		g_captionInactiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionInactive", g_captionActiveColor);
+		g_captionActiveColorMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionMaximized", 0xFFFFFFFF);
+		g_captionInactiveColorMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionInactiveMaximized", g_captionActiveColorMaximized);
+
+		const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
+		if (themeHandle)
+		{
+			if (g_captionActiveColor == 0xFFFFFFFE)
+			{
+				CustomThemeAtlasLoader::MyGetThemeColor(themeHandle, 46, 1, TMT_TEXTCOLOR, &g_captionActiveColor);
+			}
+			if (g_captionInactiveColor == 0xFFFFFFFE)
+			{
+				CustomThemeAtlasLoader::MyGetThemeColor(themeHandle, 46, 2, TMT_TEXTCOLOR, &g_captionInactiveColor);
+			}
+			if (g_captionActiveColorMaximized == 0xFFFFFFFE)
+			{
+				CustomThemeAtlasLoader::MyGetThemeColor(themeHandle, 46, 3, TMT_TEXTCOLOR, &g_captionActiveColorMaximized);
+			}
+			if (g_captionInactiveColorMaximized == 0xFFFFFFFE)
+			{
+				CustomThemeAtlasLoader::MyGetThemeColor(themeHandle, 46, 4, TMT_TEXTCOLOR, &g_captionInactiveColorMaximized);
+			}
+		}
 	}
 }
 

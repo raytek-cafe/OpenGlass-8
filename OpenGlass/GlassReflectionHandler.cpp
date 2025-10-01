@@ -93,7 +93,7 @@ namespace OpenGlass::GlassReflectionHandler
 			RETURN_IF_FAILED(
 				brush->Update(
 					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::AnimatedGlassSheet) ? 
-					Shared::g_reflectionIntensity : 
+					1.f : 
 					0.f,
 					GlassReflectionBrush::CalculateTargetViewport(
 						{ lprc->left, lprc->top }
@@ -257,8 +257,8 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__FadeOutToGlass
 			{
 				RETURN_IF_FAILED(
 					brush->Update(
-						(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ? 
-						Shared::g_reflectionIntensity : 
+						(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ?
+						1.f :
 						0.f,
 						GlassReflectionBrush::CalculateTargetViewport(
 							This->GetGlassVisual()->GetLocalToParentVisualOffset(This->GetTransformParent())
@@ -314,8 +314,8 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstruct
 			{
 				RETURN_IF_FAILED(
 					brush->Update(
-						(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ? 
-						Shared::g_reflectionIntensity : 
+						(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::LivePreview) ?
+						1.f :
 						0.f,
 						GlassReflectionBrush::CalculateTargetViewport(
 							This->GetGlassVisual()->GetLocalToParentVisualOffset(This->GetTransformParent())

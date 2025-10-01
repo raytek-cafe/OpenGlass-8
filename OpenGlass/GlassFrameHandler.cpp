@@ -192,7 +192,20 @@ SIZE GlassFrameHandler::CalculateButtonSize(int cySize, int buttonType)
 HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* window)
 {
 	const auto active = window->TreatAsActiveWindow();
+	const auto maximized = window->TreatAsMaximized();
 	const auto desktop = window->GetTransformParent();
+	const auto opacity = 
+	active ?
+	(
+		maximized ?
+		Shared::g_reflectionIntensityMaximized :
+		Shared::g_reflectionIntensity
+	) :
+	(
+		maximized ?
+		Shared::g_reflectionIntensityInactiveMaximized :
+		Shared::g_reflectionIntensityInactive
+	);
 	if (
 		const auto legacyVisual = window->GetLegacyVisual();
 		legacyVisual &&
@@ -208,11 +221,7 @@ HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* windo
 			RETURN_IF_FAILED(
 				brush->Update(
 					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
-					(
-						active ?
-						Shared::g_reflectionIntensity :
-						Shared::g_reflectionIntensityInactive
-					) :
+					opacity :
 					0.f,
 					GlassReflectionBrush::CalculateTargetViewport(
 						legacyVisual->GetLocalToParentVisualOffset(desktop),
@@ -251,11 +260,7 @@ HRESULT GlassFrameHandler::UpdateReflectionViewport(uDWM::CTopLevelWindow* windo
 			RETURN_IF_FAILED(
 				brush->Update(
 					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
-					(
-						active ?
-						Shared::g_reflectionIntensity :
-						Shared::g_reflectionIntensityInactive
-					) :
+					opacity :
 					0.f,
 					GlassReflectionBrush::CalculateTargetViewport(
 						clientBlurVisual->GetLocalToParentVisualOffset(desktop),

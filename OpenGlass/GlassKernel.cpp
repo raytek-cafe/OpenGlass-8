@@ -386,6 +386,9 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 		auto value = GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensity");
 		Shared::g_reflectionIntensity = std::clamp(static_cast<float>(value) / 100.f, 0.f, 1.f);
 		Shared::g_reflectionIntensityInactive = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensityInactive", value)) / 100.f, 0.f, 1.f);
+		Shared::g_reflectionIntensityMaximized = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensityMaximized", value)) / 100.f, 0.f, 1.f);
+		Shared::g_reflectionIntensityInactiveMaximized = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionIntensityInactiveMaximized", value)) / 100.f, 0.f, 1.f);
+
 		Shared::g_reflectionParallaxIntensity = std::clamp(static_cast<float>(GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionParallaxIntensity", 13)) / 100.f, 0.f, 1.f);
 
 		Shared::g_type = static_cast<Shared::GlassType>(std::clamp(GlassEngine::GetDwordFromRegistry(L"GlassType", 0), 0ul, 1ul));
