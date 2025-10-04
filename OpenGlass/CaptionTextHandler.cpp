@@ -152,9 +152,10 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 	}
 
 	OffsetRect(lprc, g_textGlowSize, g_textGlowSize);
-	
+
+	const auto& windowState = g_textVisualStateMap[g_dwriteTextVisual];
 	const auto textColor = GetTextColor(hdc);
-	const auto textColorOverride = g_textVisualStateMap[g_textVisual].active ? g_captionActiveColor : g_captionInactiveColor;
+	const auto textColorOverride = windowState.active ? (windowState.maximized ? g_captionActiveColorMaximized : g_captionActiveColor) : (windowState.maximized ? g_captionInactiveColorMaximized : g_captionInactiveColor);
 	DTTOPTS options
 	{
 		sizeof(DTTOPTS),
@@ -463,7 +464,8 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 		solidColorBrush->SetColor(color);
 	});
 
-	const auto textColorOverride = g_textVisualStateMap[g_dwriteTextVisual].active ? g_captionActiveColor : g_captionInactiveColor;
+	const auto& windowState = g_textVisualStateMap[g_dwriteTextVisual];
+	const auto textColorOverride = windowState.active ? (windowState.maximized ? g_captionActiveColorMaximized : g_captionActiveColor) : (windowState.maximized ? g_captionInactiveColorMaximized : g_captionInactiveColor);
 	if (textColorOverride != 0xFFFFFFFF)
 	{
 		solidColorBrush->SetColor(Color::FromAbgr(textColorOverride));
