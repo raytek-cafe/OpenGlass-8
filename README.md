@@ -2,6 +2,10 @@
 # Experience native look of Aero Glass interface on Windows 10+
 This utility returns the full glass effect to the window frame, just like [glass8](http://www.msfn.org/board/forum/180-aero-glass-for-windows-8/) did.
 
+> [!WARNING]
+> OpenGlass is in maintenance mode.   
+> It is still being updated to support the latest Windows. However, no new functionality or feature updates are planned.
+
 > [!NOTE]  
 > Currently only the following **64-bit** Windows (not including server edition) from general availability channel are fully supported.
 > - Windows 10 20H1

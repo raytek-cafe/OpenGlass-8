@@ -276,7 +276,6 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 		};
 		g_textGlowRT->BindDC(hdc, &targetRect);
 		g_textGlowRT->BeginDraw();
-		const auto& windowState = g_textVisualStateMap[g_dwriteTextVisual];
 		Util::DrawNineGridBitmap(
 			context.get(),
 			g_textGlowD2DBitmap.get(),
@@ -649,7 +648,6 @@ void STDMETHODCALLTYPE CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 			textBoundingBox.right + static_cast<float>(g_contentMargins.cxRightWidth),
 			textBoundingBox.bottom + static_cast<float>(g_contentMargins.cyBottomHeight)
 		};
-		const auto& windowState = g_textVisualStateMap[g_dwriteTextVisual];
 		THROW_IF_FAILED(
 			Util::DrawNineGridBitmap(
 				This,
@@ -953,7 +951,7 @@ void CaptionTextHandler::Update(GlassEngine::UpdateType type)
 		g_centerCaption = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"CenterCaption", FALSE));
 		g_captionActiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaption", 0xFFFFFFFF);
 		g_captionInactiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionInactive", g_captionActiveColor);
-		g_captionActiveColorMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionMaximized", 0xFFFFFFFF);
+		g_captionActiveColorMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionMaximized", g_captionActiveColor);
 		g_captionInactiveColorMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionInactiveMaximized", g_captionActiveColorMaximized);
 
 		const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
