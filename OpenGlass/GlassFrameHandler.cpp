@@ -130,7 +130,8 @@ namespace OpenGlass::GlassFrameHandler
 		WindowsVista,
 		Windows7,
 		Windows8,
-		Windows8DP
+		Windows8DP,
+		Custom		
 	} g_captionButtons{ 0 };
 	bool g_disableGlassHooks{ false };
 
@@ -169,7 +170,20 @@ SIZE GlassFrameHandler::CalculateButtonSize(int cySize, int buttonType)
 		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
 			std::make_tuple(0.95454544f, 1.5428571f, 2.1344696f, 1.1800699f, 1.2763636f);
 		break;
-	}
+	case CaptionButtons::Custom:
+		int customHeight = GlassEngine::GetDwordFromRegistry(L"CustomHeight", 33);
+		int customLoneWidth = GlassEngine::GetDwordFromRegistry(L"CustomLoneWidth", 33);
+		int customCloseWidth = GlassEngine::GetDwordFromRegistry(L"CustomCloseWidth", 33);
+		int customMaxWidth = GlassEngine::GetDwordFromRegistry(L"CustomMaxWidth", 33);
+		int customMinWidth = GlassEngine::GetDwordFromRegistry(L"CustomMinWidth", 33);
+
+		heightRatio = static_cast<float>(customHeight) / cySize;
+		loneWidthRatio = static_cast<float>(customLoneWidth) / cySize;
+		closeWidthRatio = static_cast<float>(customCloseWidth) / cySize;
+		maxWidthRatio = static_cast<float>(customMaxWidth) / cySize;
+		minWidthRatio = static_cast<float>(customMinWidth) / cySize;
+		break;
+	} // funny defaults
 
 	SIZE buttonSize = { 0, static_cast<LONG>(std::round(static_cast<float>(cySize) * heightRatio)) };
 

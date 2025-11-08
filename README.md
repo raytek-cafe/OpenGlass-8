@@ -94,7 +94,8 @@ You can change the settings of OpenGlass via editing the Windows registry.
 ### Theme settings
 | Key Name | Type | Description | 
 | -------- | ---- | ----------- |
-| CaptionButtons | DWORD | Changes caption buttons sizes and the opacity of the button glyphs.<br><br><ul><li>0x0 = Windows 10 style (default)</li><li>0x1 = Windows Vista style</li><li>0x2 = Windows 7 style</li><li>0x3 = Windows 8 style</li><li>0x4 = Windows 8 DP/CP style</li></ul> |
+| CaptionButtons | DWORD | Changes caption buttons sizes and the opacity of the button glyphs.<br><br><ul><li>0x0 = Windows 10 style (default)</li><li>0x1 = Windows Vista style</li><li>0x2 = Windows 7 style</li><li>0x3 = Windows 8 style</li><li>0x4 = Windows 8 DP/CP style</li><li>0x5 = Custom</li></ul> |
+| CustomHeight, CustomLoneWidth, CustomMinWidth, CustomMaxWidth, CustomCloseWidth | DWORD |⚠️ Only works on Custom mode! Uses the user set value to each corresponding key name. |
 | CenterCaption | DWORD | Controls how title bar text is aligned.<ul><li>0x0=Keeps it on the left (default)</li><li>0x1=Centers it between the titlebar icon and the titlebar buttons</li><li>0x2=Centers the Win8 way</li></ul><br>ℹ️ Untested on Win11 |
 | TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <br><br><ul><li>0x0 = No glow effect</li><li>0x1 = Glow effect loaded from atlas (default)</li><li>0x2 = Glow effect loaded from atlas and theme opacity is respected</li><li>0x3 = Composited glow effect using your theme settings HIWORD of the value specifies glow size (0 = theme default)</li> |
 | CustomThemeAtlas | String | path to PNG file with theme resource (bitmap must have exactly the same layout as msstyle theme you are using!) |
