@@ -129,7 +129,8 @@ namespace OpenGlass::GlassFrameHandler
 		Disabled = 0,
 		WindowsVista,
 		Windows7,
-		Windows8
+		Windows8,
+		Windows8DP
 	} g_captionButtons{ 0 };
 	bool g_disableGlassHooks{ false };
 
@@ -163,6 +164,10 @@ SIZE GlassFrameHandler::CalculateButtonSize(int cySize, int buttonType)
 	case CaptionButtons::Windows8:
 		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
 			std::make_tuple(0.95454544f, 1.6363636f, 2.2272727f, 1.2272727f, 1.3181819f);
+		break;
+	case CaptionButtons::Windows8DP:
+		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
+			std::make_tuple(0.95454544f, 1.5428571f, 2.1344696f, 1.1800699f, 1.2763636f);
 		break;
 	}
 

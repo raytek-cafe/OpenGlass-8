@@ -119,7 +119,7 @@ namespace OpenGlass::CaptionTextHandler
 
 	int g_textGlowSize{};
 	int g_textGlowIntensity{};
-	bool g_centerCaption{ false };
+	int g_centerCaption{ 0 };
 	bool g_disableTextHooks{ false };
 
 	void CalculateRealizedTextGlowParams(int textGlowMode);
@@ -410,18 +410,44 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCText_scalar_deleting_destructor
 	g_textVisualStateMap.erase(This);
 	return g_CText_scalar_deleting_destructor_Org(This, flag);
 }
-HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCChannel_MatrixTransformUpdate(dwmcore::CChannel* This, UINT handleId, MilMatrix3x2D* matrix)
+HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyCChannel_MatrixTransformUpdate(
+	dwmcore::CChannel* This, UINT handleId, MilMatrix3x2D* matrix)
 {
 	if (g_textVisual)
 	{
 		matrix->DX -= static_cast<DOUBLE>(g_textGlowSize);
 		matrix->DY -= static_cast<DOUBLE>(g_textGlowSize);
 
-		if (g_centerCaption)
+		if (g_centerCaption > 0)
 		{
-			const auto offset = std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.);
+			const DOUBLE containerWidth =
+				(g_centerCaption == 2)
+				? static_cast<DOUBLE>(g_textVisual->GetTransformParent()->GetWidth())
+				: static_cast<DOUBLE>(g_textVisual->GetWidth());
+
+			const DOUBLE parentXOffset =
+				(g_centerCaption == 2)
+				? static_cast<DOUBLE>(g_textVisual->GetX())
+				: 0.0;
+
+			const DOUBLE candidate =
+				(containerWidth - static_cast<DOUBLE>(g_textSize.cx)) / 2.0 - parentXOffset;
+
+			const DOUBLE maxOffset =
+				static_cast<DOUBLE>(g_textVisual->GetWidth()) -
+				static_cast<DOUBLE>(g_textSize.cx);
+
+			const DOUBLE offset = std::floor(std::min(candidate, maxOffset));
+
 			matrix->DX += g_textVisual->IsRTLMirrored() ? -offset : offset;
 		}
+
+		matrix->DY = std::floor(
+			static_cast<DOUBLE>(
+				g_textVisual->GetHeight() -
+				(g_textSize.cy + g_textGlowSize * 2)
+				) / 2.0
+		);
 	}
 
 	return g_CChannel_MatrixTransformUpdate_Org(This, handleId, matrix);
@@ -731,9 +757,26 @@ HRESULT STDMETHODCALLTYPE CaptionTextHandler::MyICompositionSurfaceBrush2_put_Of
 			value.X += offset.x - std::max(offset.x - g_textGlowSize, 0l);
 		}
 
-		if (g_centerCaption)
+		if (g_centerCaption > 0)
 		{
-			const auto offset = std::round((static_cast<float>(g_dwriteTextVisual->GetWidth()) - g_textSizeF.Width) / 2.f);
+			float containerWidth =
+				(g_centerCaption == 2)
+				? static_cast<float>(g_dwriteTextVisual->GetTransformParent()->GetWidth())
+				: static_cast<float>(g_dwriteTextVisual->GetWidth());
+
+			float parentOffsetX =
+				(g_centerCaption == 2)
+				? static_cast<float>(g_dwriteTextVisual->GetX())
+				: 0.f;
+
+			float candidate =
+				(containerWidth - g_textSizeF.Width) / 2.f - parentOffsetX;
+
+			float maxOffset =
+				static_cast<float>(g_dwriteTextVisual->GetWidth()) - g_textSizeF.Width;
+
+			float offset = std::floor(std::min(candidate, maxOffset));
+
 			value.X += g_dwriteTextVisual->IsRTLMirrored() ? -offset : offset;
 		}
 	}
@@ -948,7 +991,7 @@ void CaptionTextHandler::Update(GlassEngine::UpdateType type)
 	}
 	if ((type & GlassEngine::UpdateType::Theme) || (type & GlassEngine::UpdateType::Backdrop))
 	{
-		g_centerCaption = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"CenterCaption", FALSE));
+		g_centerCaption = std::clamp(static_cast<int>(GlassEngine::GetDwordFromRegistry(L"CenterCaption", FALSE)), 0, 2);
 		g_captionActiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaption", 0xFFFFFFFF);
 		g_captionInactiveColor = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionInactive", g_captionActiveColor);
 		g_captionActiveColorMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationColorCaptionMaximized", g_captionActiveColor);
