@@ -131,9 +131,10 @@ namespace OpenGlass::GlassFrameHandler
 		Windows7,
 		Windows8,
 		Windows8DP,
-		Custom		
+		Custom
 	} g_captionButtons{ 0 };
 	bool g_disableGlassHooks{ false };
+	bool g_TopInsert{ false };
 
 	SIZE CalculateButtonSize(int cySize, int buttonType);
 	HRESULT UpdateReflectionViewport(uDWM::CTopLevelWindow* window);
@@ -178,10 +179,10 @@ SIZE GlassFrameHandler::CalculateButtonSize(int cySize, int buttonType)
 		int customMinWidth = GlassEngine::GetDwordFromRegistry(L"CustomMinWidth", 33);
 
 		heightRatio = static_cast<float>(customHeight) / cySize;
-		loneWidthRatio = static_cast<float>(customLoneWidth) / cySize;
-		closeWidthRatio = static_cast<float>(customCloseWidth) / cySize;
-		maxWidthRatio = static_cast<float>(customMaxWidth) / cySize;
-		minWidthRatio = static_cast<float>(customMinWidth) / cySize;
+		loneWidthRatio = static_cast<float>(customLoneWidth) / customHeight;
+		closeWidthRatio = static_cast<float>(customCloseWidth) / customHeight;
+		maxWidthRatio = static_cast<float>(customMaxWidth) / customHeight;
+		minWidthRatio = static_cast<float>(customMinWidth) / customHeight;
 		break;
 	} // funny defaults
 
@@ -700,25 +701,55 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPosit
 	int cySize = GetSystemMetricsForDpi(SM_CYSIZE, data->GetWindowDPI());
 
 	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : This->GetFrameThickness() - 2);
-	int offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
+
+	int offsetTop;
+	if (g_TopInsert == true)
+	{
+		offsetTop = maximized ? visibleMargins.cyTopHeight : visibleMargins.cyTopHeight + 1;
+	}
+	else
+	{
+		offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
+	}
 
 	auto closeButtonSize = loneButton ? CalculateButtonSize(cySize, 0) : CalculateButtonSize(cySize, 3);
 	auto maxButtonSize = CalculateButtonSize(cySize, 2);
 	auto minButtonSize = CalculateButtonSize(cySize, 1);
-
-	if (UpdateButton(3, offsetRight, offsetTop, closeButtonSize) && !toolWindow)
+	if (g_captionButtons == 5)
 	{
-		offsetRight = closeButtonSize.cx + offsetRight;
+		int offsetGroupX = GlassEngine::GetDwordFromRegistry(L"ButtonGroupOffsetX", 0);
+		int offsetGroupY = GlassEngine::GetDwordFromRegistry(L"ButtonGroupOffsetY", 0);
+		int buttonSpacing = GlassEngine::GetDwordFromRegistry(L"ButtonSpacing", 0);
+
+		int offsetCloseX = GlassEngine::GetDwordFromRegistry(L"CloseOffsetX", 0);
+		int offsetCloseY = GlassEngine::GetDwordFromRegistry(L"CloseOffsetY", 0);
+		int offsetMaxX = GlassEngine::GetDwordFromRegistry(L"MaxOffsetX", 0);
+		int offsetMaxY = GlassEngine::GetDwordFromRegistry(L"MaxOffsetY", 0);
+		int offsetMinX = GlassEngine::GetDwordFromRegistry(L"MinOffsetX", 0);
+		int offsetMinY = GlassEngine::GetDwordFromRegistry(L"MinOffsetY", 0);
+
+		offsetRight += offsetGroupX;
+		offsetTop += offsetGroupY;
+
+		if (UpdateButton(3, offsetRight + offsetCloseX, offsetTop + offsetCloseY, closeButtonSize) && !toolWindow)
+			offsetRight += closeButtonSize.cx + buttonSpacing;
+
+		if (UpdateButton(2, offsetRight + offsetMaxX, offsetTop + offsetMaxY, maxButtonSize))
+			offsetRight += maxButtonSize.cx + buttonSpacing;
+
+		if (UpdateButton(1, offsetRight + offsetMinX, offsetTop + offsetMinY, minButtonSize))
+			offsetRight += minButtonSize.cx + buttonSpacing;
 	}
-
-	if (UpdateButton(2, offsetRight, offsetTop, maxButtonSize))
+	else
 	{
-		offsetRight += maxButtonSize.cx;
-	}
+		if (UpdateButton(3, offsetRight, offsetTop, closeButtonSize) && !toolWindow)
+			offsetRight += closeButtonSize.cx;
 
-	if (UpdateButton(1, offsetRight, offsetTop, minButtonSize))
-	{
-		offsetRight += minButtonSize.cx;
+		if (UpdateButton(2, offsetRight, offsetTop, maxButtonSize))
+			offsetRight += maxButtonSize.cx;
+
+		if (UpdateButton(1, offsetRight, offsetTop, minButtonSize))
+			offsetRight += minButtonSize.cx;
 	}
 
 	UpdateButton(0, offsetRight, offsetTop, minButtonSize);
@@ -1006,6 +1037,7 @@ void GlassFrameHandler::Update(GlassEngine::UpdateType type)
 	{
 		Shared::g_disableModernBorders = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"DisableModernBorders", FALSE));
 		g_captionButtons = static_cast<CaptionButtons>(GlassEngine::GetDwordFromRegistry(L"CaptionButtons", 0));
+		g_TopInsert = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"TopInsert", 0));
 	}
 }
 
