@@ -177,12 +177,14 @@ SIZE GlassFrameHandler::CalculateButtonSize(int cySize, int buttonType)
 		int customCloseWidth = GlassEngine::GetDwordFromRegistry(L"CustomCloseWidth", 33);
 		int customMaxWidth = GlassEngine::GetDwordFromRegistry(L"CustomMaxWidth", 33);
 		int customMinWidth = GlassEngine::GetDwordFromRegistry(L"CustomMinWidth", 33);
+		int titleBarHeight = GlassEngine::GetDwordFromRegistry(L"CustomTitlebarHeight", 21);
 
-		heightRatio = static_cast<float>(customHeight) / cySize;
-		loneWidthRatio = static_cast<float>(customLoneWidth) / customHeight;
-		closeWidthRatio = static_cast<float>(customCloseWidth) / customHeight;
-		maxWidthRatio = static_cast<float>(customMaxWidth) / customHeight;
-		minWidthRatio = static_cast<float>(customMinWidth) / customHeight;
+		// Calculate ratios using title bar height; shoutouts to ImSwordQueen
+		heightRatio = std::max(0.0f, static_cast<float>(customHeight) / static_cast<float>(titleBarHeight));
+		loneWidthRatio = std::max(0.0f, static_cast<float>(customLoneWidth) / customHeight);
+		closeWidthRatio = std::max(0.0f, static_cast<float>(customCloseWidth) / customHeight);
+		maxWidthRatio = std::max(0.0f, static_cast<float>(customMaxWidth) / customHeight);
+		minWidthRatio = std::max(0.0f, static_cast<float>(customMinWidth) / customHeight);
 		break;
 	} // funny defaults
 
