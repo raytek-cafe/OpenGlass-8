@@ -759,11 +759,27 @@ HRESULT STDMETHODCALLTYPE GlassFrameHandler::MyCTopLevelWindow_UpdateNCAreaPosit
 	if (toolWindow)
 	{
 		int cySmSize = GetSystemMetricsForDpi(SM_CYSMSIZE, data->GetWindowDPI());
-		SIZE toolButtonSize = { cySmSize , cySmSize };
 
-		offsetTop = (borderMargins.cyTopHeight - toolButtonSize.cy - 4 > offsetTop) ? borderMargins.cyTopHeight - toolButtonSize.cy - 4 : offsetTop;
-		UpdateButton(3, offsetRight, offsetTop, toolButtonSize);
-		offsetRight = toolButtonSize.cx + offsetRight;
+		int customToolWidth = GlassEngine::GetDwordFromRegistry(L"CustomToolWidth", 0);
+		int customToolHeight = GlassEngine::GetDwordFromRegistry(L"CustomToolHeight", 0);
+
+		int offsetToolX = GlassEngine::GetDwordFromRegistry(L"ToolOffsetX", 0);
+		int offsetToolY = GlassEngine::GetDwordFromRegistry(L"ToolOffsetY", 0);
+
+		if (g_captionButtons == 5)
+		{
+			SIZE toolButtonSize = { cySmSize + customToolWidth , cySmSize + customToolHeight };
+			offsetTop = (borderMargins.cyTopHeight - toolButtonSize.cy - 4 > offsetTop) ? borderMargins.cyTopHeight - toolButtonSize.cy - 4 : offsetTop;
+			UpdateButton(3, offsetRight + offsetToolX, offsetTop + offsetToolY, toolButtonSize);
+			offsetRight = toolButtonSize.cx + offsetRight;
+		}
+		else
+		{
+			SIZE toolButtonSize = { cySmSize , cySmSize };
+			offsetTop = (borderMargins.cyTopHeight - toolButtonSize.cy - 4 > offsetTop) ? borderMargins.cyTopHeight - toolButtonSize.cy - 4 : offsetTop;
+			UpdateButton(3, offsetRight, offsetTop, toolButtonSize);
+			offsetRight = toolButtonSize.cx + offsetRight;
+		}
 	}
 
 	if (auto iconVisual = This->GetIconVisual(); iconVisual && cxLeft > 0)
