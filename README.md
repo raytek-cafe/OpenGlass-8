@@ -162,7 +162,7 @@ The Windows Implementation Libraries (WIL) is a header-only C++ library created 
 Saved me some decompiling and reverse engineering time thanks to ADeltaX's blog!
 
 ## Support
-The software was developed in free time and is now open source under the GPLv3 license.
+This project is maintained by Zhe Yang, which was developed in free time and is now open source under the GPLv3 license.
 
 Since Desktop Window Manager does not provide any official support for its extensibility, OpenGlass internally uses many undocumented techniques to achieve the desired effect. Although these techniques have been developed precisely with an emphasis on stability, performance and compatibility, it may happen that some future Windows update will break it. The developer cannot ensure that OpenGlass will be fully functional in such case but he will do its best to make it work as soon as possible.
 
