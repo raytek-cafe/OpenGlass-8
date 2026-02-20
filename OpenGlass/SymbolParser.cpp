@@ -11,52 +11,15 @@ BOOL CALLBACK CSymbolParser::EnumSymbolsCallback(
 	PVOID UserContext
 )
 {
-	return static_cast<BOOL>(reinterpret_cast<SymbolParserCallback*>(UserContext)(pSymInfo, SymbolSize));
+	return static_cast<BOOL>(reinterpret_cast<Callback*>(UserContext)(pSymInfo, SymbolSize));
 }
 
-BOOL CALLBACK CSymbolParser::SymCallback(
-	[[maybe_unused]] HANDLE hProcess,
-	ULONG ActionCode,
-	ULONG64 CallbackData,
-	ULONG64 UserContext
-)
+CSymbolParser::CSymbolParser(LPCWSTR symbolsPath)
 {
-	if (ActionCode == CBA_EVENT)
-	{
-		auto& symbolParser = *reinterpret_cast<CSymbolParser*>(UserContext);
-		auto event = reinterpret_cast<PIMAGEHLP_CBA_EVENTW>(CallbackData);
-
-		return static_cast<BOOL>(symbolParser.m_eventCallback(event));
-	}
-	return FALSE;
-}
-
-HMODULE WINAPI CSymbolParser::MyLoadLibraryExW(
-	LPCWSTR lpLibFileName,
-	HANDLE hFile,
-	DWORD dwFlags
-)
-{
-	if (std::wstring loweredLibFileName{ lpLibFileName }; wcsstr(CharLowerW(loweredLibFileName.data()), L"symsrv.dll")) [[likely]]
-	{
-		const auto symsrvFilePath = Util::make_current_folder_file(L"symsrv.dll");
-		return LoadLibraryW(symsrvFilePath.get());
-	}
-
-	return LoadLibraryExW(lpLibFileName, hFile, dwFlags);
-}
-
-CSymbolParser::CSymbolParser(SymbolEventCallback* callback) : m_eventCallback{ callback }
-{
-	m_LoadLibraryExW_Org = HookHelper::WriteIAT(GetModuleHandleW(L"dbghelp.dll"), "api-ms-win-core-libraryloader-l1-1-0.dll", "LoadLibraryExW", MyLoadLibraryExW);
 	THROW_IF_WIN32_BOOL_FALSE(
 		SymInitializeW(
 			GetCurrentProcess(),
-			(
-				std::wstring{ L"SRV*" } +
-				Util::make_current_folder_file(L"symbols").get() +
-				L"*https://msdl.microsoft.com/download/symbols"
-			).c_str(),
+			symbolsPath,
 			FALSE
 		)
 	);
@@ -64,52 +27,38 @@ CSymbolParser::CSymbolParser(SymbolEventCallback* callback) : m_eventCallback{ c
 	// SYMOPT_PUBLICS_ONLY is required for ensuring all retrived function names are decorated
 	// before calling UnDecorateSymbolName
 	SymSetOptions(
-		SYMOPT_DEBUG | 
-		SYMOPT_PUBLICS_ONLY | 
-		SYMOPT_NO_PROMPTS
-	);
-	THROW_IF_WIN32_BOOL_FALSE(
-		SymRegisterCallbackW64(
-			GetCurrentProcess(), 
-			SymCallback, 
-			reinterpret_cast<ULONG64>(this)
-		)
+		SYMOPT_PUBLICS_ONLY |
+		SYMOPT_EXACT_SYMBOLS |
+		SYMOPT_IGNORE_NT_SYMPATH
 	);
 }
 
 CSymbolParser::~CSymbolParser() noexcept
 {
 	THROW_IF_WIN32_BOOL_FALSE(SymCleanup(GetCurrentProcess()));
-	m_LoadLibraryExW_Org = HookHelper::WriteIAT(GetModuleHandleW(L"dbghelp.dll"), "api-ms-win-core-libraryloader-l1-1-0.dll", "LoadLibraryExW", m_LoadLibraryExW_Org);
 }
 
-HRESULT CSymbolParser::LoadAndParse(PCWSTR moduleName, SymbolParserCallback* callback) try
+HRESULT CSymbolParser::ParsePdb(HMODULE moduleHandle, Callback* callback) try
 {
-	std::wstring filePath{};
-	{
-		wil::unique_hmodule moduleHandle
-		{ 
-			LoadLibraryExW(
-				moduleName, 
-				nullptr, 
-				DONT_RESOLVE_DLL_REFERENCES
-			) 
-		};
-		THROW_LAST_ERROR_IF_NULL(moduleHandle);
-		THROW_IF_FAILED((wil::GetModuleFileNameW<std::wstring, MAX_PATH>(moduleHandle.get(), filePath)));
-	}
+	CHAR modulePath[MAX_PATH]{};
+	THROW_LAST_ERROR_IF(GetModuleFileNameA(moduleHandle, modulePath, MAX_PATH) == 0);
 
-	const auto moduleBase = SymLoadModuleExW(
-		GetCurrentProcess(), 
-		nullptr, 
-		filePath.data(), 
-		nullptr, 
-		0, 
-		0, 
-		nullptr, 
-		0
-	);
-	THROW_LAST_ERROR_IF(moduleBase == 0);
+	DWORD64 moduleBase = 0;
+	{
+		MODULEINFO moduleInfo{};
+		GetModuleInformation(GetCurrentProcess(), moduleHandle, &moduleInfo, sizeof(moduleInfo));
+		moduleBase = SymLoadModuleEx(
+			GetCurrentProcess(),
+			nullptr,
+			modulePath,
+			nullptr,
+			reinterpret_cast<DWORD64>(moduleInfo.lpBaseOfDll),
+			moduleInfo.SizeOfImage,
+			nullptr,
+			0
+		);
+		THROW_LAST_ERROR_IF(moduleBase == 0);
+	}
 	const auto symCleanUp = wil::scope_exit([=]
 	{
 		if (moduleBase != 0)
@@ -118,27 +67,29 @@ HRESULT CSymbolParser::LoadAndParse(PCWSTR moduleName, SymbolParserCallback* cal
 		}
 	});
 
-	IMAGEHLP_MODULEW64 moduleInfo{ sizeof(moduleInfo) };
-	THROW_IF_WIN32_BOOL_FALSE(
-		SymGetModuleInfoW64(
-			GetCurrentProcess(), 
-			moduleBase, 
-			&moduleInfo
-		)
-	);
-	THROW_WIN32_IF_MSG(
-		ERROR_FILE_NOT_FOUND, 
-		*moduleInfo.LoadedPdbName == L'\0', 
-		"Symbols NOT loaded for %ls\n", 
-		moduleName
-	);
-	THROW_WIN32_IF_MSG(
-		ERROR_FILE_CORRUPT, 
-		(moduleInfo.SymType & 0xFFFFFFFB) == 0, 
-		"Invalid symbol type %d for module %ls\n", 
-		moduleInfo.SymType, 
-		moduleName
-	);
+	{
+		IMAGEHLP_MODULEW64 moduleInfo{ sizeof(moduleInfo) };
+		THROW_IF_WIN32_BOOL_FALSE(
+			SymGetModuleInfoW64(
+				GetCurrentProcess(),
+				moduleBase,
+				&moduleInfo
+			)
+		);
+		THROW_WIN32_IF_MSG(
+			ERROR_FILE_NOT_FOUND,
+			moduleInfo.LoadedPdbName[0] == L'\0',
+			"Symbols NOT loaded for module %p",
+			moduleHandle
+		);
+		THROW_WIN32_IF_MSG(
+			ERROR_FILE_CORRUPT,
+			(moduleInfo.SymType & 0xFFFFFFFB) == 0,
+			"Invalid symbol type %d for module %p",
+			moduleInfo.SymType,
+			moduleHandle
+		);
+	}
 
 	THROW_IF_WIN32_BOOL_FALSE(
 		SymEnumSymbols(

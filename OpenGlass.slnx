@@ -1,0 +1,13 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <BuildType Name="ReleaseSigned" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="Common/Common.vcxitems" Id="9d3a67c5-e5ca-42ae-8b06-491c60e86ebe" />
+  <Project Path="OpenGlass/OpenGlass.vcxproj" Id="80009307-7b06-4785-af83-3f5d6db7deb6" />
+  <Project Path="OpenGlassHost/OpenGlassHost.vcxproj" Id="6c2d5b3d-4fe4-4e68-8e58-7b5a5d1a3d40" />
+  <Project Path="OpenGlassGUI/OpenGlassGUI.vcxproj" Id="431e83fa-6d49-43e5-bb53-73da2b428258" />
+  <Project Path="OpenGlassTest/OpenGlassTest.vcxproj" Id="e7e2c6a4-36b2-4a61-9e2b-6b3d2b8b8c4f" />
+</Solution>

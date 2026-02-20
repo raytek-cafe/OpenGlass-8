@@ -21,14 +21,14 @@ namespace OpenGlass::DWM
 	struct DynArray
 	{
 		T* data;
-		T* buffer;
-		UINT bufferCapacity;
+		T* initialAllocation;
+		UINT allocSize;
 		UINT capacity;
-		UINT size;
+		UINT count;
 
 		auto views() const
 		{
-			return std::span<T>(data, size);
+			return std::span<T>(data, count);
 		}
 	};
 
@@ -55,35 +55,35 @@ namespace OpenGlass::DWM
 		{
 			this->capacity = 8;
 			this->data = new T[this->capacity];
-			this->size = 0;
+			this->count = 0;
 		}
 		~MyDynArrayImpl()
 		{
 			delete[] this->data;
 			this->data = nullptr;
-			this->capacity = this->size = 0;
+			this->capacity = this->count = 0;
 		}
 
 		void Clear()
 		{
-			if (this->size != 0)
+			if (this->count != 0)
 			{
 				this->capacity = 8;
 				delete[] this->data;
 				this->data = new T[this->capacity];
-				this->size = 0;
+				this->count = 0;
 			}
 		}
 		void Add(const T& object)
 		{
-			auto newSize = this->size + 1u;
-			if (newSize < this->size)
+			auto newSize = this->count + 1u;
+			if (newSize < this->count)
 			{
 				FAIL_FAST_HR(static_cast<HRESULT>(0x80070216ul));
 			}
 			else
 			{
-				auto bufferSize = this->size * sizeof(T);
+				auto bufferSize = this->count * sizeof(T);
 				if (newSize > this->capacity)
 				{
 					auto tmp = std::unique_ptr<T[]>(this->data);
@@ -94,20 +94,20 @@ namespace OpenGlass::DWM
 				}
 
 				*reinterpret_cast<T*>(reinterpret_cast<ULONG_PTR>(this->data) + bufferSize) = object;
-				this->size = newSize;
+				this->count = newSize;
 			}
 		}
 		template <typename... Args>
 		void AddInPlace(Args&&... args)
 		{
-			auto newSize = this->size + 1u;
-			if (newSize < this->size)
+			auto newSize = this->count + 1u;
+			if (newSize < this->count)
 			{
 				FAIL_FAST_HR(static_cast<HRESULT>(0x80070216ul));
 			}
 			else
 			{
-				auto bufferSize = this->size * sizeof(T);
+				auto bufferSize = this->count * sizeof(T);
 				if (newSize > this->capacity)
 				{
 					auto tmp = std::unique_ptr<T[]>(this->data);
@@ -118,7 +118,7 @@ namespace OpenGlass::DWM
 				}
 
 				*reinterpret_cast<T*>(reinterpret_cast<ULONG_PTR>(this->data) + bufferSize) = T{ std::forward<Args>(args)... };
-				this->size = newSize;
+				this->count = newSize;
 			}
 		}
 	};
@@ -127,6 +127,12 @@ namespace OpenGlass::DWM
 	{
 		double x;
 		double y;
+	};
+	struct MilPoint3F
+	{
+		FLOAT x;
+		FLOAT y;
+		FLOAT z;
 	};
 	struct MilRectF
 	{
@@ -146,6 +152,11 @@ namespace OpenGlass::DWM
 	{
 		double width;
 		double height;
+	};
+	enum DwmResourceType : UINT
+	{
+		ImageLegacyMilBrushProxy = 17,
+		SolidColorLegacyMilBrushProxy = 34,
 	};
 	enum MIL_RESOURCE_TYPE : UINT {};
 	enum class MilBrushMappingMode
@@ -210,16 +221,41 @@ namespace OpenGlass::DWM
 	using HMIL_CONNECTION = HANDLE;
 	struct IDwmChannel {};
 	struct IDwmWindow {};
-	// since windows 11 24h2
-	struct IDwmChannelProvider : IUnknown 
+}
+namespace OpenGlass::dwmcore
+{
+	using namespace DWM;
+	struct CChannel : IDwmChannel
 	{
-		virtual HRESULT STDMETHODCALLTYPE CreateMilResource(MIL_RESOURCE_TYPE, UINT*, IUnknown**) = 0;
-		virtual HRESULT STDMETHODCALLTYPE CreateSharedMilResource(MIL_RESOURCE_TYPE, UINT*, void**, IUnknown**) = 0;
-		virtual HRESULT STDMETHODCALLTYPE DuplicateSharedMilResource(void*, MIL_RESOURCE_TYPE, bool, UINT*, IUnknown**) = 0;
-		virtual UINT STDMETHODCALLTYPE GetChannelHandle(void) = 0;
-		virtual void STDMETHODCALLTYPE Lock(void) = 0;
-		virtual void STDMETHODCALLTYPE ReleaseMilResource(IUnknown*) = 0;
-		virtual HRESULT STDMETHODCALLTYPE InternalCommit(void*) = 0;
-		virtual void STDMETHODCALLTYPE Unlock(void) = 0;
+		DECLSPEC_PROJECTION HRESULT MatrixTransformUpdate(
+			UINT handleId,
+			MilMatrix3x2D* matrix
+		);
+		DECLSPEC_PROJECTION HRESULT SolidColorLegacyMilBrushUpdate(
+			UINT handleId,
+			double opacity,
+			const D2D1_COLOR_F& color,
+			UINT opacityAnimationsHandleId,
+			UINT transformHandleId,
+			UINT relativeTransformHandleId
+		);
+		DECLSPEC_PROJECTION HRESULT ImageLegacyMilBrushUpdate(
+			UINT handleId,
+			double opacity,
+			const D2D1_RECT_F& viewport,
+			const D2D1_RECT_F& viewbox,
+			UINT opacityAnimationsHandleId,
+			UINT transformHandleId,
+			UINT relativeTransformHandleId,
+			MilBrushMappingMode viewportUnits,
+			MilBrushMappingMode viewboxUnits,
+			UINT viewportAnimationsHandleId,
+			UINT viewboxAnimationsHandleId,
+			MilStretch stretchMode,
+			MilTileMode tileMode,
+			MilHorizontalAlignment alignmentX,
+			MilVerticalAlignment alignmentY,
+			UINT imageSourceHandleId
+		);
 	};
 }

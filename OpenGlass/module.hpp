@@ -5,8 +5,3 @@ _Use_decl_annotations_ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LP
 _Use_decl_annotations_ STDAPI DllCanUnloadNow();
 STDAPI DllRegisterServer();
 STDAPI DllUnregisterServer();
-
-STDAPI StartupService() noexcept;
-STDAPI ShutdownService() noexcept;
-STDAPI InstallApp() noexcept;
-STDAPI UninstallApp() noexcept;

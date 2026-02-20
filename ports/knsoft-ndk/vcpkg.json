@@ -1,0 +1,8 @@
+{
+  "name": "knsoft-ndk",
+  "version-string": "1.2.50-beta",
+  "description": "Native C/C++ definitions and import libraries for Windows NT.",
+  "homepage": "https://github.com/KNSoft/KNSoft.NDK",
+  "license": "MIT",
+  "supports": "windows"
+}

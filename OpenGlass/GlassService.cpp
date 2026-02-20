@@ -4,14 +4,20 @@
 #include "GlassService.hpp"
 #include "HookHelper.hpp"
 #include "OpenGlass.hpp"
-#include "module.hpp"
 
 using namespace OpenGlass;
 namespace OpenGlass::GlassService
 {
 	typedef wil::unique_any<PACL, decltype(&::LocalFree), ::LocalFree> unique_hlocal_acl;
 	constexpr auto c_pipeName = L"\\\\.\\pipe\\Global\\OpenGlassHostPipe";
-	std::unordered_map<DWORD, std::chrono::steady_clock::time_point> g_dwmInjectionMap{};
+	struct CDwmProcessInfo
+	{
+		std::chrono::steady_clock::time_point injectionTimeStamp;
+		wil::unique_handle processHandle;
+
+		CDwmProcessInfo(std::chrono::steady_clock::time_point t, HANDLE h) : injectionTimeStamp(t), processHandle(h) {}
+	};
+	std::unordered_map<DWORD, CDwmProcessInfo> g_dwmInjectionMap{};
 	std::unordered_set<DWORD> g_dwmInjectionBlackList{};
 
 	ThreadStatus g_injectionThreadStatus{ ThreadStatus::Stopped };
@@ -21,7 +27,6 @@ namespace OpenGlass::GlassService
 	HANDLE g_serverNamedPipeHandle{};
 
 	bool IsOpenGlassAlreadyLoaded(DWORD processId);
-	bool IsDwmProcess(DWORD processId);
 	HRESULT InjectOpenGlassDLL(DWORD processId, bool inject);
 	HRESULT OpenUserRegistryForDwm(RequestBuffer& content, DWORD processId);
 	HRESULT RunInjectionThread();
@@ -40,10 +45,10 @@ HRESULT GlassService::OpenUserRegistryForDwm(RequestBuffer& content, DWORD proce
 	THROW_IF_WIN32_BOOL_FALSE(
 		DuplicateTokenEx(
 			token.get(),
-			TOKEN_ASSIGN_PRIMARY | TOKEN_ALL_ACCESS,
+			TOKEN_ALL_ACCESS,
 			nullptr,
 			SecurityImpersonation,
-			TokenPrimary,
+			TokenImpersonation,
 			&duplicatedToken
 		)
 	);
@@ -85,129 +90,124 @@ CATCH_RETURN()
 
 bool GlassService::IsOpenGlassAlreadyLoaded(DWORD processId)
 {
-	wil::unique_handle processHandle{ OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, processId) };
-	return HookHelper::GetProcessModule(processHandle.get(), Util::g_thisModulePath.c_str()) != nullptr;
+	return HookHelper::GetRemoteModuleBase(processId, Util::g_thisModulePath.c_str());
 }
 
-bool GlassService::IsDwmProcess(DWORD processId)
+bool GlassService::IsDwmProcess(HANDLE processHandle) try
 {
-	wil::unique_handle processHandle{ OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId) };
-	if (!processHandle)
+	const auto dwmPath = wil::QueryFullProcessImageNameW<std::wstring, MAX_PATH>(processHandle);
+	if (_wcsicmp(dwmPath.c_str(), wil::ExpandEnvironmentStringsW<std::wstring, MAX_PATH>(L"%WINDIR%\\system32\\dwm.exe").c_str()) != 0)
 	{
 		return false;
 	}
 
-	try
-	{
-		const auto dwmPath = wil::QueryFullProcessImageNameW<std::wstring, MAX_PATH>(processHandle.get());
-		if (_wcsicmp(dwmPath.c_str(), wil::ExpandEnvironmentStringsW<std::wstring, MAX_PATH>(L"%WINDIR%\\system32\\dwm.exe").c_str()) != 0)
-		{
-			return false;
-		}
-	}
-	catch (...)
-	{
-		return false;
-	}
+	wil::unique_handle token{ nullptr };
+	THROW_IF_WIN32_BOOL_FALSE(OpenProcessToken(processHandle, TOKEN_QUERY | TOKEN_DUPLICATE, token.put()));
 
-	return true;
+	wil::unique_handle impersonationToken;
+	THROW_IF_WIN32_BOOL_FALSE(DuplicateToken(token.get(), SecurityIdentification, impersonationToken.put()));
+
+	BOOL isWindowManager{ FALSE };
+	wil::unique_sid sid{ nullptr };
+	SID_IDENTIFIER_AUTHORITY authority{ SECURITY_NT_AUTHORITY };
+	THROW_IF_WIN32_BOOL_FALSE(AllocateAndInitializeSid(&authority, 2, SECURITY_WINDOW_MANAGER_BASE_RID, SECURITY_NULL_RID, 0, 0, 0, 0, 0, 0, &sid));
+	THROW_IF_WIN32_BOOL_FALSE(CheckTokenMembership(impersonationToken.get(), sid.get(), &isWindowManager));
+
+	return static_cast<bool>(isWindowManager);
+}
+catch (...)
+{
+	return false;
 }
 
 HRESULT GlassService::InjectOpenGlassDLL(DWORD processId, bool inject)
 {
 	wil::unique_handle processHandle{ OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, processId) };
+	RETURN_LAST_ERROR_IF_NULL(processHandle);
 
-	[[maybe_unused]] const auto bufferSize = (Util::g_thisModulePath.size() + 1ull) * sizeof(WCHAR);
-	PVOID remoteAddress{ nullptr };
+	const auto initOffset = static_cast<ULONG_PTR>(
+		reinterpret_cast<ULONG_PTR>(OpenGlass::InitializationThreadEntryPoint) -
+		reinterpret_cast<ULONG_PTR>(wil::GetModuleInstanceHandle())
+	);
+	const auto uninitOffset = static_cast<ULONG_PTR>(
+		reinterpret_cast<ULONG_PTR>(OpenGlass::UnInitializationThreadEntryPoint) -
+		reinterpret_cast<ULONG_PTR>(wil::GetModuleInstanceHandle())
+	);
+
+	const auto CreateRemoteThreadWithNTAPI = [&](LPTHREAD_START_ROUTINE startRoutine, void* parameter) -> wil::unique_handle
+	{
+		wil::unique_handle threadHandle{};
+		const auto status = NtCreateThreadEx(
+			threadHandle.put(),
+			THREAD_ALL_ACCESS,
+			nullptr,
+			processHandle.get(),
+			reinterpret_cast<PUSER_THREAD_START_ROUTINE>(startRoutine),
+			parameter,
+			0,
+			0,
+			0,
+			0,
+			nullptr
+		);
+		LOG_IF_NTSTATUS_FAILED(status);
+
+		return threadHandle;
+	};
+
 	if (inject)
 	{
-		remoteAddress = VirtualAllocEx(processHandle.get(), nullptr, bufferSize, MEM_COMMIT, PAGE_READWRITE);
-		RETURN_LAST_ERROR_IF_NULL(remoteAddress);
+		const auto remoteLoadLibraryW = GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "LoadLibraryW");
+
+		{
+			const auto pathSize = (Util::g_thisModulePath.size() + 1ull) * sizeof(WCHAR);
+			void* remotePath = VirtualAllocEx(processHandle.get(), nullptr, pathSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+			RETURN_LAST_ERROR_IF_NULL(remotePath);
+			const auto remotePathCleanup = wil::scope_exit([&]
+			{
+				LOG_IF_WIN32_BOOL_FALSE(VirtualFreeEx(processHandle.get(), remotePath, 0, MEM_RELEASE));
+			});
+
+			SIZE_T bytesWritten{};
+			RETURN_IF_WIN32_BOOL_FALSE(
+				WriteProcessMemory(
+					processHandle.get(),
+					remotePath,
+					Util::g_thisModulePath.c_str(),
+					pathSize,
+					&bytesWritten
+				)
+			);
+			RETURN_HR_IF(E_FAIL, bytesWritten != pathSize);
+
+			const auto loadThread = CreateRemoteThreadWithNTAPI(reinterpret_cast<LPTHREAD_START_ROUTINE>(remoteLoadLibraryW), remotePath);
+			RETURN_LAST_ERROR_IF_NULL(loadThread);
+
+			if (WaitForSingleObject(loadThread.get(), 3'000) != WAIT_OBJECT_0)
+			{
+				LOG_IF_WIN32_BOOL_FALSE(TerminateThread(loadThread.get(), HRESULT_FROM_WIN32(ERROR_POSSIBLE_DEADLOCK)));
+				return HRESULT_FROM_WIN32(ERROR_POSSIBLE_DEADLOCK);
+			}
+		}
+
+		HMODULE remoteDllBase = HookHelper::GetRemoteModuleBase(processId, Util::g_thisModulePath.c_str());
+		RETURN_HR_IF_NULL(HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND), remoteDllBase);
+
+		const auto remoteInit = reinterpret_cast<LPTHREAD_START_ROUTINE>(reinterpret_cast<uint8_t*>(remoteDllBase) + initOffset);
+		const auto initThread = CreateRemoteThreadWithNTAPI(remoteInit, nullptr);
+		RETURN_LAST_ERROR_IF_NULL(initThread);
 	}
 	else
 	{
-		remoteAddress = HookHelper::GetProcessModule(processHandle.get(), Util::g_thisModulePath.c_str());
-	}
-	[[maybe_unused]] const auto cleanup = wil::scope_exit([&processHandle, remoteAddress, inject]
-	{
-		if (inject && remoteAddress)
+		const auto remoteDllBase = HookHelper::GetRemoteModuleBase(processId, Util::g_thisModulePath.c_str());
+		if (!remoteDllBase)
 		{
-			VirtualFreeEx(processHandle.get(), remoteAddress, 0, MEM_RELEASE);
-		}
-	});
-
-	if (inject)
-	{
-		RETURN_IF_WIN32_BOOL_FALSE(WriteProcessMemory(processHandle.get(), remoteAddress, static_cast<LPCVOID>(Util::g_thisModulePath.c_str()), bufferSize, nullptr));
-	}
-
-	static const auto sc_pfnNtCreateThreadEx = reinterpret_cast<NTSTATUS(NTAPI*)(PHANDLE, ACCESS_MASK, LPVOID, HANDLE, LPTHREAD_START_ROUTINE, LPVOID, ULONG, SIZE_T, SIZE_T, SIZE_T, LPVOID)>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtCreateThreadEx"));
-	
-	wil::unique_handle threadHandle{ nullptr };
-	const auto startRoutine =
-		inject ?
-		reinterpret_cast<LPTHREAD_START_ROUTINE>(LoadLibraryW) :
-		reinterpret_cast<LPTHREAD_START_ROUTINE>(
-			reinterpret_cast<ULONG_PTR>(OpenGlass::UnInitializationThreadEntryPoint)-
-			reinterpret_cast<ULONG_PTR>(wil::GetModuleInstanceHandle()) +
-			reinterpret_cast<ULONG_PTR>(remoteAddress)
-		);
-	NTSTATUS ntstatus
-	{ 
-		sc_pfnNtCreateThreadEx(
-			threadHandle.put(), 
-			PROCESS_ALL_ACCESS, 
-			nullptr, 
-			processHandle.get(), 
-			startRoutine, 
-			remoteAddress,
-			0, 
-			0, 
-			0, 
-			0, 
-			nullptr
-		) 
-	};
-	RETURN_IF_NTSTATUS_FAILED(ntstatus);
-	
-	if (inject)
-	{
-		const auto waitResult = WaitForSingleObject(threadHandle.get(), 1000);
-		if (waitResult == WAIT_TIMEOUT)
-		{
-			#pragma warning(suppress:6258)
-			RETURN_IF_WIN32_BOOL_FALSE(TerminateThread(threadHandle.get(), HRESULT_FROM_WIN32(ERROR_POSSIBLE_DEADLOCK)));
-			return HRESULT_FROM_WIN32(ERROR_POSSIBLE_DEADLOCK);
-		}
-		if (waitResult != WAIT_OBJECT_0)
-		{
-			RETURN_LAST_ERROR();
+			return S_OK;
 		}
 
-		const auto remoteDllAddress = HookHelper::GetProcessModule(processHandle.get(), Util::g_thisModulePath.c_str());
-		if (!remoteDllAddress)
-		{
-			RETURN_HR(E_ACCESSDENIED);
-		}
-
-		ntstatus = sc_pfnNtCreateThreadEx(
-			threadHandle.put(), 
-			PROCESS_ALL_ACCESS, 
-			nullptr, 
-			processHandle.get(), 
-			reinterpret_cast<LPTHREAD_START_ROUTINE>(
-				reinterpret_cast<ULONG_PTR>(OpenGlass::InitializationThreadEntryPoint) -
-				reinterpret_cast<ULONG_PTR>(wil::GetModuleInstanceHandle()) +
-				reinterpret_cast<ULONG_PTR>(remoteDllAddress)
-			), 
-			nullptr, 
-			0, 
-			0, 
-			0, 
-			0, 
-			nullptr
-		);
-		RETURN_IF_NTSTATUS_FAILED(ntstatus);
+		const auto remoteUninit = reinterpret_cast<LPTHREAD_START_ROUTINE>(reinterpret_cast<uint8_t*>(remoteDllBase) + uninitOffset);
+		const auto uninitThread = CreateRemoteThreadWithNTAPI(remoteUninit, nullptr);
+		RETURN_LAST_ERROR_IF_NULL(uninitThread);
 	}
 
 	return S_OK;
@@ -274,29 +274,22 @@ HRESULT GlassService::RunInjectionThread()
 		Sleep(1);
 	}
 
-	#pragma warning(suppress:6387)
-	const auto RtlAdjustPrivilege = reinterpret_cast<NTSTATUS(NTAPI*)(int, BOOLEAN, BOOLEAN, PBOOLEAN)>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlAdjustPrivilege"));
-	constexpr auto SE_DEBUG_PRIVILEGE = 0x14;
-	BOOLEAN result = false;
-	#pragma warning(suppress:6387)
-	RETURN_IF_NTSTATUS_FAILED(RtlAdjustPrivilege(SE_DEBUG_PRIVILEGE, true, false, &result));
-
 	auto WalkDwmProcesses = [](std::function<bool(DWORD)>&& callback) static
 	{
 		wil::unique_handle snapshot{ CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
 		PROCESSENTRY32W pe{ sizeof(pe) };
 		RETURN_IF_WIN32_BOOL_FALSE(Process32FirstW(snapshot.get(), &pe));
 
-		do 
-		{ 
-			if (!_wcsicmp(pe.szExeFile, L"dwm.exe")) 
-			{ 
+		do
+		{
+			if (!_wcsicmp(pe.szExeFile, L"dwm.exe"))
+			{
 				if (!callback(pe.th32ProcessID))
 				{
 					break;
 				}
-			} 
-		} 
+			}
+		}
 		while (Process32NextW(snapshot.get(), &pe));
 		return S_OK;
 	};
@@ -308,8 +301,8 @@ HRESULT GlassService::RunInjectionThread()
 		auto currentTimeStamp = std::chrono::steady_clock::now();
 		for (auto it = g_dwmInjectionMap.begin(); it != g_dwmInjectionMap.end(); )
 		{
-			const auto& [injectionSessionId, injectionTimeStamp] = *it;
-			if (currentTimeStamp - injectionTimeStamp >= std::chrono::minutes{ 1 })
+			const auto& [injectionTimeStamp, _] = it->second;
+			if (currentTimeStamp - injectionTimeStamp >= std::chrono::minutes{ 3 })
 			{
 				it = g_dwmInjectionMap.erase(it);
 			}
@@ -355,22 +348,30 @@ HRESULT GlassService::RunInjectionThread()
 				return true;
 			}
 
-			if (!IsDwmProcess(processId) || g_dwmInjectionBlackList.find(processId) != g_dwmInjectionBlackList.end())
 			{
-				return true;
+				wil::unique_handle processHandle{ OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processId) };
+				if (!processHandle)
+				{
+					return true;
+				}
+				if (!IsDwmProcess(processHandle.get()) || g_dwmInjectionBlackList.find(processId) != g_dwmInjectionBlackList.end())
+				{
+					return true;
+				}
 			}
 
 			if (!IsOpenGlassAlreadyLoaded(processId))
 			{
-				auto currentTimeStamp = std::chrono::steady_clock::now();
-
+				const auto currentTimeStamp = std::chrono::steady_clock::now();
 				const auto it = g_dwmInjectionMap.find(sessionId);
 				if (it != g_dwmInjectionMap.end())
 				{
-					const auto& [injectionSessionId, injectionTimeStamp] = *it;
+					const auto& [injectionTimeStamp, processHandle] = it->second;
 
-					// DWM constantly crashes
-					if (currentTimeStamp - injectionTimeStamp <= std::chrono::seconds{ 30 })
+					DWORD exitCode{ 0 };
+					LOG_IF_WIN32_BOOL_FALSE(GetExitCodeProcess(processHandle.get(), &exitCode));
+					// DWM constantly crashes or manual fast fail triggered by user
+					if (currentTimeStamp - injectionTimeStamp <= std::chrono::seconds{ 15 } || exitCode == 0xC0000409)
 					{
 						auto title = Util::GetResourceStringView<IDS_STRING101>();
 						auto content = Util::GetResourceStringView<IDS_STRING109>();
@@ -387,12 +388,11 @@ HRESULT GlassService::RunInjectionThread()
 							&response,
 							TRUE
 						);
-						g_injectionThreadStatus = response == IDABORT ? ThreadStatus::Paused : ThreadStatus::Running;
-						
-						if (g_injectionThreadStatus == ThreadStatus::Paused)
+						g_injectionThreadStatus = response == IDABORT ? ThreadStatus::Stopped : ThreadStatus::Running;
+
+						if (g_injectionThreadStatus == ThreadStatus::Stopped)
 						{
 							hr = E_ABORT;
-							ShutdownService();
 							return false;
 						}
 						if (response == IDIGNORE)
@@ -406,7 +406,7 @@ HRESULT GlassService::RunInjectionThread()
 
 				if (const auto hresult = InjectOpenGlassDLL(processId, true); SUCCEEDED(hresult))
 				{
-					g_dwmInjectionMap.insert_or_assign(sessionId, currentTimeStamp);
+					g_dwmInjectionMap.insert_or_assign(sessionId, CDwmProcessInfo{ currentTimeStamp, OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, processId) });
 				}
 			}
 
@@ -415,7 +415,7 @@ HRESULT GlassService::RunInjectionThread()
 
 	wait_until_next_cycle:
 		SleepEx(g_injectionThreadStatus == ThreadStatus::Paused ? INFINITE : 2000ul, TRUE);
-	} 
+	}
 	while (g_injectionThreadStatus != ThreadStatus::Stopped);
 
 	WalkDwmProcesses([](DWORD processId) static -> bool
@@ -427,7 +427,7 @@ HRESULT GlassService::RunInjectionThread()
 
 		return true;
 	});
-	
+
 	return hr;
 }
 
@@ -506,12 +506,12 @@ HRESULT GlassService::RunServerThread()
 		{
 			sizeof(SECURITY_ATTRIBUTES),
 			&descriptor,
-			TRUE
+			FALSE
 		};
 		pipe.reset(
 			CreateNamedPipeW(
 				c_pipeName,
-				PIPE_ACCESS_DUPLEX,
+				PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
 				PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
 				PIPE_UNLIMITED_INSTANCES,
 				1024ul,
@@ -533,10 +533,18 @@ HRESULT GlassService::RunServerThread()
 			{
 				ULONG clientProcessId{};
 				THROW_IF_WIN32_BOOL_FALSE(GetNamedPipeClientProcessId(pipe.get(), &clientProcessId));
-				
-				if (!IsDwmProcess(clientProcessId))
+
 				{
-					goto on_named_pipe_disconnected;
+					wil::unique_handle processHandle{ OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, clientProcessId) };
+					if (!processHandle)
+					{
+						goto on_named_pipe_disconnected;
+					}
+					if (!IsDwmProcess(processHandle.get()))
+					{
+						// If the client process is not a verified DWM process, ignore request.
+						goto on_named_pipe_disconnected;
+					}
 				}
 
 				RequestBuffer content{};
@@ -599,7 +607,7 @@ HRESULT GlassService::SendRequest(RequestBuffer& content)
 	return S_OK;
 }
 
-bool GlassService::IsRunning()
+bool GlassService::IsActive()
 {
 	return static_cast<bool>(WaitNamedPipeW(c_pipeName, NMPWAIT_NOWAIT));
 }

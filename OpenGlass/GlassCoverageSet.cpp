@@ -2,45 +2,16 @@
 #include "GlassCoverageSet.hpp"
 
 using namespace OpenGlass;
-namespace OpenGlass::GlassCoverageSetFactory
-{
-	std::unordered_map<dwmcore::COcclusionContext*, winrt::com_ptr<IGlassCoverageSet>> g_glassCoverageSetMap{};
+std::unordered_map<const dwmcore::CArrayBasedCoverageSet*, winrt::com_ptr<IGlassCoverageSet>> CArrayBasedGlassCoverageSet::s_map{};
 
-	class CArrayBasedGlassCoverageSet : public winrt::implements<CArrayBasedGlassCoverageSet, IGlassCoverageSet, winrt::non_agile, winrt::no_weak_ref>
-	{
-		DWM::MyDynArrayImpl<dwmcore::CZOrderedRect> m_array{};
-	public:
-		void STDMETHODCALLTYPE SetDeviceTransform(const dwmcore::CMILMatrix* matrix) override;
-		HRESULT STDMETHODCALLTYPE Add(
-			const D2D1_RECT_F& coverage,
-			int depth,
-			const dwmcore::CMILMatrix* matrix
-		) override;
-		void STDMETHODCALLTYPE Clear() override { m_array.Clear(); }
-		std::span<dwmcore::CZOrderedRect> STDMETHODCALLTYPE GetViews() const override { return m_array.views(); }
-		bool STDMETHODCALLTYPE IsFullyCovered(
-			const D2D1_RECT_F& coverage,
-			int depth
-		) const override;
-		bool STDMETHODCALLTYPE IsPartiallyCovered(
-			const D2D1_RECT_F& coverage,
-			int depth
-		) const override;
-		bool STDMETHODCALLTYPE IsVisible(
-			const D2D1_RECT_F& coverage,
-			const dwmcore::CArrayBasedCoverageSet* occlusionCoverageSet
-		) const override;
-	};
-}
-
-void STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::SetDeviceTransform(const dwmcore::CMILMatrix* matrix)
+void CArrayBasedGlassCoverageSet::SetDeviceTransform(const dwmcore::CMILMatrix* matrix)
 {
 	for (auto& zorderedRect : m_array.views())
 	{
 		zorderedRect.UpdateDeviceRect(matrix);
 	}
 }
-HRESULT STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::Add(
+HRESULT CArrayBasedGlassCoverageSet::Add(
 	const D2D1_RECT_F& coverage,
 	int depth,
 	const dwmcore::CMILMatrix* matrix
@@ -50,7 +21,7 @@ HRESULT STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::
 	return S_OK;
 }
 
-bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsFullyCovered(
+bool CArrayBasedGlassCoverageSet::IsFullyCovered(
 	const D2D1_RECT_F& coverage,
 	int depth
 ) const
@@ -79,7 +50,7 @@ bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsF
 	return false;
 }
 
-bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsPartiallyCovered(
+bool CArrayBasedGlassCoverageSet::IsPartiallyCovered(
 	const D2D1_RECT_F& coverage,
 	int depth
 ) const
@@ -105,7 +76,7 @@ bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsP
 	return false;
 }
 
-bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsVisible(
+bool CArrayBasedGlassCoverageSet::IsVisible(
 	const D2D1_RECT_F& coverage,
 	const dwmcore::CArrayBasedCoverageSet* occlusionCoverageSet
 ) const
@@ -128,15 +99,20 @@ bool STDMETHODCALLTYPE GlassCoverageSetFactory::CArrayBasedGlassCoverageSet::IsV
 	return false;
 }
 
-winrt::com_ptr<IGlassCoverageSet> GlassCoverageSetFactory::GetOrCreate(dwmcore::COcclusionContext* occlusionContext, bool createIfNecessary)
+bool CArrayBasedGlassCoverageSet::IsEmpty() const
 {
-	auto it = g_glassCoverageSetMap.find(occlusionContext);
+	return m_array.count == 0;
+}
+
+winrt::com_ptr<IGlassCoverageSet> OpenGlass::CArrayBasedGlassCoverageSet::GetOrCreate(const dwmcore::CArrayBasedCoverageSet* coverageSet, bool createIfNecessary)
+{
+	auto it = s_map.find(coverageSet);
 
 	if (createIfNecessary)
 	{
-		if (it == g_glassCoverageSetMap.end())
+		if (it == s_map.end())
 		{
-			auto result = g_glassCoverageSetMap.emplace(occlusionContext, winrt::make<CArrayBasedGlassCoverageSet>());
+			auto result = s_map.emplace(coverageSet, winrt::make<CArrayBasedGlassCoverageSet>());
 			if (result.second == true)
 			{
 				it = result.first;
@@ -144,18 +120,18 @@ winrt::com_ptr<IGlassCoverageSet> GlassCoverageSetFactory::GetOrCreate(dwmcore::
 		}
 	}
 
-	return it == g_glassCoverageSetMap.end() ? nullptr : it->second;
+	return it == s_map.end() ? nullptr : it->second;
 }
-void GlassCoverageSetFactory::Remove(dwmcore::COcclusionContext* occlusionContext)
+void OpenGlass::CArrayBasedGlassCoverageSet::Remove(const dwmcore::CArrayBasedCoverageSet* coverageSet)
 {
-	auto it = g_glassCoverageSetMap.find(occlusionContext);
+	auto it = s_map.find(coverageSet);
 
-	if (it != g_glassCoverageSetMap.end())
+	if (it != s_map.end())
 	{
-		g_glassCoverageSetMap.erase(it);
+		s_map.erase(it);
 	}
 }
-void GlassCoverageSetFactory::Shutdown()
+void OpenGlass::CArrayBasedGlassCoverageSet::RemoveAll()
 {
-	g_glassCoverageSetMap.clear();
+	s_map.clear();
 }

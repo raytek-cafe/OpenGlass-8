@@ -26,7 +26,7 @@ HRESULT CAeroEffect::Initialize(ID2D1DeviceContext* context)
 	return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CAeroEffect::Build(
+HRESULT CAeroEffect::Build(
 	ID2D1DeviceContext* context,
 	ID2D1Image* inputImage,
 	const D2D1_RECT_F& imageRectangle,
@@ -48,8 +48,8 @@ HRESULT STDMETHODCALLTYPE CAeroEffect::Build(
 		)
 	);
 	const auto fullyTransparent =
-		params->afterglowBalance == 0.f &&
-		params->colorBalance == 0.f &&
+		(params->afterglow.r == 0.f && params->afterglow.g == 0.f && params->afterglow.b == 0.f) &&
+		(params->color.r == 0.f && params->color.g == 0.f && params->color.b == 0.f) &&
 		params->blurBalance == 1.f;
 	if (!fullyTransparent)
 	{
@@ -57,10 +57,10 @@ HRESULT STDMETHODCALLTYPE CAeroEffect::Build(
 			m_colorizationEffect->SetValue(
 				AEROCOLORIZATION_PROP_AFTERGLOW,
 				D2D1::Vector4F(
-					params->afterglow.r * params->afterglowBalance,
-					params->afterglow.g * params->afterglowBalance,
-					params->afterglow.b * params->afterglowBalance,
-					1.f
+					params->afterglow.r,
+					params->afterglow.g,
+					params->afterglow.b,
+					params->afterglow.a
 				)
 			)
 		);
@@ -76,10 +76,10 @@ HRESULT STDMETHODCALLTYPE CAeroEffect::Build(
 			m_colorizationEffect->SetValue(
 				AEROCOLORIZATION_PROP_COLOR,
 				D2D1::Vector4F(
-					params->color.r * params->colorBalance,
-					params->color.g * params->colorBalance,
-					params->color.b * params->colorBalance,
-					1.f
+					params->color.r,
+					params->color.g,
+					params->color.b,
+					params->color.a
 				)
 			)
 		);
@@ -97,12 +97,12 @@ HRESULT STDMETHODCALLTYPE CAeroEffect::Build(
 	return S_OK;
 }
 
-D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CAeroEffect::GetOutputMatrix() const
+D2D1_MATRIX_3X2_F CAeroEffect::GetOutputMatrix() const
 {
 	return m_customBlurEffect->GetOutputMatrix();
 }
 
-void STDMETHODCALLTYPE CAeroEffect::GetOutput(ID2D1Image** output) const
+void CAeroEffect::GetOutput(ID2D1Image** output) const
 {
 	if (m_outputEffect)
 	{
@@ -114,7 +114,7 @@ void STDMETHODCALLTYPE CAeroEffect::GetOutput(ID2D1Image** output) const
 	}
 }
 
-void STDMETHODCALLTYPE CAeroEffect::Reset()
+void CAeroEffect::Reset()
 {
 	if (m_customBlurEffect)
 	{

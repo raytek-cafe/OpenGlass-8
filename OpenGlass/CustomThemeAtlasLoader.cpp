@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "MsstyleInternals.hpp"
 #include "Shared.hpp"
 #include "HookHelper.hpp"
 #include "uDWMProjection.hpp"
@@ -28,7 +29,7 @@ namespace OpenGlass::CustomThemeAtlasLoader
 	void LoadThemeAtlasLayout(LPCWSTR themeAtlasLayoutPath);
 	HRESULT LoadTextGlowFromThemeAtlas();
 	void LoadTheme(
-		LPCWSTR themeAtlasPath, 
+		LPCWSTR themeAtlasPath,
 		LPCWSTR themeAtlasLayoutPath
 	);
 
@@ -57,7 +58,7 @@ namespace OpenGlass::CustomThemeAtlasLoader
 	}
 }
 
-HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeStream(
+HRESULT CustomThemeAtlasLoader::MyGetThemeStream(
 	HTHEME hTheme,
 	int iPartId,
 	int iStateId,
@@ -68,10 +69,10 @@ HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeStream(
 )
 {
 	if (
-		hTheme != g_themeHandle.get() || 
-		iPartId || 
-		iStateId || 
-		iPropId != TMT_DISKSTREAM || 
+		hTheme != g_themeHandle.get() ||
+		iPartId ||
+		iStateId ||
+		iPropId != TMT_DISKSTREAM ||
 		!g_themeAtlasStreamSize
 	)
 	{
@@ -83,7 +84,7 @@ HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeStream(
 	return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeMargins(
+HRESULT CustomThemeAtlasLoader::MyGetThemeMargins(
 	HTHEME hTheme,
 	HDC hdc,
 	int iPartId,
@@ -114,7 +115,7 @@ HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeMargins(
 	return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeRect(
+HRESULT CustomThemeAtlasLoader::MyGetThemeRect(
 	HTHEME hTheme,
 	int iPartId,
 	int iStateId,
@@ -149,7 +150,7 @@ HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeRect(
 }
 
 // openglass exclusive
-HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeInt(
+HRESULT CustomThemeAtlasLoader::MyGetThemeInt(
 	HTHEME hTheme,
 	int iPartId,
 	int iStateId,
@@ -178,7 +179,7 @@ HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeInt(
 	return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CustomThemeAtlasLoader::MyGetThemeColor(
+HRESULT CustomThemeAtlasLoader::MyGetThemeColor(
 	HTHEME hTheme,
 	int iPartId,
 	int iStateId,
@@ -214,7 +215,12 @@ HTHEME CustomThemeAtlasLoader::GetThemeHandle()
 
 HRESULT CustomThemeAtlasLoader::LoadThemeAtlas(LPCWSTR themeAtlasPath)
 {
-	if (wcslen(themeAtlasPath) != 0 && PathFileExistsW(themeAtlasPath))
+	if (
+		wcslen(themeAtlasPath) != 0 &&
+		!PathIsRelativeW(themeAtlasPath) &&
+		!PathIsNetworkPathW(themeAtlasPath) &&
+		PathFileExistsW(themeAtlasPath)
+	)
 	{
 		wil::unique_hfile file{ CreateFileW(themeAtlasPath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, 0) };
 		RETURN_LAST_ERROR_IF(!file.is_valid());
@@ -240,7 +246,7 @@ HRESULT CustomThemeAtlasLoader::LoadThemeAtlas(LPCWSTR themeAtlasPath)
 			)
 		);
 
-		wil::unique_hmodule themeResource{ LoadLibraryExW(themeFileName, nullptr, LOAD_LIBRARY_AS_DATAFILE) };
+		wil::unique_hmodule themeResource{ LoadLibraryExW(themeFileName, nullptr, LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_SEARCH_SYSTEM32) };
 		RETURN_LAST_ERROR_IF_NULL(themeResource);
 
 		PVOID streamAddress;
@@ -248,7 +254,7 @@ HRESULT CustomThemeAtlasLoader::LoadThemeAtlas(LPCWSTR themeAtlasPath)
 		RETURN_IF_FAILED(
 			GetThemeStream(
 				g_themeHandle.get(),
-				0,
+				static_cast<int>(DWM_WINDOW_THEME_PART::COMMON),
 				0,
 				TMT_DISKSTREAM,
 				&streamAddress,
@@ -358,9 +364,9 @@ HRESULT CustomThemeAtlasLoader::LoadTextGlowFromThemeAtlas()
 	RETURN_IF_FAILED(
 		MyGetThemeRect(
 			g_themeHandle.get(),
-			45, 
-			0, 
-			TMT_ATLASRECT, 
+			static_cast<int>(DWM_WINDOW_THEME_PART::TEXTGLOW),
+			0,
+			TMT_ATLASRECT,
 			&textGlowAtlasRect
 		)
 	);
@@ -372,9 +378,9 @@ HRESULT CustomThemeAtlasLoader::LoadTextGlowFromThemeAtlas()
 	winrt::com_ptr<IWICBitmapDecoder> wicDecoder{ nullptr };
 	RETURN_IF_FAILED(
 		wicFactory->CreateDecoderFromStream(
-			stream.get(), 
-			&GUID_VendorMicrosoft, 
-			WICDecodeMetadataCacheOnDemand, 
+			stream.get(),
+			&GUID_VendorMicrosoft,
+			WICDecodeMetadataCacheOnDemand,
 			wicDecoder.put()
 		)
 	);
@@ -394,13 +400,13 @@ HRESULT CustomThemeAtlasLoader::LoadTextGlowFromThemeAtlas()
 	);
 
 	Shared::g_textGlowBitmapInfo =
-	{ 
+	{
 		{
 			sizeof(Shared::g_textGlowBitmapInfo.bmiHeader),
-			wil::rect_width(textGlowAtlasRect), 
-			-wil::rect_height(textGlowAtlasRect), 
-			1, 
-			32, 
+			wil::rect_width(textGlowAtlasRect),
+			-wil::rect_height(textGlowAtlasRect),
+			1,
+			32,
 			BI_RGB
 		}
 	};
@@ -455,86 +461,314 @@ void CustomThemeAtlasLoader::Update(GlassEngine::UpdateType type)
 
 		UnloadTheme();
 		LoadTheme(
-			themeAtlasPath, 
+			themeAtlasPath,
 			themeAtlasLayoutPath
 		);
-
+	}
+	if (type & GlassEngine::UpdateType::Backdrop || type & GlassEngine::UpdateType::Theme)
+	{
+		DWORD active = 0, inactive = 0, maximized = 0, inactiveMaximized = 0, transparent = 0, opaque = 0;
 		const auto themeHandle = CustomThemeAtlasLoader::GetThemeHandle();
-		if (themeHandle)
+
+		active = GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionOpacity", 0xFFFFFFFE);
+		inactive = GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionOpacityInactive", active);
+		maximized = GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionOpacityMaximized", active);
+		inactiveMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationGlassReflectionOpacityInactiveMaximized", inactive);
+
+		if (active == 0xFFFFFFFE)
 		{
-			int value;
-
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 1, TMT_OPACITY, &value);
-			Shared::g_captionOpacity = value / 100.f;
-
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 2, TMT_OPACITY, &value);
-			Shared::g_captionOpacityInactive = value / 100.f;
-
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 3, TMT_OPACITY, &value);
-			Shared::g_captionOpacityMaximized = value / 100.f;
-
-			value = 100;
-			CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, 46, 4, TMT_OPACITY, &value);
-			Shared::g_captionOpacityInactiveMaximized = value / 100.f;
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				active = 90;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				active = 90;
+			}
 		}
+		else if (active == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				active = 90;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::SQUEEGEREFLECTIONMAP), 1, TMT_OPACITY, reinterpret_cast<int*>(&active));
+			}
+		}
+		if (inactive == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				inactive = 40;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				inactive = 75;
+			}
+		}
+		else if (inactive == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				inactive = 75;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::SQUEEGEREFLECTIONMAP), 2, TMT_OPACITY, reinterpret_cast<int*>(&inactive));
+			}
+		}
+		if (maximized == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				maximized = 50;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				maximized = 90;
+			}
+		}
+		else if (maximized == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				maximized = 90;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::SQUEEGEREFLECTIONMAP), 3, TMT_OPACITY, reinterpret_cast<int*>(&maximized));
+			}
+		}
+		if (inactiveMaximized == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				inactiveMaximized = 20;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				inactiveMaximized = 75;
+			}
+		}
+		else if (inactiveMaximized == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				inactiveMaximized = 75;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::SQUEEGEREFLECTIONMAP), 4, TMT_OPACITY, reinterpret_cast<int*>(&inactiveMaximized));
+			}
+		}
+
+		Shared::g_reflectionOpacity = std::clamp(static_cast<float>(active) / 100.f, 0.f, 1.f);
+		Shared::g_reflectionOpacityInactive = std::clamp(static_cast<float>(inactive) / 100.f, 0.f, 1.f);
+		Shared::g_reflectionOpacityMaximized = std::clamp(static_cast<float>(maximized) / 100.f, 0.f, 1.f);
+		Shared::g_reflectionOpacityInactiveMaximized = std::clamp(static_cast<float>(inactiveMaximized) / 100.f, 0.f, 1.f);
+
+		active = 0, inactive = 0, maximized = 0, inactiveMaximized = 0;
+		active = GlassEngine::GetDwordFromRegistry(L"ColorizationOpacity", 0xFFFFFFFE);
+		inactive = GlassEngine::GetDwordFromRegistry(L"ColorizationOpacityInactive", active);
+		maximized = GlassEngine::GetDwordFromRegistry(L"ColorizationOpacityMaximized", active);
+		inactiveMaximized = GlassEngine::GetDwordFromRegistry(L"ColorizationOpacityInactiveMaximized", inactive);
+
+		if (active == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				active = 100;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				active = 100;
+			}
+		}
+		else if (active == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				active = 100;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::TOPFRAME), 1, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&active));
+			}
+		}
+		if (inactive == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				inactive = 55;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				inactive = 40;
+			}
+		}
+		else if (inactive == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				inactive = 40;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::TOPFRAME), 2, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&inactive));
+			}
+		}
+		if (maximized == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				maximized = 75;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				maximized = 100;
+			}
+		}
+		else if (maximized == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				maximized = 100;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::TOPFRAME), 3, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&maximized));
+			}
+		}
+		if (inactiveMaximized == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				inactiveMaximized = 75;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				inactiveMaximized = 40;
+			}
+		}
+		else if (inactiveMaximized == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				inactiveMaximized = 40;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::TOPFRAME), 4, TMT_COLORIZATIONOPACITY, reinterpret_cast<int*>(&inactiveMaximized));
+			}
+		}
+
+		Shared::g_colorizationOpacity = std::clamp(static_cast<float>(active) / 100.f, 0.f, 1.f);
+		Shared::g_colorizationOpacityInactive = std::clamp(static_cast<float>(inactive) / 100.f, 0.f, 1.f);
+		Shared::g_colorizationOpacityMaximized = std::clamp(static_cast<float>(maximized) / 100.f, 0.f, 1.f);
+		Shared::g_colorizationOpacityInactiveMaximized = std::clamp(static_cast<float>(inactiveMaximized) / 100.f, 0.f, 1.f);
+
+		active = 0, inactive = 0, maximized = 0, inactiveMaximized = 0;
+		transparent = GlassEngine::GetDwordFromRegistry(L"ColorizationBaseTransparent", 0xFFFFFFFE);
+		maximized = GlassEngine::GetDwordFromRegistry(L"ColorizationBaseMaximized", 0xFFFFFFFE);
+		opaque = GlassEngine::GetDwordFromRegistry(L"ColorizationBaseOpaque", 0xFFFFFFFE);
+
+		if (transparent == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				transparent = 0x00000000;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				transparent = 0x00000000;
+			}
+		}
+		else if (transparent == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				transparent = 0x00000000;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::TOPFRAME), 1, TMT_COLORIZATIONCOLOR, reinterpret_cast<int*>(&transparent));
+			}
+		}
+		if (maximized == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				maximized = 0xFF000000;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				maximized = 0x00000000;
+			}
+		}
+		else if (maximized == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				maximized = 0x00000000;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::TOPFRAME), 3, TMT_COLORIZATIONCOLOR, reinterpret_cast<int*>(&maximized));
+			}
+		}
+		if (opaque == 0xFFFFFFFE)
+		{
+			if (Shared::g_type == Shared::GlassType::Blur)
+			{
+				opaque = 0xFFDFDFDF;
+			}
+			else if (Shared::g_type == Shared::GlassType::Aero)
+			{
+				opaque = 0xFFDFDFDF;
+			}
+		}
+		else if (opaque == 0xFFFFFFFF)
+		{
+			if (themeHandle)
+			{
+				opaque = 0xFFDFDFDF;
+				CustomThemeAtlasLoader::MyGetThemeInt(themeHandle, static_cast<int>(DWM_WINDOW_THEME_PART::COMMON), 0, TMT_COLORIZATIONCOLOR, reinterpret_cast<int*>(&opaque));
+			}
+		}
+
+		Shared::g_colorizationBaseTransparent = Color::FromArgb(transparent, false);
+		Shared::g_colorizationBaseMaximized = Color::FromArgb(maximized, false);
+		Shared::g_colorizationBaseOpaque = Color::FromArgb(opaque, false);
 	}
 }
 
 void CustomThemeAtlasLoader::Startup()
 {
-	g_GetThemeStream_Org = reinterpret_cast<decltype(g_GetThemeStream_Org)>(
-		HookHelper::WriteDelayloadIAT(
-			uDWM::g_moduleHandle,
-			"ext-ms-win-uxtheme-themes-l1-1-2.dll",
-			"GetThemeStream",
-			MyGetThemeStream
-		).second
-	);
-	g_GetThemeRect_Org = reinterpret_cast<decltype(g_GetThemeRect_Org)>(
-		HookHelper::WriteDelayloadIAT(
-			uDWM::g_moduleHandle,
-			"ext-ms-win-uxtheme-themes-l1-1-2.dll",
-			"GetThemeRect",
-			MyGetThemeRect
-		).second
-	);
-	g_GetThemeMargins_Org = reinterpret_cast<decltype(g_GetThemeMargins_Org)>(
-		HookHelper::WriteDelayloadIAT(
-			uDWM::g_moduleHandle,
-			"ext-ms-win-uxtheme-themes-l1-1-0.dll",
-			"GetThemeMargins",
-			MyGetThemeMargins
-		).second
-	);
-	g_GetThemeInt_Org = reinterpret_cast<decltype(g_GetThemeInt_Org)>(
-		HookHelper::WriteDelayloadIAT(
-			uDWM::g_moduleHandle,
-			"ext-ms-win-uxtheme-themes-l1-1-0.dll",
-			"GetThemeInt",
-			MyGetThemeInt
-		).second
-	);
-	g_GetThemeColor_Org = reinterpret_cast<decltype(g_GetThemeColor_Org)>(
-		HookHelper::WriteDelayloadIAT(
-			uDWM::g_moduleHandle,
-			"ext-ms-win-uxtheme-themes-l1-1-0.dll",
-			"GetThemeColor",
-			MyGetThemeColor
-		).second
+	const auto build_before_w10_2004 = uDWM::g_versionInfo.build < os::build_w10_2004;
+	HookHelper::PatchDelayloadIAT(
+		uDWM::g_moduleHandle,
+		std::initializer_list<HookHelper::ImportDllDetourInfo>
+		{
+			{
+				"ext-ms-win-uxtheme-themes-l1-1-0.dll",
+				std::initializer_list<HookHelper::ImportFunctionDetourInfo>
+				{
+					{ "GetThemeMargins", &g_GetThemeMargins_Org, &MyGetThemeMargins },
+					{ "GetThemeInt", &g_GetThemeInt_Org, &MyGetThemeInt },
+					{ "GetThemeColor", &g_GetThemeColor_Org, &MyGetThemeColor }
+				}
+			},
+			{
+				build_before_w10_2004 ? "UxTheme.dll" : "ext-ms-win-uxtheme-themes-l1-1-2.dll",
+				std::initializer_list<HookHelper::ImportFunctionDetourInfo>
+				{
+					{ "GetThemeStream", &g_GetThemeStream_Org, &MyGetThemeStream },
+					{ "GetThemeRect", &g_GetThemeRect_Org, &MyGetThemeRect }
+				}
+			}
+		}
 	);
 
 	PostMessageW(FindWindowW(L"DWM", nullptr), WM_THEMECHANGED, 0, 0);
 }
 void CustomThemeAtlasLoader::Shutdown()
 {
-	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-0.dll", "GetThemeColor", g_GetThemeColor_Org);
-	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-0.dll", "GetThemeInt", g_GetThemeInt_Org);
-	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-0.dll", "GetThemeMargins", g_GetThemeMargins_Org);
-	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-2.dll", "GetThemeRect", g_GetThemeRect_Org);
-	HookHelper::WriteDelayloadIAT(uDWM::g_moduleHandle, "ext-ms-win-uxtheme-themes-l1-1-2.dll", "GetThemeStream", g_GetThemeStream_Org);
+	const auto build_before_w10_2004 = uDWM::g_versionInfo.build < os::build_w10_2004;
+	HookHelper::PatchDelayloadIAT(
+		uDWM::g_moduleHandle,
+		std::initializer_list<HookHelper::ImportDllDetourInfo>
+		{
+			{
+				"ext-ms-win-uxtheme-themes-l1-1-0.dll",
+				std::initializer_list<HookHelper::ImportFunctionDetourInfo>
+				{
+					{ "GetThemeMargins", &g_GetThemeMargins_Org, g_GetThemeMargins_Org },
+					{ "GetThemeInt", &g_GetThemeInt_Org, g_GetThemeInt_Org },
+					{ "GetThemeColor", &g_GetThemeColor_Org, g_GetThemeColor_Org }
+				}
+			},
+			{
+				build_before_w10_2004 ? "UxTheme.dll" : "ext-ms-win-uxtheme-themes-l1-1-2.dll",
+				std::initializer_list<HookHelper::ImportFunctionDetourInfo>
+				{
+					{ "GetThemeStream", &g_GetThemeStream_Org, g_GetThemeStream_Org },
+					{ "GetThemeRect", &g_GetThemeRect_Org, g_GetThemeRect_Org }
+				}
+			}
+		}
+	);
 
 	SendMessageW(FindWindowW(L"DWM", nullptr), WM_THEMECHANGED, 0, 0);
 

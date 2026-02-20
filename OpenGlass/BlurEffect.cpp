@@ -33,7 +33,7 @@ HRESULT CBlurEffect::Initialize(ID2D1DeviceContext* context)
 	return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
+HRESULT CBlurEffect::Build(
 	ID2D1DeviceContext* context,
 	ID2D1Image* inputImage,
 	const D2D1_RECT_F& imageRectangle,
@@ -54,17 +54,17 @@ HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
 			additionalParams
 		)
 	);
-	const auto fullyTransparent = params->colorBalance == 0.f;
+	const auto fullyTransparent = params->color.a == 0.f;
 	if (!fullyTransparent)
 	{
 		RETURN_IF_FAILED(
 			m_colorEffect->SetValue(
 				D2D1_FLOOD_PROP_COLOR,
 				D2D1::Vector4F(
-					params->color.r * params->colorBalance,
-					params->color.g * params->colorBalance,
-					params->color.b * params->colorBalance,
-					params->colorBalance
+					params->color.r,
+					params->color.g,
+					params->color.b,
+					params->color.a
 				)
 			)
 		);
@@ -82,12 +82,12 @@ HRESULT STDMETHODCALLTYPE CBlurEffect::Build(
 	return S_OK;
 }
 
-D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CBlurEffect::GetOutputMatrix() const
+D2D1_MATRIX_3X2_F CBlurEffect::GetOutputMatrix() const
 {
 	return m_customBlurEffect->GetOutputMatrix();
 }
 
-void STDMETHODCALLTYPE CBlurEffect::GetOutput(ID2D1Image** output) const
+void CBlurEffect::GetOutput(ID2D1Image** output) const
 {
 	if (m_outputEffect)
 	{
@@ -99,7 +99,7 @@ void STDMETHODCALLTYPE CBlurEffect::GetOutput(ID2D1Image** output) const
 	}
 }
 
-void STDMETHODCALLTYPE CBlurEffect::Reset()
+void CBlurEffect::Reset()
 {
 	if (m_customBlurEffect)
 	{

@@ -16,7 +16,7 @@ namespace OpenGlass
 		AEROCOLORIZATION_PROP_COLOR,
 	};
 
-	class CAeroColorizationEffect : public ID2D1EffectImpl, public ID2D1DrawTransform
+	class CAeroColorizationEffect final : public ID2D1EffectImpl, public ID2D1DrawTransform
 	{
 	public:
 		static STDMETHODIMP Register(ID2D1Factory1* factory);

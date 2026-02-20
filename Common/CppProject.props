@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Shared C/C++ project defaults.
+    Import this from a .vcxproj (typically after Microsoft.Cpp.props).
+
+    Notes:
+    - Keep this file project-agnostic where practical.
+    - Project-specific settings (e.g., module .def filename) can be overridden via properties.
+  -->
+
+  <PropertyGroup Label="CppProject.Common">
+    <!-- Optional: set in .vcxproj if you want a module definition file -->
+    <CppProjectModuleDef Condition="'$(CppProjectModuleDef)'==''"></CppProjectModuleDef>
+
+    <!-- Optional: base preprocessor definitions common to all configs (e.g. MYDLL_EXPORTS;_WINDOWS;_USRDLL;) -->
+    <CppProjectDefines Condition="'$(CppProjectDefines)'==''"></CppProjectDefines>
+
+    <!-- Optional: per-config definitions (e.g. _DEBUG; / NDEBUG;) -->
+    <CppProjectConfigDefines Condition="'$(CppProjectConfigDefines)'==''"></CppProjectConfigDefines>
+
+    <!-- Optional: override build output roots (must end with a backslash) -->
+    <CppProjectBuildRoot Condition="'$(CppProjectBuildRoot)'==''"></CppProjectBuildRoot>
+  </PropertyGroup>
+
+  <!-- Resolve a stable root for paths (SolutionDir may be empty when building the project directly). -->
+  <PropertyGroup>
+    <CppProjectBuildRoot Condition="'$(CppProjectBuildRoot)'=='' and '$(SolutionDir)'!=''">$(SolutionDir)</CppProjectBuildRoot>
+    <CppProjectBuildRoot Condition="'$(CppProjectBuildRoot)'==''">$(MSBuildProjectDirectory)\..\</CppProjectBuildRoot>
+  </PropertyGroup>
+
+  <!-- Common output & analysis defaults (keeps repo layout consistent across projects). -->
+  <PropertyGroup>
+    <OutDir>$(CppProjectBuildRoot)Build\$(PlatformShortName)\$(Configuration)\</OutDir>
+    <IntDir>$(CppProjectBuildRoot)Cache\$(ProjectName)\$(PlatformShortName)\$(Configuration)\</IntDir>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+
+  <!-- Default per-config defines if the project didn't override them -->
+  <PropertyGroup Condition="'$(Configuration)'=='Debug' and '$(CppProjectConfigDefines)'==''">
+    <CppProjectConfigDefines>_DEBUG;</CppProjectConfigDefines>
+  </PropertyGroup>
+  <PropertyGroup Condition="('$(Configuration)'=='Release' or '$(Configuration)'=='ReleaseSigned') and '$(CppProjectConfigDefines)'==''">
+    <CppProjectConfigDefines>NDEBUG;</CppProjectConfigDefines>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level4</WarningLevel>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <LanguageStandard>stdcpplatest</LanguageStandard>
+      <LanguageStandard_C>stdclatest</LanguageStandard_C>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <AdditionalOptions>/utf-8 /Brepro /d1trimfile:"$(CppProjectBuildRoot)\" %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>$(CppProjectConfigDefines)$(CppProjectDefines)RESULT_SUPPRESS_STATIC_INITIALIZERS;WIL_LOCK_EXCEPTION_MODE;WIL_USE_STL=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <ModuleDefinitionFile Condition="'$(CppProjectModuleDef)'!=''">$(CppProjectModuleDef)</ModuleDefinitionFile>
+      <EnableUAC>false</EnableUAC>
+    </Link>
+    <ResourceCompile>
+      <NullTerminateStrings>true</NullTerminateStrings>
+    </ResourceCompile>
+    <FxCompile>
+      <ObjectFileOutput>$(ProjectDir)%(Filename).cso</ObjectFileOutput>
+      <AdditionalIncludeDirectories>$(WindowsSDK_IncludePath)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>MINP_PREFIX=min16;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </FxCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <SDLCheck>true</SDLCheck>
+      <!-- VC-LTL is designed to work with static CRT (/MT, /MTd). -->
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <Optimization>Disabled</Optimization>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!--
+        LNK4075: Some runtime libraries can inject /EDITANDCONTINUE directives; we link with /INCREMENTAL:NO so the warning is noise.
+        LNK4098: Ensure we don't accidentally pull the release static CRT (libcmt.lib) into a Debug (/MTd) link.
+      -->
+      <IgnoreSpecificDefaultLibraries>libcmt.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
+      <AdditionalOptions>/IGNORE:4075 /pdbaltpath:%_PDB% /Brepro %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release' or '$(Configuration)'=='ReleaseSigned'">
+    <ClCompile>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <!-- VC-LTL is designed to work with static CRT (/MT). -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <Optimization>MaxSpeed</Optimization>
+      <!-- Explicitly enable /GL (Whole Program Optimization). -->
+      <WholeProgramOptimization>true</WholeProgramOptimization>
+      <StringPooling>true</StringPooling>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+    </ClCompile>
+    <Link>
+      <!-- /DEBUG:FULL can implicitly disable /OPT:REF unless explicitly enabled. -->
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <!-- Pair with /GL to allow the linker to do whole-program optimization. -->
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
+      <GenerateDebugInformation>DebugFull</GenerateDebugInformation>
+      <AdditionalOptions>/pdbaltpath:%_PDB% /Brepro %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- Optional signing & packaging (kept separate for clarity). -->
+  <Import Project="$(MSBuildThisFileDirectory)CppProject.Signing.props" Condition="Exists('$(MSBuildThisFileDirectory)CppProject.Signing.props')" />
+  <Import Project="$(MSBuildThisFileDirectory)CppProject.Packaging.props" Condition="Exists('$(MSBuildThisFileDirectory)CppProject.Packaging.props')" />
+
+  <!-- Automatically import Common.vcxitems for shared headers and items -->
+  <ImportGroup Label="Shared">
+    <Import Project="$(MSBuildThisFileDirectory)Common.vcxitems" Label="Shared" Condition="Exists('$(MSBuildThisFileDirectory)Common.vcxitems')" />
+  </ImportGroup>
+</Project>

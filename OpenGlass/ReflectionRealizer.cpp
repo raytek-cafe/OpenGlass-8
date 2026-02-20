@@ -10,26 +10,16 @@ HRESULT CReflectionRealizer::LoadTexture(ID2D1DeviceContext* context)
 	winrt::com_ptr<IStream> stream{ nullptr };
 	if (
 		Shared::g_reflectionTexturePath.empty() ||
+		PathIsRelativeW(Shared::g_reflectionTexturePath.data()) ||
+		PathIsNetworkPathW(Shared::g_reflectionTexturePath.data()) ||
 		!PathFileExistsW(Shared::g_reflectionTexturePath.data())
 	)
 	{
-		const auto currentModule = wil::GetModuleInstanceHandle();
-		const auto resourceHandle = FindResourceW(currentModule, MAKEINTRESOURCE(IDB_REFLECTION), L"PNG");
-		RETURN_LAST_ERROR_IF_NULL(resourceHandle);
-		const auto globalHandle = LoadResource(currentModule, resourceHandle);
-		RETURN_LAST_ERROR_IF_NULL(globalHandle);
-		const auto cleanup = wil::scope_exit([=]
-		{
-			if (globalHandle)
-			{
-				UnlockResource(globalHandle);
-				FreeResource(globalHandle);
-			}
-		});
-		const auto resourceSize = SizeofResource(currentModule, resourceHandle);
-		RETURN_LAST_ERROR_IF(resourceSize == 0);
-		const auto resourceAddress = reinterpret_cast<PBYTE>(LockResource(globalHandle));
-		stream = { SHCreateMemStream(resourceAddress, resourceSize), winrt::take_ownership_from_abi };
+		LOG_HR_IF_MSG(HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND), !Shared::g_reflectionTexturePath.empty(), "invalid reflection texture path");
+		std::span<const UCHAR> textureBytes{};
+		RETURN_IF_FAILED(Util::GetResDataView(textureBytes, IDB_REFLECTION, wil::GetModuleInstanceHandle(), L"PNG"));
+
+		stream = { SHCreateMemStream(textureBytes.data(), static_cast<UINT>(textureBytes.size_bytes())), winrt::take_ownership_from_abi };
 	}
 	else
 	{
@@ -59,7 +49,7 @@ HRESULT CReflectionRealizer::LoadTexture(ID2D1DeviceContext* context)
 			GUID_WICPixelFormat32bppPBGRA,
 			WICBitmapDitherTypeNone,
 			nullptr,
-			0, 
+			0,
 			WICBitmapPaletteTypeCustom
 		)
 	);
@@ -80,69 +70,70 @@ HRESULT CReflectionRealizer::LoadTexture(ID2D1DeviceContext* context)
 
 HRESULT CReflectionRealizer::Render(
 	ID2D1DeviceContext* context,
-	const CReflectionInput& input
+	const std::span<const D2D1_RECT_F>& rectangles,
+	const ReflectionContext& reflectionContext
 )
 {
 	if (!m_reflectionBitmap)
 	{
 		RETURN_IF_FAILED(LoadTexture(context));
 	}
-	winrt::com_ptr<ID2D1DeviceContext3> contextForSpriteBatch{};
+	/*winrt::com_ptr<ID2D1DeviceContext3> contextForSpriteBatch{};
 	RETURN_IF_FAILED(context->QueryInterface(contextForSpriteBatch.put()));
 	if (!m_spriteBatch)
 	{
 		RETURN_IF_FAILED(contextForSpriteBatch->CreateSpriteBatch(m_spriteBatch.put()));
-	}
+	}*/
 
-	const auto worldTransform3D = input.worldTransform->GetD3DMatrix();
-	auto worldTransform2DInversed = input.worldTransform->GetD2DMatrix();
+	const auto worldTransform3D = reflectionContext.worldTransform->GetD3DMatrix();
+	auto worldTransform2DInversed = reflectionContext.worldTransform->GetD2DMatrix();
 	D2D1InvertMatrix(&worldTransform2DInversed);
 
 	const auto reflectionBitmapSize = m_reflectionBitmap->GetSize();
 	const D2D1_SIZE_F viewportSize
 	{
-		wil::rect_width(*input.viewport),
-		wil::rect_height(*input.viewport)
+		wil::rect_width(*reflectionContext.viewport),
+		wil::rect_height(*reflectionContext.viewport)
 	};
-	/*for (auto subRectangle : input.rectangles)
+	for (auto subRectangle : rectangles)
 	{
 		subRectangle = RectF::TransformRect(subRectangle, worldTransform2DInversed);
-		if (RectF::IntersectUnsafe(subRectangle, *input.viewport))
+		if (RectF::IntersectUnsafe(subRectangle, *reflectionContext.viewport))
 		{
 			D2D1_RECT_F sourceRectangle
 			{
-				(subRectangle.left - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
-				(subRectangle.top - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
-				(subRectangle.right - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
-				(subRectangle.bottom - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+				(subRectangle.left - reflectionContext.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.top - reflectionContext.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+				(subRectangle.right - reflectionContext.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.bottom - reflectionContext.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
 			};
 			context->DrawBitmap(
 				m_reflectionBitmap.get(),
 				subRectangle,
-				input.intensity,
+				reflectionContext.opacity,
 				D2D1_INTERPOLATION_MODE_LINEAR,
 				&sourceRectangle,
 				&worldTransform3D
 			);
 		}
-	}*/
+	}
 
-	if (input.rectangles.size() == 1)
+	/*if (rectangles.size() == 1)
 	{
-		auto subRectangle = RectF::TransformRect(input.rectangles[0], worldTransform2DInversed);
-		if (RectF::IntersectUnsafe(subRectangle, *input.viewport))
+		auto subRectangle = RectF::TransformRect(rectangles[0], worldTransform2DInversed);
+		if (RectF::IntersectUnsafe(subRectangle, viewport))
 		{
 			D2D1_RECT_F sourceRectangle
 			{
-				(subRectangle.left - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
-				(subRectangle.top - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
-				(subRectangle.right - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
-				(subRectangle.bottom - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+				(subRectangle.left - reflectionContext.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.top - reflectionContext.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
+				(subRectangle.right - reflectionContext.viewport->left) / viewportSize.width * reflectionBitmapSize.width,
+				(subRectangle.bottom - reflectionContext.viewport->top) / viewportSize.height * reflectionBitmapSize.height,
 			};
 			context->DrawBitmap(
 				m_reflectionBitmap.get(),
 				subRectangle,
-				input.intensity,
+				opacity,
 				D2D1_INTERPOLATION_MODE_LINEAR,
 				&sourceRectangle,
 				&worldTransform3D
@@ -151,7 +142,7 @@ HRESULT CReflectionRealizer::Render(
 	}
 	else
 	{
-		bool ignoreLayer{ input.intensity == 1.f };
+		bool ignoreLayer{ opacity == 1.f };
 		if (!ignoreLayer)
 		{
 			context->PushLayer(
@@ -160,7 +151,7 @@ HRESULT CReflectionRealizer::Render(
 					nullptr,
 					D2D1_ANTIALIAS_MODE_ALIASED,
 					D2D1::IdentityMatrix(),
-					input.intensity,
+					opacity,
 					nullptr,
 					D2D1_LAYER_OPTIONS1_NONE
 				),
@@ -174,25 +165,25 @@ HRESULT CReflectionRealizer::Render(
 			D2D1_RECT_U sourceRectangle;
 		};
 		UINT32 spriteCount{};
-		auto spriteInfoArray = std::make_unique_for_overwrite<CSpriteInfo[]>(input.rectangles.size());
-		for (size_t i = 0; i < input.rectangles.size(); i++)
+		auto spriteInfoArray = std::make_unique_for_overwrite<CSpriteInfo[]>(rectangles.size());
+		for (size_t i = 0; i < rectangles.size(); i++)
 		{
-			auto subRectangle = RectF::TransformRect(input.rectangles[i], worldTransform2DInversed);
-			if (RectF::IntersectUnsafe(subRectangle, *input.viewport))
+			auto subRectangle = RectF::TransformRect(rectangles[i], worldTransform2DInversed);
+			if (RectF::IntersectUnsafe(subRectangle, viewport))
 			{
 				spriteInfoArray[spriteCount].destinationRectangle = subRectangle;
 				spriteInfoArray[spriteCount].sourceRectangle =
 				{
-					static_cast<UINT32>(std::round((subRectangle.left - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width)),
-					static_cast<UINT32>(std::round((subRectangle.top - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height)),
-					static_cast<UINT32>(std::round((subRectangle.right - input.viewport->left) / viewportSize.width * reflectionBitmapSize.width)),
-					static_cast<UINT32>(std::round((subRectangle.bottom - input.viewport->top) / viewportSize.height * reflectionBitmapSize.height)),
+					static_cast<UINT32>(std::round((subRectangle.left - reflectionContext.viewport->left) / viewportSize.width * reflectionBitmapSize.width)),
+					static_cast<UINT32>(std::round((subRectangle.top - reflectionContext.viewport->top) / viewportSize.height * reflectionBitmapSize.height)),
+					static_cast<UINT32>(std::round((subRectangle.right - reflectionContext.viewport->left) / viewportSize.width * reflectionBitmapSize.width)),
+					static_cast<UINT32>(std::round((subRectangle.bottom - reflectionContext.viewport->top) / viewportSize.height * reflectionBitmapSize.height)),
 				};
 
 				spriteCount += 1;
 			}
 		}
-		const auto worldTransform2D = input.worldTransform->GetD2DMatrix();
+		const auto worldTransform2D = worldTransform->GetD2DMatrix();
 		m_spriteBatch->AddSprites(
 			spriteCount,
 			&spriteInfoArray[0].destinationRectangle,
@@ -224,7 +215,7 @@ HRESULT CReflectionRealizer::Render(
 		{
 			context->PopLayer();
 		}
-	}
+	}*/
 
 	return S_OK;
 }

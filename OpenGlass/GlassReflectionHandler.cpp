@@ -4,22 +4,29 @@
 #include "dwmcoreProjection.hpp"
 #include "Shared.hpp"
 #include "GlassReflectionBrush.hpp"
+#include "GlassKernel.hpp"
 
 using namespace OpenGlass;
 
 namespace OpenGlass::GlassReflectionHandler
 {
-	void STDMETHODCALLTYPE MyCAnimatedGlassSheet_OnRectUpdated(uDWM::CAnimatedGlassSheet* This, LPCRECT lprc);
-	void STDMETHODCALLTYPE MyCAnimatedGlassSheet_Destructor(uDWM::CAnimatedGlassSheet* This);
+	void MyCAnimatedGlassSheet_OnRectUpdated(uDWM::CAnimatedGlassSheet* This, LPCRECT lprc);
+	void MyCAnimatedGlassSheet_Destructor(uDWM::CAnimatedGlassSheet* This);
 
-	HRESULT STDMETHODCALLTYPE MyCLivePreview__FadeOutToGlass(uDWM::CLivePreview* This);
-	HRESULT STDMETHODCALLTYPE MyCLivePreview__UpdateInstructions(uDWM::CLivePreview* This);
+	HRESULT MyCLivePreview__FadeOutToGlass(uDWM::CLivePreview* This);
+	HRESULT MyCLivePreview__UpdateInstructions(uDWM::CLivePreview* This);
+	HRESULT MyCLivePreview__UpdateResourcesForMonitorHelper(
+		uDWM::CLivePreview* This,
+		const uDWM::CTopLevelWindow* window,
+		uDWM::LivePreviewResource* resource
+	);
 	
 	decltype(&MyCAnimatedGlassSheet_OnRectUpdated) g_CAnimatedGlassSheet_OnRectUpdated_Org{ nullptr };
 	decltype(&MyCAnimatedGlassSheet_Destructor) g_CAnimatedGlassSheet_Destructor_Org{ nullptr };
 
 	decltype(&MyCLivePreview__FadeOutToGlass) g_CLivePreview__FadeOutToGlass_Org{ nullptr };
 	decltype(&MyCLivePreview__UpdateInstructions) g_CLivePreview__UpdateInstructions_Org{ nullptr };
+	decltype(&MyCLivePreview__UpdateResourcesForMonitorHelper) g_CLivePreview__UpdateResourcesForMonitorHelper_Org{ nullptr };
 	
 	class CAnimatedReflectionSheet : public winrt::implements<CAnimatedReflectionSheet, IUnknown, winrt::non_agile, winrt::no_weak_ref>
 	{
@@ -36,7 +43,7 @@ namespace OpenGlass::GlassReflectionHandler
 				GlassReflectionBrush::Remove(m_visual.get());
 			}
 		}
-		static HRESULT STDMETHODCALLTYPE Create(uDWM::CAnimatedGlassSheet* glassSheet, CAnimatedReflectionSheet** outputSheet)
+		static HRESULT Create(uDWM::CAnimatedGlassSheet* glassSheet, CAnimatedReflectionSheet** outputSheet)
 		{
 			auto reflectionSheet = winrt::make_self<CAnimatedReflectionSheet>(glassSheet);
 			RETURN_IF_FAILED(reflectionSheet->Initialize());
@@ -44,7 +51,7 @@ namespace OpenGlass::GlassReflectionHandler
 			return S_OK;
 		}
 
-		HRESULT STDMETHODCALLTYPE Initialize()
+		HRESULT Initialize()
 		{
 			RETURN_IF_FAILED(
 				uDWM::CRenderDataVisual::Create(
@@ -52,7 +59,7 @@ namespace OpenGlass::GlassReflectionHandler
 				)
 			);
 			m_visual->SetInsetFromParent({});
-			const auto brush = GlassReflectionBrush::GetOrCreate(m_visual.get(), true);
+			const auto brush = GlassReflectionBrush::GetOrCreate(m_visual.get(), 0, true);
 			if (!brush)
 			{
 				return E_FAIL;
@@ -87,9 +94,9 @@ namespace OpenGlass::GlassReflectionHandler
 
 			return S_OK;
 		}
-		HRESULT STDMETHODCALLTYPE OnRectUpdated(LPCRECT lprc)
+		HRESULT OnRectUpdated(LPCRECT lprc)
 		{
-			const auto brush = GlassReflectionBrush::GetOrCreate(m_visual.get());
+			const auto brush = GlassReflectionBrush::GetOrCreate(m_visual.get(), 0);
 			RETURN_IF_FAILED(
 				brush->Update(
 					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::AnimatedGlassSheet) ? 
@@ -133,11 +140,9 @@ namespace OpenGlass::GlassReflectionHandler
 		}
 	};
 	std::unordered_map<uDWM::CAnimatedGlassSheet*, winrt::com_ptr<CAnimatedReflectionSheet>> g_sheetMap{};
-
-	bool g_disableReflectionHooks{ false };
 }
 
-void STDMETHODCALLTYPE GlassReflectionHandler::MyCAnimatedGlassSheet_OnRectUpdated(uDWM::CAnimatedGlassSheet* This, LPCRECT lprc)
+void GlassReflectionHandler::MyCAnimatedGlassSheet_OnRectUpdated(uDWM::CAnimatedGlassSheet* This, LPCRECT lprc)
 {
 	winrt::com_ptr<CAnimatedReflectionSheet> reflectionSheet{};
 	if (const auto it = g_sheetMap.find(This); it != g_sheetMap.end())
@@ -159,7 +164,7 @@ void STDMETHODCALLTYPE GlassReflectionHandler::MyCAnimatedGlassSheet_OnRectUpdat
 
 	return g_CAnimatedGlassSheet_OnRectUpdated_Org(This, lprc);
 }
-void STDMETHODCALLTYPE GlassReflectionHandler::MyCAnimatedGlassSheet_Destructor(uDWM::CAnimatedGlassSheet* This)
+void GlassReflectionHandler::MyCAnimatedGlassSheet_Destructor(uDWM::CAnimatedGlassSheet* This)
 {
 	g_sheetMap.erase(This);
 	return g_CAnimatedGlassSheet_Destructor_Org(This);
@@ -168,17 +173,20 @@ void STDMETHODCALLTYPE GlassReflectionHandler::MyCAnimatedGlassSheet_Destructor(
 // here restores
 // CLivePreview::_UpdateGlassVisual
 // CLivePreview::_UpdateInstructions
-HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__FadeOutToGlass(uDWM::CLivePreview* This)
+HRESULT GlassReflectionHandler::MyCLivePreview__FadeOutToGlass(uDWM::CLivePreview* This)
 {
 	RETURN_IF_FAILED(This->_UpdateResources());
 
 	for (auto& visual : This->GetLivePreviewVisualArray()->views())
 	{
-		const auto data = visual.data;
-		if (uDWM::CLivePreview::IsWindowIncluded(data))
+		// Microsoft has been randomly changing offsets since windows 11 24h2,
+		// im done with this reverse engineering crap.
+		
+		//const auto data = visual.data;
+		//if (uDWM::CLivePreview::IsWindowIncluded(data))
 		{
-			auto windowFrames = visual.windowFrames;
-			if (visual.unknown0 || !uDWM::CLivePreview::IsWindowCloneAsWindowFrames(data))
+			auto& windowFrames = visual.windowFrames;
+			//if (!uDWM::CLivePreview::IsWindowCloneAsWindowFrames(data))
 			{
 				if (windowFrames)
 				{
@@ -186,14 +194,15 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__FadeOutToGlass
 						windowFrames
 					);
 					windowFrames->Release();
-					visual.windowFrames = nullptr;
+					windowFrames = nullptr;
 				}
 			}
-			else if (!windowFrames)
+			/*else*/ if (!windowFrames)
 			{
-				visual.data->GetWindow()->CloneVisualTreeForLivePreview(true, &visual.windowFrames);
+				visual.data->GetWindow()->CloneVisualTreeForLivePreview(true, &windowFrames);
 				This->GetGlassVisual()->GetVisualCollection()->InsertRelative(
-					visual.windowFrames,
+					windowFrames,
+
 					nullptr,
 					false,
 					true
@@ -250,6 +259,7 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__FadeOutToGlass
 			if (
 				const auto brush = GlassReflectionBrush::GetOrCreate(
 					This,
+					0,
 					true
 				);
 				brush
@@ -292,7 +302,7 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__FadeOutToGlass
 
 	return g_CLivePreview__FadeOutToGlass_Org(This);
 }
-HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstructions(uDWM::CLivePreview* This)
+HRESULT GlassReflectionHandler::MyCLivePreview__UpdateInstructions(uDWM::CLivePreview* This)
 {
 	const auto hr = g_CLivePreview__UpdateInstructions_Org(This);
 
@@ -307,6 +317,7 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstruct
 			if (
 				const auto brush = GlassReflectionBrush::GetOrCreate(
 					This,
+					0,
 					true
 				);
 				brush
@@ -350,21 +361,36 @@ HRESULT STDMETHODCALLTYPE GlassReflectionHandler::MyCLivePreview__UpdateInstruct
 	return hr;
 }
 
+HRESULT GlassReflectionHandler::MyCLivePreview__UpdateResourcesForMonitorHelper(
+	uDWM::CLivePreview* This,
+	const uDWM::CTopLevelWindow* window,
+	uDWM::LivePreviewResource* resource
+)
+{
+	const auto build_before_w11_24h2 = uDWM::g_versionInfo.build < os::build_w11_24h2;
+
+	if (!build_before_w11_24h2)
+	{
+		GlassKernel::g_redirectFirstCreateRectRgnCall = true;
+		GlassKernel::g_window = window;
+	}
+	const auto result = g_CLivePreview__UpdateResourcesForMonitorHelper_Org(This, window, resource);
+	if (!build_before_w11_24h2)
+	{
+		GlassKernel::g_window = nullptr;
+		GlassKernel::g_redirectFirstCreateRectRgnCall = std::nullopt;
+	}
+
+	return result;
+}
+
 void GlassReflectionHandler::Update([[maybe_unused]] GlassEngine::UpdateType type)
 {
 }
 
 void GlassReflectionHandler::Startup()
 {
-	DWORD value{ 0ul };
-	wil::reg::get_value_dword_nothrow(
-		GlassEngine::GetDwmLocalMachineKey(),
-		L"DisabledHooks",
-		&value
-	);
-	g_disableReflectionHooks = (value & 8) != 0;
-
-	if (g_disableReflectionHooks)
+	if (Shared::g_disabledHooks.test(Shared::DisabledHooks_GlassReflectionHandler))
 	{
 		return;
 	}
@@ -374,48 +400,45 @@ void GlassReflectionHandler::Startup()
 	
 	uDWM::g_projectionArray.ApplyToVariable("CLivePreview::_FadeOutToGlass", g_CLivePreview__FadeOutToGlass_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CLivePreview::_UpdateInstructions", g_CLivePreview__UpdateInstructions_Org);
-	
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]() static
-		{
-			if (uDWM::g_versionInfo.build < os::build_w11_21h2)
-			{
-				HookHelper::Detours::Attach(&g_CAnimatedGlassSheet_OnRectUpdated_Org, MyCAnimatedGlassSheet_OnRectUpdated);
-				HookHelper::Detours::Attach(&g_CAnimatedGlassSheet_Destructor_Org, MyCAnimatedGlassSheet_Destructor);
+	uDWM::g_projectionArray.ApplyToVariable("CLivePreview::_UpdateResourcesForMonitorHelper", g_CLivePreview__UpdateResourcesForMonitorHelper_Org);
 
-				HookHelper::Detours::Attach(&g_CLivePreview__UpdateInstructions_Org, MyCLivePreview__UpdateInstructions);
-			}
-			else
-			{
-				HookHelper::Detours::Attach(&g_CLivePreview__FadeOutToGlass_Org, MyCLivePreview__FadeOutToGlass);
-			}
-		})
+	const auto build_before_w11_21h2 = uDWM::g_versionInfo.build < os::build_w11_21h2;
+	HookHelper::PatchFunctions(
+		std::initializer_list<HookHelper::DetourInfo>
+		{
+			{ &g_CAnimatedGlassSheet_OnRectUpdated_Org, &MyCAnimatedGlassSheet_OnRectUpdated, build_before_w11_21h2 },
+			{ &g_CAnimatedGlassSheet_Destructor_Org, &MyCAnimatedGlassSheet_Destructor, build_before_w11_21h2 },
+			{ &g_CLivePreview__UpdateInstructions_Org, &MyCLivePreview__UpdateInstructions, build_before_w11_21h2 },
+			{ &g_CLivePreview__UpdateResourcesForMonitorHelper_Org, &MyCLivePreview__UpdateResourcesForMonitorHelper, uDWM::g_versionInfo.build >= os::build_w11_24h2 },
+
+			{ &g_CLivePreview__FadeOutToGlass_Org, &MyCLivePreview__FadeOutToGlass, !build_before_w11_21h2 }
+		},
+		true
 	);
 }
 
 void GlassReflectionHandler::Shutdown()
 {
-	if (g_disableReflectionHooks)
+	if (Shared::g_disabledHooks.test(Shared::DisabledHooks_GlassReflectionHandler))
 	{
 		return;
 	}
 
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]() static
+	const auto build_before_w11_21h2 = uDWM::g_versionInfo.build < os::build_w11_21h2;
+	HookHelper::PatchFunctions(
+		std::initializer_list<HookHelper::DetourInfo>
 		{
-			if (uDWM::g_versionInfo.build < os::build_w11_21h2)
-			{
-				HookHelper::Detours::Detach(&g_CAnimatedGlassSheet_OnRectUpdated_Org, MyCAnimatedGlassSheet_OnRectUpdated);
-				HookHelper::Detours::Detach(&g_CAnimatedGlassSheet_Destructor_Org, MyCAnimatedGlassSheet_Destructor);
+			{ &g_CAnimatedGlassSheet_OnRectUpdated_Org, &MyCAnimatedGlassSheet_OnRectUpdated, build_before_w11_21h2 },
+			{ &g_CAnimatedGlassSheet_Destructor_Org, &MyCAnimatedGlassSheet_Destructor, build_before_w11_21h2 },
+			{ &g_CLivePreview__UpdateInstructions_Org, &MyCLivePreview__UpdateInstructions, build_before_w11_21h2 },
+			{ &g_CLivePreview__UpdateResourcesForMonitorHelper_Org, &MyCLivePreview__UpdateResourcesForMonitorHelper, uDWM::g_versionInfo.build >= os::build_w11_24h2 },
 
-				HookHelper::Detours::Detach(&g_CLivePreview__UpdateInstructions_Org, MyCLivePreview__UpdateInstructions);
-			}
-			else
-			{
-				HookHelper::Detours::Detach(&g_CLivePreview__FadeOutToGlass_Org, MyCLivePreview__FadeOutToGlass);
-			}
-		})
+			{ &g_CLivePreview__FadeOutToGlass_Org, &MyCLivePreview__FadeOutToGlass, !build_before_w11_21h2 }
+		},
+		false
 	);
+
+	SwitchToThread();
 
 	g_sheetMap.clear();
 }

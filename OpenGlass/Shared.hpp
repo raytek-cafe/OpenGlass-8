@@ -12,7 +12,7 @@ namespace OpenGlass::Shared
 		Blur,
 		Aero,
 
-		Invalid = 0xFF
+		Invalid = 0xFFFFFFFF
 	} g_type{ 0 };
 	inline enum ReflectionPolicy : UINT
 	{
@@ -36,21 +36,21 @@ namespace OpenGlass::Shared
 
 	// vista: 1.f
 	// w7: 1.f
-	inline float g_colorizationBlendingOpacity{};
+	inline float g_colorizationOpacity{};
 	// vista: 0.55f
 	// w7: 0.4f
-	inline float g_colorizationBlendingOpacityInactive{};
+	inline float g_colorizationOpacityInactive{};
 	// vista: 0.75f
 	// w7: 1.f
-	inline float g_colorizationBlendingOpacityMaximized{};
+	inline float g_colorizationOpacityMaximized{};
 	// vista: 0.75f
 	// w7: 0.4f
-	inline float g_colorizationBlendingOpacityInactiveMaximized{};
+	inline float g_colorizationOpacityInactiveMaximized{};
 
-	inline float g_captionOpacity{};
-	inline float g_captionOpacityInactive{};
-	inline float g_captionOpacityMaximized{};
-	inline float g_captionOpacityInactiveMaximized{};
+	inline float g_glowOpacity{};
+	inline float g_glowOpacityInactive{};
+	inline float g_glowOpacityMaximized{};
+	inline float g_glowOpacityInactiveMaximized{};
 
 	inline enum OpaqueBlendPriority : UINT
 	{
@@ -58,8 +58,9 @@ namespace OpenGlass::Shared
 		Win7
 	} g_opaqueBlendPriority{ 0 };
 	inline bool g_opaqueBlend{};
-	inline D2D1_COLOR_F g_opaqueBlendColor{};
-	inline D2D1_COLOR_F g_opaqueBlendColorMaximized{};
+	inline D2D1_COLOR_F g_colorizationBaseTransparent{};
+	inline D2D1_COLOR_F g_colorizationBaseOpaque{};
+	inline D2D1_COLOR_F g_colorizationBaseMaximized{};
 
 	inline float g_colorBalance{};
 	inline float g_afterglowBalance{};
@@ -74,15 +75,26 @@ namespace OpenGlass::Shared
 	inline std::optional<LONG> g_captionHeight{};
 
 	inline float g_reflectionIntensity{};
-	inline float g_reflectionIntensityInactive{};
-	inline float g_reflectionIntensityMaximized{};
-	inline float g_reflectionIntensityInactiveMaximized{};
+	inline float g_reflectionOpacity{};
+	inline float g_reflectionOpacityInactive{};
+	inline float g_reflectionOpacityMaximized{};
+	inline float g_reflectionOpacityInactiveMaximized{};
 
 	inline float g_reflectionParallaxIntensity{};
 	inline std::wstring g_reflectionTexturePath{};
 
 	inline float g_materialIntensity{};
 	inline std::wstring g_materialTexturePath{};
+
+	enum DisabledHooks : UINT
+	{
+		DisabledHooks_CaptionTextHandler,
+		DisabledHooks_AccentOverrider,
+		DisabledHooks_GlassFrameHandler,
+		DisabledHooks_GlassReflectionHandler,
+		DisabledHooks_CaptionMetricsTweaker,
+	};
+	inline std::bitset<8> g_disabledHooks{};
 
 	FORCEINLINE bool IsTransparencyDisabled()
 	{
@@ -103,7 +115,7 @@ namespace OpenGlass::Shared
 	}
 	FORCEINLINE bool IsOpaqueOnMaximized(bool maximized)
 	{
-		return maximized && g_opaqueBlendColorMaximized.a != 0.f;
+		return maximized && g_colorizationBaseMaximized.a == 1.f;
 	}
 	FORCEINLINE bool IsGlassFullyOpaque(
 		float alpha,
@@ -120,7 +132,6 @@ namespace OpenGlass::Shared
 		}
 		// uDWM!CCapturedGlassColorizationParameters::IsGlassFullyOpaque (Windows 7)
 		if (
-			#pragma warning(suppress:26813)
 			g_type == GlassType::Aero &&
 			blurBalance == 0.f &&
 			afterglowBalance == 0.f

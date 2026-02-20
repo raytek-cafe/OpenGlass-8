@@ -5,19 +5,20 @@
 
 cbuffer constants : register(b0)
 {
-	minfloat4 afterglow : packoffset(c0);
-	minfloat4 blurBalance : packoffset(c1);
-	minfloat4 color : packoffset(c2);
+	minfloat4 afterglow;
+	minfloat4 blurBalance;
+	minfloat4 color;
 };
 
 static const minfloat3 grayFactor = minfloat3(0.2126, 0.7152, 0.0722);
 
 D2D_PS_ENTRY(AeroColorizationEffect)
 {
-	minfloat4 input = minfloat4(D2DGetInput(0));
-	input.w = dot(input.xyz, grayFactor);
-	input.xyz = mad(input.w, afterglow.xyz, mad(blurBalance.x, input.xyz, color.xyz));
-	input.w = 1;
+	minfloat3 result = minfloat3(D2DGetInput(0).xyz);
+	minfloat luminance = dot(result, grayFactor);
+	result = minfloat3(blurBalance.xxx) * result;
+	result = luminance * minfloat3(afterglow.xyz) + result;
+	result = minfloat3(color.xyz) + result;
 
-	return input;
+	return minfloat4(result, 1.0f);
 }

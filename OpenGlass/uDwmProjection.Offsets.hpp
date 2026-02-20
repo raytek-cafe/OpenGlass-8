@@ -77,9 +77,9 @@ namespace OpenGlass::uDWM
 	struct CVisual_GetDirtyFlags_Offsets {
 		consteval static auto operator()(){
 			return std::array{
-				Util::OffsetInfo{ .offset = 20 * 4LL, .build = os::build_w11_21h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 22 * 4LL, .build = os::build_w11_24h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 8 * 4LL,  .build = 0, .revision = 0 }
+				Util::OffsetInfo{ .offset = 20 * sizeof(DWORD), .build = os::build_w11_21h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 22 * sizeof(DWORD), .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 8 * sizeof(DWORD),  .build = 0, .revision = 0 }
 			};
 		}
 	};
@@ -157,7 +157,11 @@ namespace OpenGlass::uDWM
 	// CAtlasedImage
 	struct CAtlasedImage_GetPartId_Offsets {
 		consteval static auto operator()(){
-			return std::array{ Util::OffsetInfo{ .offset = 30 * 4LL, .build = 0, .revision = 0 } };
+			return std::array{
+				Util::OffsetInfo{ .offset = 33 * sizeof(DWORD), .build = os::build_w10_1903, .revision = 0 },
+				Util::OffsetInfo{ .offset = 30 * sizeof(DWORD), .build = 0, .revision = 0 }
+			};
+			
 		}
 	};
 
@@ -165,8 +169,8 @@ namespace OpenGlass::uDWM
 	struct CButton_GetGlyphOpacity_Offsets {
 		consteval static auto operator()(){
 			return std::array{
-				Util::OffsetInfo{ .offset = 101 * 4LL, .build = os::build_w11_24h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 89 * 4LL,  .build = 0, .revision = 0 }
+				Util::OffsetInfo{ .offset = 101 * sizeof(DWORD), .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 89 * sizeof(DWORD),  .build = 0, .revision = 0 }
 			};
 		}
 	};
@@ -200,6 +204,16 @@ namespace OpenGlass::uDWM
 		}
 	};
 
+	struct CAccent_GetAccentPolicy_Offsets {
+		consteval static auto operator()(){
+			return std::array{
+				Util::OffsetInfo{ .offset = 280, .build = os::build_w11_21h2, .revision = 0},
+				Util::OffsetInfo{ .offset = 288, .build = os::build_w11_24h2, .revision = 0},
+				Util::OffsetInfo{ .offset = 240, .build = 0, .revision = 0 }
+			};
+		}
+	};
+
 	// CWindowData
 	struct CWindowData_GetHwnd_Offsets {
 		consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 5 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; }
@@ -226,17 +240,17 @@ namespace OpenGlass::uDWM
 		}
 	};
 	struct CWindowData_GetSystemBackdropType_Index_Offsets {
-		consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 51 * 4LL, .build = 0, .revision = 0 } }; }
+		consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 51 * sizeof(DWORD), .build = 0, .revision = 0 } }; }
 	};
 	struct CWindowData_ColorOverride_Index_Offsets {
-		consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 47 * 4LL, .build = 0, .revision = 0 } }; }
+		consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 47 * sizeof(DWORD), .build = 0, .revision = 0 } }; }
 	};
 	struct CWindowData_GetWindowDPI_Offsets {
 		consteval static auto operator()(){
 			return std::array{
 				Util::OffsetInfo{ .offset = 324, .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 348, .build = os::build_w11_22h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 87 * 4LL, .build = 0, .revision = 0 }
+				Util::OffsetInfo{ .offset = 87 * sizeof(DWORD), .build = 0, .revision = 0 }
 			};
 		}
 	};
@@ -254,9 +268,25 @@ namespace OpenGlass::uDWM
 	struct CWindowData_GetClientBlurAttribute_Offsets {
 		consteval static auto operator()() {
 			return std::array{
+				Util::OffsetInfo{ .offset = 597, .build = os::build_w10_1903, .revision = 0 },
+				Util::OffsetInfo{ .offset = 605, .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 609, .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 665, .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 673, .build = 0, .revision = 0 }
+			};
+		}
+	};
+	struct CWindowData_GetWindowRect_Offsets {
+		consteval static auto operator()() {
+			return std::array{
+				Util::OffsetInfo{ .offset = 48, .build = 0, .revision = 0 }
+			};
+		}
+	};
+	struct CWindowData_GetClientMargins_Offsets {
+		consteval static auto operator()() {
+			return std::array{
+				Util::OffsetInfo{ .offset = 64, .build = 0, .revision = 0 }
 			};
 		}
 	};
@@ -273,6 +303,7 @@ namespace OpenGlass::uDWM
 	struct CLivePreview_GetThumbnailVisual_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 64 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 62 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 63 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 59 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 },
@@ -283,6 +314,7 @@ namespace OpenGlass::uDWM
 	struct CLivePreview_GetGlassVisual_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 66 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 64 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 65 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 61 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 },
@@ -308,24 +340,38 @@ namespace OpenGlass::uDWM
 			};
 		}
 	};
+	// currently deprecated
 	struct CLivePreview_IsWindowIncluded_ByteOffset_Offsets {
 		consteval static auto operator()(){
 			return std::array{
 				Util::OffsetInfo{ .offset = 611, .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 675, .build = 0, .revision = 0 }
+				// you can find it in CLivePreview::_FadeOutToGlass, CLivePreview::OnWindowShowHide
+				// 26100.3775:674, 26100.7309:738
 			};
 		}
 	};
+	// currently deprecated
 	struct CLivePreview_IsWindowCloneAsWindowFrames_DwordIndex_Offsets {
 		consteval static auto operator()(){
 			return std::array{
-				Util::OffsetInfo{ .offset = 28 * 4LL, .build = os::build_w11_21h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 33 * 4LL, .build = os::build_w11_24h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 32 * 4LL, .build = 0, .revision = 0 }
+				Util::OffsetInfo{ .offset = 28 * sizeof(DWORD), .build = os::build_w11_21h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 33 * sizeof(DWORD), .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 32 * sizeof(DWORD), .build = 0, .revision = 0 }
+				// you can find it in CLivePreview::_FadeOutToGlass, CLivePreview::OnWindowShowHide
 			};
 		}
 	};
 
+	struct CTopLevelWindow_WindowFrame_GetCornerRadius_Offsets
+	{
+		consteval static auto operator()() {
+			return std::array{
+				Util::OffsetInfo{ .offset = 471 * sizeof(UINT32), .build = os::build_w11_21h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 466 * sizeof(UINT32), .build = 0, .revision = 0 },
+			};
+		}
+	};
 	// CTopLevelWindow indices
 	struct CTopLevelWindow_GetData_Index_Offsets {
 		consteval static auto operator()(){
@@ -351,6 +397,7 @@ namespace OpenGlass::uDWM
 	struct CTopLevelWindow_GetIconVisual_Index_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 65 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 66 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 68 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 72 * sizeof(ULONG_PTR), .build = os::build_w11_23h2, .revision = 0 },
@@ -361,19 +408,8 @@ namespace OpenGlass::uDWM
 	struct CTopLevelWindow_GetDWriteTextVisual_Index_Offsets {
 		consteval static auto operator()(){
 			return std::array{
-					Util::OffsetInfo{ .offset = 70 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 },
-					Util::OffsetInfo{ .offset = 65 * sizeof(ULONG_PTR), .build = 0, .revision = 0 }
-			};
-		}
-	};
-	struct CTopLevelWindow_GetNonClientVisual_Index_Offsets {
-		consteval static auto operator()(){
-			return std::array{
-				Util::OffsetInfo{ .offset = 32 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
-				Util::OffsetInfo{ .offset = 33 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 34 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 36 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 31 * sizeof(ULONG_PTR), .build = 0, .revision = 0 }
+				Util::OffsetInfo{ .offset = 70 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 65 * sizeof(ULONG_PTR), .build = 0, .revision = 0 }
 			};
 		}
 	};
@@ -431,22 +467,11 @@ namespace OpenGlass::uDWM
 	struct CTopLevelWindow_StateDwordIndex_Offsets {
 		consteval static auto operator()(){
 			return std::array{
-				Util::OffsetInfo{ .offset = 146 * 4LL, .build = os::build_w10_2004, .revision = 0 },
-				Util::OffsetInfo{ .offset = 148 * 4LL, .build = os::build_w11_21h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 152 * 4LL, .build = os::build_w11_22h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 156 * 4LL, .build = os::build_w11_24h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 146 * 4LL, .build = 0, .revision = 0 }
-			};
-		}
-	};
-	struct CTopLevelWindow_HasNonClientArea_BaseDwordIndex_Offsets {
-		consteval static auto operator()(){
-			return std::array{
-				Util::OffsetInfo{ .offset = 151 * 4LL, .build = os::build_w10_2004, .revision = 0 },
-				Util::OffsetInfo{ .offset = 153 * 4LL, .build = os::build_w11_21h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 157 * 4LL, .build = os::build_w11_22h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 161 * 4LL, .build = os::build_w11_24h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 151 * 4LL, .build = 0, .revision = 0 }
+				Util::OffsetInfo{ .offset = 146 * sizeof(DWORD), .build = os::build_w10_2004, .revision = 0 },
+				Util::OffsetInfo{ .offset = 148 * sizeof(DWORD), .build = os::build_w11_21h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 152 * sizeof(DWORD), .build = os::build_w11_22h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 156 * sizeof(DWORD), .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 146 * sizeof(DWORD), .build = 0, .revision = 0 }
 			};
 		}
 	};
@@ -464,6 +489,7 @@ namespace OpenGlass::uDWM
 	struct CTopLevelWindow_GetButton_BasePointerIndex_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 60 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 61 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 63 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 66 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 },
@@ -479,9 +505,10 @@ namespace OpenGlass::uDWM
 			};
 		}
 	};
-	struct CTopLevelWindow_GetMarginsVisibleOutside_Zoomed_Offsets {
+	struct CTopLevelWindow_GetFrameOutsideMargins_Zoomed_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 636, .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 644, .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 660, .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 676, .build = os::build_w11_24h2, .revision = 0 },
@@ -489,9 +516,10 @@ namespace OpenGlass::uDWM
 			};
 		}
 	};
-	struct CTopLevelWindow_GetMarginsVisibleOutside_Normal_Offsets {
+	struct CTopLevelWindow_GetFrameOutsideMargins_Normal_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 620, .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 628, .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 644, .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 660, .build = os::build_w11_24h2, .revision = 0 },
@@ -499,9 +527,21 @@ namespace OpenGlass::uDWM
 			};
 		}
 	};
+	struct CTopLevelWindow_GetFrameInsideMargins_Offsets {
+		consteval static auto operator()(){
+			return std::array{
+				Util::OffsetInfo{ .offset = 151 * sizeof(DWORD), .build = os::build_w10_2004, .revision = 0 },
+				Util::OffsetInfo{ .offset = 153 * sizeof(DWORD), .build = os::build_w11_21h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 157 * sizeof(DWORD), .build = os::build_w11_22h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 161 * sizeof(DWORD), .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 151 * sizeof(DWORD), .build = 0, .revision = 0 }
+			};
+		}
+	};
 	struct CTopLevelWindow_GetBorderMargins_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 588, .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 596, .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 612, .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 628, .build = os::build_w11_24h2, .revision = 0 },
@@ -550,6 +590,7 @@ namespace OpenGlass::uDWM
 	struct CTopLevelWindow_GetCaptionBrush_Index_OnThis_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 94 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 95 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 99 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }
 			};
@@ -566,6 +607,7 @@ namespace OpenGlass::uDWM
 	struct CTopLevelWindow_GetBorderBrush_Index_OnThis_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 93 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 94 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 98 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }
 			};
@@ -582,6 +624,7 @@ namespace OpenGlass::uDWM
 	struct CTopLevelWindow_GetClientBlurBrush_Index_OnThis_Offsets {
 		consteval static auto operator()(){
 			return std::array{
+				Util::OffsetInfo{ .offset = 95 * sizeof(ULONG_PTR), .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 96 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 100 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 98 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 },
@@ -591,8 +634,8 @@ namespace OpenGlass::uDWM
 	};
 
 	// CWindowData extra color overrides
-	struct CWindowData_BorderColorOverride_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 48 * 4LL, .build = 0, .revision = 0 } }; } };
-	struct CWindowData_TextColorOverride_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 49 * 4LL, .build = 0, .revision = 0 } }; } };
+	struct CWindowData_BorderColorOverride_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 48 * sizeof(DWORD), .build = 0, .revision = 0 } }; } };
+	struct CWindowData_TextColorOverride_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 49 * sizeof(DWORD), .build = 0, .revision = 0 } }; } };
 
 	// LivePreviewResource offsets
 	struct LivePreviewResource_GetGlassBoundingRect_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 40, .build = 0, .revision = 0 } }; } };
@@ -610,8 +653,8 @@ namespace OpenGlass::uDWM
 	struct CDesktopManager_GetLivePreview_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 64 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 55 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 57 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_GetCompositor_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 5 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 6 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_GetConnection_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 6 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
-	struct CDesktopManager_GetWindowList_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 61 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 52 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 54 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 53 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
-	struct CDesktopManager_GetWICFactory_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 39 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 30 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 31 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 30 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
+	struct CDesktopManager_GetWindowList_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 61 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 51 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = os::revision_21h2_post_rtm_0 }, Util::OffsetInfo{ .offset = 52 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 54 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 53 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
+	struct CDesktopManager_GetWICFactory_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 39 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 29 * sizeof(ULONG_PTR), .build = os::build_w11_21h2, .revision = os::revision_21h2_post_rtm_0 }, Util::OffsetInfo{ .offset = 30 * sizeof(ULONG_PTR), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 31 * sizeof(ULONG_PTR), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 30 * sizeof(ULONG_PTR), .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_GetIsHighContrastMode_BoolIndex_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 26, .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 27, .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_HasMaximizedWindows_BoolIndex_Offsets { consteval static auto operator()() { return std::array{ Util::OffsetInfo{ .offset = 21, .build = 0, .revision = 0 } }; } };
 	struct CDesktopManager_GetDPIValue_Index_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 60 * (LONGLONG)sizeof(double), .build = os::build_w11_21h2, .revision = 0 }, Util::OffsetInfo{ .offset = 51 * (LONGLONG)sizeof(double), .build = os::build_w11_22h2, .revision = 0 }, Util::OffsetInfo{ .offset = 53 * (LONGLONG)sizeof(double), .build = os::build_w11_24h2, .revision = 0 }, Util::OffsetInfo{ .offset = 52 * (LONGLONG)sizeof(double), .build = 0, .revision = 0 } }; } };
@@ -635,6 +678,7 @@ namespace OpenGlass::uDWM
 	struct CAnimatedGlassSheet_GetSourceRect_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 24 * (LONGLONG)sizeof(RECT), .build = 0, .revision = 0 } }; } };
 	struct CAnimatedGlassSheet_GetDestinationRect_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 25 * (LONGLONG)sizeof(RECT), .build = 0, .revision = 0 } }; } };
 	struct CAnimatedGlassSheet_GetAdjustedDestinationRect_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 26 * (LONGLONG)sizeof(RECT), .build = 0, .revision = 0 } }; } };
+	// CAnimatedGlassSheet::Initialize
 	struct CAnimatedGlassSheet_GetAtlasPaddingTop_Rect_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 30 * (LONGLONG)sizeof(RECT), .build = 0, .revision = 0 } }; } };
 	struct CAnimatedGlassSheet_GetAtlasPaddingLeft_Rect_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 29 * (LONGLONG)sizeof(RECT), .build = 0, .revision = 0 } }; } };
 	struct CAnimatedGlassSheet_GetAtlasPaddingRight_Rect_Offsets { consteval static auto operator()(){ return std::array{ Util::OffsetInfo{ .offset = 29 * (LONGLONG)sizeof(RECT), .build = 0, .revision = 0 } }; } };

@@ -5,7 +5,7 @@
 
 namespace OpenGlass::CustomThemeAtlasLoader
 {
-	HRESULT STDMETHODCALLTYPE MyGetThemeStream(
+	HRESULT MyGetThemeStream(
 		HTHEME hTheme,
 		int iPartId,
 		int iStateId,
@@ -14,7 +14,7 @@ namespace OpenGlass::CustomThemeAtlasLoader
 		DWORD* pcbStream,
 		HINSTANCE hInst
 	);
-	HRESULT STDMETHODCALLTYPE MyGetThemeMargins(
+	HRESULT MyGetThemeMargins(
 		HTHEME hTheme,
 		HDC hdc,
 		int iPartId,
@@ -23,21 +23,21 @@ namespace OpenGlass::CustomThemeAtlasLoader
 		LPCRECT prc,
 		MARGINS* pMargins
 	);
-	HRESULT STDMETHODCALLTYPE MyGetThemeRect(
+	HRESULT MyGetThemeRect(
 		HTHEME hTheme,
 		int iPartId,
 		int iStateId,
 		int iPropId,
 		LPRECT pRect
 	);
-	HRESULT STDMETHODCALLTYPE MyGetThemeInt(
+	HRESULT MyGetThemeInt(
 		HTHEME hTheme,
 		int iPartId,
 		int iStateId,
 		int iPropId,
 		int* piVal
 	);
-	HRESULT STDMETHODCALLTYPE MyGetThemeColor(
+	HRESULT MyGetThemeColor(
 		HTHEME hTheme,
 		int iPartId,
 		int iStateId,
