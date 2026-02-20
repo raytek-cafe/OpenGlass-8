@@ -5,24 +5,42 @@
 
 namespace OpenGlass::HookHelper
 {
-	struct pss_snapshot
-	{
-		static void close(HPSS snapshot) WI_NOEXCEPT
-		{
-			::PssFreeSnapshot(GetCurrentProcess(), snapshot);
-		}
-	};
-	typedef wil::unique_any<HPSS, decltype(&pss_snapshot::close), pss_snapshot::close, wil::details::pointer_access_all> unique_pss_snapshot_local;
-	typedef wil::unique_any<HPSSWALK, decltype(&::PssWalkMarkerFree), ::PssWalkMarkerFree, wil::details::pointer_access_all> unique_pss_walk_marker;
+	template <typename T>
+	concept function_pointer = std::is_pointer_v<T> && std::is_function_v<std::remove_pointer_t<T>>;
 
-	FORCEINLINE auto unprotect(PVOID address, SIZE_T size)
+	struct DetourInfo
 	{
-		THROW_HR_IF_NULL(E_INVALIDARG, address);
+		LPVOID* original;
+		LPVOID detour;
+
+		template <function_pointer T> FORCEINLINE DetourInfo(T* p1, T p2, bool condition = true) : original(condition ? reinterpret_cast<LPVOID*>(p1) : nullptr), detour(condition ? reinterpret_cast<LPVOID>(p2) : nullptr) {}
+	};
+
+	struct ImportFunctionDetourInfo : DetourInfo
+	{
+		LPCSTR importFunction;
+
+		template <function_pointer T> FORCEINLINE ImportFunctionDetourInfo(LPCSTR f, T* p1, T p2, bool condition = true) : DetourInfo(p1, p2, condition), importFunction(condition ? f : nullptr) {}
+	};
+
+	struct ImportDllDetourInfo
+	{
+		LPCSTR importDllName;
+		std::span<const ImportFunctionDetourInfo> functionsToDetour;
+	};
+
+	constexpr uint16_t c_patwc = 0xFFFFu;
+
+	HMODULE GetRemoteModuleBase(DWORD processId, LPCWSTR moduleName);
+
+	FORCEINLINE auto Unprotect(std::span<uint8_t> views)
+	{
+		THROW_HR_IF(E_INVALIDARG, views.empty());
 		DWORD oldProtect{ 0 };
 		THROW_IF_WIN32_BOOL_FALSE(
 			VirtualProtect(
-				address,
-				size,
+				views.data(),
+				views.size_bytes(),
 				PAGE_EXECUTE_READWRITE,
 				&oldProtect
 			)
@@ -32,67 +50,31 @@ namespace OpenGlass::HookHelper
 			auto unused = 0ul;
 			THROW_IF_WIN32_BOOL_FALSE(
 				VirtualProtect(
-					address,
-					size,
+					views.data(),
+					views.size_bytes(),
 					oldProtect,
 					&unused
 				)
 			);
 		});
 	}
-	void PatchInstructions(void* memory, const UCHAR* data, size_t length);
-	void WritePointerInternal(PVOID* pointerAddress, PVOID value, PVOID* originalValue = nullptr);
-	template <typename T1, typename T2> FORCEINLINE void WritePointer(T1 address, T2 value, T2* originalValue = nullptr) { WritePointerInternal(reinterpret_cast<PVOID*>(address), reinterpret_cast<PVOID>(value), reinterpret_cast<PVOID*>(originalValue)); }
-	
-	HMODULE GetProcessModule(HANDLE processHandle, std::wstring_view dllPath);
+	const uint8_t* FindPattern(std::span<const uint8_t> base, std::span<const uint16_t> pat);
+	void PatchPointer(void** from, void* to, void** original = nullptr);
+	template <function_pointer T> FORCEINLINE void PatchPointerT(T* from, T to, T* original = nullptr){ PatchPointer(reinterpret_cast<void**>(from), reinterpret_cast<void*>(to), reinterpret_cast<void**>(original)); }
+	void PatchInstructions(uint8_t* base, std::span<const uint8_t> data);
+	void PatchIAT(
+		HMODULE moduleHandle,
+		std::span<const ImportDllDetourInfo> dllsToDetour
+	);
+	void PatchDelayloadIAT(
+		HMODULE moduleHandle,
+		std::span<const ImportDllDetourInfo> dllsToDetour
+	);
+	void PatchFunctions(std::span<const DetourInfo> functionsToDetour, bool enable);
 
-	void WalkIAT(PVOID baseAddress, std::string_view dllName, std::function<bool(PVOID* functionAddress, LPCSTR functionNameOrOrdinal, bool importedByName)> callback);
-	void WalkDelayloadIAT(PVOID baseAddress, std::string_view dllName, std::function<bool(HMODULE* moduleHandle, PVOID* functionAddress, LPCSTR functionNameOrOrdinal, bool importedByName)> callback);
-
-	PVOID* GetIAT(PVOID baseAddress, std::string_view dllName, LPCSTR targetFunctionNameOrOrdinal);
-	std::pair<HMODULE*, PVOID*> GetDelayloadIAT(PVOID baseAddress, std::string_view dllName, LPCSTR targetFunctionNameOrOrdinal, bool resolveAPI = false);
-	PVOID WriteIAT(PVOID baseAddress, std::string_view dllName, LPCSTR targetFunctionNameOrOrdinal, PVOID detourFunction);
-	std::pair<HMODULE, PVOID> WriteDelayloadIAT(PVOID baseAddress, std::string_view dllName, LPCSTR targetFunctionNameOrOrdinal, PVOID detourFunction, std::optional<HMODULE> newModuleHandle = std::nullopt);
-	void ResolveDelayloadIAT(const std::pair<HMODULE*, PVOID*>& info, PVOID baseAddress, std::string_view dllName, LPCSTR targetFunctionNameOrOrdinal);
-
-	template <typename T=PVOID>
-	FORCEINLINE T* vftbl_of(const void* This)
+	template <typename T = PVOID>
+	FORCEINLINE T* get_vftable_from(const void* This)
 	{
 		return reinterpret_cast<T*>(*reinterpret_cast<PVOID*>(const_cast<void*>(This)));
-	}
-
-	struct OffsetStorage
-	{
-		LONGLONG value{ 0 };
-
-		FORCEINLINE bool IsValid() const { return value != 0; }
-		template <typename T = PVOID, typename T2 = PVOID>
-		FORCEINLINE T To(T2 baseAddress) const { if (baseAddress == 0 || !IsValid()) { return 0; } return reinterpret_cast<T>(RVA_TO_ADDR(baseAddress, value)); }
-		template <typename T>
-		FORCEINLINE void To(PVOID baseAddress, T& value) const { value = To<T>(baseAddress); }
-		template <typename T = PVOID>
-		static FORCEINLINE auto From(T baseAddress, T targetAddress) { return OffsetStorage{ LONGLONG(targetAddress) - LONGLONG(baseAddress) }; }
-		static FORCEINLINE auto From(PVOID baseAddress, PVOID targetAddress) { if (!baseAddress || !targetAddress) { return OffsetStorage{ 0 }; } return OffsetStorage{ reinterpret_cast<LONGLONG>(targetAddress) - reinterpret_cast<LONGLONG>(baseAddress) }; }
-	};
-
-	namespace Detours
-	{
-		// Call single or multiple Attach/Detach in the callback
-		HRESULT Write(const std::function<void()>&& callback);
-		// Install an inline hook using Detours
-		void Attach(PVOID* realFuncAddr, PVOID hookFuncAddr) noexcept(false);
-		// Uninstall an inline hook using Detours
-		void Detach(PVOID* realFuncAddr, PVOID hookFuncAddr) noexcept(false);
-
-		template <typename T>
-		FORCEINLINE void Attach(T* org, T detour)
-		{
-			Attach(reinterpret_cast<PVOID*>(org), reinterpret_cast<PVOID>(detour));
-		}
-		template <typename T>
-		FORCEINLINE void Detach(T* org, T detour)
-		{
-			Detach(reinterpret_cast<PVOID*>(org), reinterpret_cast<PVOID>(detour));
-		}
 	}
 }

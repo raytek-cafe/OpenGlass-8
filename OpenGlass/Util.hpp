@@ -2,6 +2,7 @@
 #include "framework.hpp"
 #include "cpprt.hpp"
 #include "HookHelper.hpp"
+#include "DxgiPrivates.hpp"
 
 namespace OpenGlass::Util
 {
@@ -15,6 +16,7 @@ namespace OpenGlass::Util
 		return 0 == *str ? seed : compile_time_hash(str + 1, seed ^ (*str + 0x9e3779b9 + (seed << 6) + (seed >> 2)));
 	}
 
+	// ptr to complex
 	template <typename T>
 	FORCEINLINE constexpr auto force_cast_to(PVOID ptr)
 	{
@@ -22,6 +24,7 @@ namespace OpenGlass::Util
 		*reinterpret_cast<PVOID*>(&target_ptr) = ptr;
 		return target_ptr;
 	}
+	// complex to ptr
 	template <typename T>
 	FORCEINLINE constexpr PVOID force_cast_from(T ptr)
 	{
@@ -84,7 +87,8 @@ namespace OpenGlass::Util
 	{
 		constexpr auto offsetInfo = StorageT{}()[i];
 		static_assert((offsetInfo.build == 0 && offsetInfo.revision == 0) || offsetInfo.build != 0, "The offset array is malformed.");
-		
+		//static_assert(!(i + 1 == std::size(StorageT{}()) && (offsetInfo.build != 0 || (offsetInfo.build == 0 && offsetInfo.revision != 0))), "The offset array should ends with build of zero.");
+
 		if constexpr (offsetInfo.build == 0)
 		{
 			static_assert(i + 1 == std::size(StorageT{}()), "The offset array is incorrectly truncated.");
@@ -104,7 +108,7 @@ namespace OpenGlass::Util
 			}
 			else
 			{
-				return 0xFFFFFFFFFFFFFFFF;
+				THROW_HR(E_NOTIMPL);
 			}
 		}
 	}
@@ -112,8 +116,8 @@ namespace OpenGlass::Util
 	template <typename StorageT, typename MethodT>
 	FORCEINLINE auto PointerExecuteUnsafe(const void* ptr, ULONG build, ULONG revision)
 	{
-		static const auto sc_offset = FindOffsetRecursive<StorageT>(build, revision);
-		return MethodT{}(ptr, sc_offset);
+		const auto offset = FindOffsetRecursive<StorageT>(build, revision);
+		return MethodT{}(ptr, offset);
 	}
 
 	inline auto make_current_folder_file(std::wstring_view baseFileName)
@@ -145,6 +149,27 @@ namespace OpenGlass::Util
 	FORCEINLINE std::wstring GetResourceString()
 	{
 		return std::wstring{ GetResourceStringView<id>() };
+	}
+
+	inline void ClearMessageQueue(HWND hWnd, UINT uMsg)
+	{
+		MSG msg{};
+		while (PeekMessageW(&msg, hWnd, uMsg, uMsg, PM_REMOVE)) {}
+	}
+
+	inline HRESULT GetResDataView(std::span<const UCHAR>& resourceView, UINT id, HMODULE moduleHandle = wil::GetModuleInstanceHandle(), LPCWSTR type = RT_RCDATA)
+	{
+		const auto resourceHandle = FindResourceW(moduleHandle, MAKEINTRESOURCE(id), type);
+		RETURN_LAST_ERROR_IF_NULL(resourceHandle);
+		const auto globalHandle = LoadResource(moduleHandle, resourceHandle);
+		RETURN_LAST_ERROR_IF_NULL(globalHandle);
+		const auto resourceAddress = reinterpret_cast<PBYTE>(LockResource(globalHandle));
+		RETURN_LAST_ERROR_IF_NULL(resourceAddress);
+		const auto resourceSize = SizeofResource(moduleHandle, resourceHandle);
+		RETURN_LAST_ERROR_IF(resourceSize == 0);
+		resourceView = { resourceAddress, resourceSize };
+
+		return S_OK;
 	}
 
 	inline HRESULT MB2WC(std::unique_ptr<WCHAR[]>& buffer, LPCSTR str, int size = -1, int* outLength = nullptr)
@@ -278,22 +303,86 @@ namespace OpenGlass::Util
 		return { HIWORD(fileInfo->dwFileVersionLS), LOWORD(fileInfo->dwFileVersionLS) };
 	}
 
-	inline winrt::com_ptr<ID2D1Bitmap1> GetTargetBitmapFromDeviceContext(
-		ID2D1DeviceContext* context
+	inline HRESULT GetSwapchainFromTexure(
+		ID3D11Texture2D* texture,
+		winrt::com_ptr<IDXGISwapChain1>& dxgiSwapChain
 	)
 	{
-		winrt::com_ptr<ID2D1Bitmap1> targetBitmap{ nullptr };
+		winrt::com_ptr<IDXGISurface> dxgiSurface{};
+		RETURN_IF_FAILED(texture->QueryInterface(dxgiSurface.put()));
+		return dxgiSurface->GetParent(IID_PPV_ARGS(dxgiSwapChain.put()));
+	}
 
+	inline HRESULT GetDescAndHwProtectionStateFromTexture(
+		ID3D11Texture2D* texture,
+		D3D11_TEXTURE2D_DESC& textureDesc,
+		BOOL& hwProtectionEnabled
+	)
+	{
+		texture->GetDesc(&textureDesc);
+
+		if ((textureDesc.MiscFlags & D3D11_RESOURCE_MISC_HW_PROTECTED) == D3D11_RESOURCE_MISC_HW_PROTECTED)
+		{
+			hwProtectionEnabled = TRUE;
+		}
+		else
+		{
+			winrt::com_ptr<IDXGISwapChain1> dxgiSwapChain{};
+			if (SUCCEEDED(GetSwapchainFromTexure(texture, dxgiSwapChain)))
+			{
+				winrt::com_ptr<IDXGISwapChainDWM1> dxgiSwapchainDwm{};
+				RETURN_IF_FAILED(dxgiSwapChain->QueryInterface(dxgiSwapchainDwm.put()));
+				RETURN_IF_FAILED(dxgiSwapchainDwm->GetHardwareProtection(&hwProtectionEnabled));
+			}
+		}
+
+		return S_OK;
+	}
+
+	inline HRESULT GetTextureFromD2DBitmap(
+		ID2D1Bitmap1* bitmap,
+		winrt::com_ptr<ID3D11Texture2D>& texture
+	)
+	{
+		winrt::com_ptr<IDXGISurface> dxgiSurface{};
+		RETURN_IF_FAILED(bitmap->GetSurface(dxgiSurface.put()));
+		RETURN_IF_FAILED(dxgiSurface->QueryInterface(texture.put()));
+		return S_OK;
+	}
+
+	inline void CopyTextureRegion(
+		ID3D11DeviceContext* context,
+		ID3D11Texture2D* src,
+		ID3D11Texture2D* dst,
+		const D2D1_RECT_U& srcRect,
+		UINT dstX,
+		UINT dstY
+	)
+	{
+		D3D11_BOX box{};
+		box.left = srcRect.left;
+		box.top = srcRect.top;
+		box.right = srcRect.right;
+		box.bottom = srcRect.bottom;
+		box.front = 0;
+		box.back = 1;
+		context->CopySubresourceRegion(dst, 0, dstX, dstY, 0, src, 0, &box);
+	}
+
+	inline HRESULT GetTargetBitmapFromD2DContext(
+		const ID2D1DeviceContext* context,
+		winrt::com_ptr<ID2D1Bitmap1>& targetBitmap
+	)
+	{
 		winrt::com_ptr<ID2D1Image> targetImage{ nullptr };
 		context->GetTarget(targetImage.put());
 		if (!targetImage)
 		{
-			return targetBitmap;
+			return E_FAIL;
 		}
 
-		LOG_IF_FAILED(targetImage->QueryInterface(targetBitmap.put()));
-
-		return targetBitmap;
+		RETURN_IF_FAILED(targetImage->QueryInterface(targetBitmap.put()));
+		return S_OK;
 	}
 
 	inline HRESULT DrawNineGridBitmap(
@@ -459,7 +548,7 @@ namespace OpenGlass::Util
 	class D3D11ContextStateGuard
 	{
 	private:
-		winrt::com_ptr<ID3D11DeviceContext> m_context;
+		winrt::com_ptr<ID3D11DeviceContext3> m_context;
 
 		// Vertex Shader State
 		winrt::com_ptr<ID3D11VertexShader> m_vs;
@@ -499,6 +588,7 @@ namespace OpenGlass::Util
 		std::array<FLOAT, 4> m_blendFactor;
 		UINT m_sampleMask;
 
+		BOOL m_hwProtectionEnabled;
 	public:
 		explicit D3D11ContextStateGuard(ID3D11DeviceContext* context)
 			: m_primitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED)
@@ -508,8 +598,9 @@ namespace OpenGlass::Util
 			, m_numScissorRects(0)
 			, m_stencilRef(0)
 			, m_sampleMask(0)
+			, m_hwProtectionEnabled(FALSE)
 		{
-			m_context.copy_from(context);
+			THROW_IF_FAILED(context->QueryInterface(m_context.put()));
 			SaveState();
 		}
 
@@ -626,6 +717,8 @@ namespace OpenGlass::Util
 			ID3D11BlendState* blendState = nullptr;
 			m_context->OMGetBlendState(&blendState, m_blendFactor.data(), &m_sampleMask);
 			m_blendState.attach(blendState);
+
+			m_context->GetHardwareProtectionState(&m_hwProtectionEnabled);
 		}
 
 		void RestoreState()
@@ -710,15 +803,56 @@ namespace OpenGlass::Util
 
 			m_context->OMSetDepthStencilState(m_depthStencilState.get(), m_stencilRef);
 			m_context->OMSetBlendState(m_blendState.get(), m_blendFactor.data(), m_sampleMask);
+
+			m_context->SetHardwareProtectionState(m_hwProtectionEnabled);
 		}
 	};
+
+	template <typename T>
+	struct ScopedAvgTimer
+	{
+		const wchar_t* m_tag{};
+		std::chrono::steady_clock::time_point m_start{ std::chrono::steady_clock::now() };
+		inline static std::chrono::steady_clock::time_point s_last{};
+		inline static double s_accumulatedDuration{};
+		inline static size_t s_accumulatedCount{};
+
+		explicit ScopedAvgTimer(const wchar_t* tag) noexcept : m_tag(tag) 
+		{
+			if (!s_last.time_since_epoch().count())
+			{
+				s_last = std::chrono::steady_clock::now();
+			}
+		}
+		~ScopedAvgTimer() noexcept
+		{
+			const auto end = std::chrono::steady_clock::now();
+			const double us = std::chrono::duration<double, std::micro>(end - m_start).count();
+			s_accumulatedDuration += us;
+			s_accumulatedCount += 1;
+
+			if (end - s_last >= std::chrono::seconds{ 1 })
+			{
+				const auto avg = s_accumulatedDuration / s_accumulatedCount;
+
+				wchar_t buf[256]{};
+				swprintf_s(buf, L"[OpenGlass] %s avg time: %.3f us (total: %lld)\n", m_tag ? m_tag : L"scope", avg, s_accumulatedCount);
+				OutputDebugStringW(buf);
+
+				s_last = end;
+				s_accumulatedDuration = 0;
+				s_accumulatedCount = 0;
+			}
+		}
+	};
+
 }
 namespace OpenGlass
 {
 	template<class T>
 	struct CClassFactoryT : winrt::implements<CClassFactoryT<T>, IClassFactory, winrt::non_agile, winrt::no_weak_ref>
 	{
-		HRESULT STDMETHODCALLTYPE CreateInstance(IUnknown* pUnkOuter, REFIID riid, void** ppvObject) noexcept override
+		HRESULT CreateInstance(IUnknown* pUnkOuter, REFIID riid, void** ppvObject) noexcept override
 		{
 			if (!pUnkOuter)
 			{
@@ -728,7 +862,7 @@ namespace OpenGlass
 
 			return CLASS_E_NOAGGREGATION;
 		}
-		HRESULT STDMETHODCALLTYPE LockServer(BOOL fLock) noexcept override
+		HRESULT LockServer(BOOL fLock) noexcept override
 		{
 			if (fLock)
 			{
@@ -747,21 +881,37 @@ namespace OpenGlass
 {
 	namespace Color
 	{
-		FORCEINLINE D2D1_COLOR_F sRGBToscRGB(const D2D1_COLOR_F& color)
+		FORCEINLINE D2D1_COLOR_F sRGBToscRGB(const D2D1_COLOR_F& color, float sdrBoost)
 		{
-			return D2D1ConvertColorSpace(
+			auto result = D2D1ConvertColorSpace(
 				D2D1_COLOR_SPACE_SRGB,
 				D2D1_COLOR_SPACE_SCRGB,
 				&color
 			);
+			if (sdrBoost > 1.f)
+			{
+				result.r *= sdrBoost;
+				result.g *= sdrBoost;
+				result.b *= sdrBoost;
+			}
+
+			return result;
 		}
-		FORCEINLINE D2D1_COLOR_F scRGBTosRGB(const D2D1_COLOR_F& color)
+		FORCEINLINE D2D1_COLOR_F scRGBTosRGB(const D2D1_COLOR_F& color, float sdrBoost)
 		{
-			return D2D1ConvertColorSpace(
+			auto result = D2D1ConvertColorSpace(
 				D2D1_COLOR_SPACE_SCRGB,
 				D2D1_COLOR_SPACE_SRGB,
 				&color
 			);
+			if (sdrBoost > 1.f)
+			{
+				result.r /= sdrBoost;
+				result.g /= sdrBoost;
+				result.b /= sdrBoost;
+			}
+
+			return result;
 		}
 		FORCEINLINE constexpr D2D1_COLOR_F FromAbgr(DWORD color, bool ignoreAlpha = true)
 		{
@@ -803,7 +953,47 @@ namespace OpenGlass
 
 	namespace RectF
 	{
-		FORCEINLINE D2D1_RECT_L ToRectL(const D2D1_RECT_F& rectangle)
+		FORCEINLINE [[nodiscard]] D2D1_RECT_F Align(const D2D1_RECT_F& rectangle)
+		{
+			return
+			{
+				std::floor(rectangle.left + 0.5f),
+				std::floor(rectangle.top + 0.5f),
+				std::floor(rectangle.right + 0.5f),
+				std::floor(rectangle.bottom + 0.5f)
+			};
+		}
+		FORCEINLINE [[nodiscard]] D2D1_RECT_F FromRectU(const D2D1_RECT_U& rectangle)
+		{
+			return
+			{
+				static_cast<float>(rectangle.left),
+				static_cast<float>(rectangle.top),
+				static_cast<float>(rectangle.right),
+				static_cast<float>(rectangle.bottom)
+			};
+		}
+		FORCEINLINE [[nodiscard]] D2D1_RECT_F FromRectL(const D2D1_RECT_L& rectangle)
+		{
+			return
+			{
+				static_cast<float>(rectangle.left),
+				static_cast<float>(rectangle.top),
+				static_cast<float>(rectangle.right),
+				static_cast<float>(rectangle.bottom)
+			};
+		}
+		FORCEINLINE [[nodiscard]] D2D1_RECT_U ToRectU(const D2D1_RECT_F& rectangle)
+		{
+			return
+			{
+				static_cast<UINT32>(std::floor(rectangle.left)),
+				static_cast<UINT32>(std::floor(rectangle.top)),
+				static_cast<UINT32>(std::ceil(rectangle.right)),
+				static_cast<UINT32>(std::ceil(rectangle.bottom))
+			};
+		}
+		FORCEINLINE [[nodiscard]] D2D1_RECT_L ToRectL(const D2D1_RECT_F& rectangle)
 		{
 			return
 			{
@@ -813,7 +1003,7 @@ namespace OpenGlass
 				static_cast<LONG>(std::ceil(rectangle.bottom))
 			};
 		}
-		FORCEINLINE D2D1_RECT_F TransformRect(const D2D1_RECT_F& rectangle, const D2D1_MATRIX_3X2_F& matrix)
+		FORCEINLINE [[nodiscard]] D2D1_RECT_F TransformRect(const D2D1_RECT_F& rectangle, const D2D1_MATRIX_3X2_F& matrix)
 		{
 			const auto matrixHelper = D2D1::Matrix3x2F::ReinterpretBaseType(&matrix);
 			const auto topLeft = matrixHelper->TransformPoint(D2D1::Point2F(rectangle.left, rectangle.top));

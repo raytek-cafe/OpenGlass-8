@@ -5,6 +5,11 @@
 
 namespace OpenGlass::GlassKernel
 {
+	inline const uDWM::CTopLevelWindow* g_window{ nullptr };
+	inline RECT g_roundedBounds{};
+	inline int g_diameter{ 0 };
+	inline std::optional<bool> g_redirectFirstCreateRectRgnCall{};
+
 	class AlphaChannelReinterpreter
 	{
 		std::bitset<16> m_flag{};
@@ -53,8 +58,8 @@ namespace OpenGlass::GlassKernel
 		}
 	};
 
-	void RedrawAllTopLevelWindow();
-	float GetBlurExtendedAmount();
+	void RedrawAllTopLevelWindow(bool deepRedraw);
+	float GetBlurRadius();
 
 	struct CRealizedGlassColorizationParameters
 	{
@@ -64,11 +69,11 @@ namespace OpenGlass::GlassKernel
 		float afterglowBalance;
 		float blurBalance;
 
-		D2D1_COLOR_F effectiveBlendColor;
+		D2D1_COLOR_F GetEffectivescRGBBlendColor(float sdrBoost) const;
 	};
-	float GetColorizationBlendingOpacity(bool active, bool maximized);
-	D2D1_COLOR_F GetBlendingBaseColor(bool opaque, bool opaqueByMaximization);
-	D2D1_COLOR_F GetBlendingSourceColor(bool active);
+	float GetColorizationOpacity(bool active, bool maximized);
+	D2D1_COLOR_F GetBaseColor(bool opaque, bool maximized);
+	D2D1_COLOR_F GetSourceColor(bool active);
 	CRealizedGlassColorizationParameters RealizeWindowColorization(
 		const D2D1_COLOR_F& baseColor,
 		const D2D1_COLOR_F& srcColor,
@@ -76,6 +81,7 @@ namespace OpenGlass::GlassKernel
 		bool opaque,
 		bool livePreview
 	);
+	float GetAdjustedReflectionIntensity(bool active, bool maximized);
 
 	bool IsCurrentCVIFullyTransparent();
 

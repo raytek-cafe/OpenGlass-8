@@ -49,9 +49,26 @@ namespace OpenGlass::uDWM
 	};
 	struct CResource : CBaseObject 
 	{
-		CResourceProxy* GetProxy()
+		CResourceProxy* GetProxy() const
 		{
-			return reinterpret_cast<CResourceProxy**>(this)[2];
+			if (g_versionInfo.build < os::build_w10_1903)
+			{
+				return reinterpret_cast<CResourceProxy*>(const_cast<CResource*>(this));
+			}
+			return reinterpret_cast<CResourceProxy* const*>(this)[2];
+		}
+		DECLSPEC_PROJECTION static HRESULT Create(
+			DwmResourceType type,
+			IDwmChannel* channel,
+			CResource** resource
+		)
+		{
+			return HANDLE_PROJECTION_FUNCTION(
+				CResource::Create,
+				type,
+				channel,
+				resource
+			);
 		}
 	};
 
@@ -69,14 +86,21 @@ namespace OpenGlass::uDWM
 	struct CRgnGeometryProxy : CBaseGeometryProxy {};
 	struct CSolidColorLegacyMilBrushProxy : CBaseLegacyMilBrushProxy 
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE Update(double opacity, const D2D1_COLOR_F& color)
+		DECLSPEC_PROJECTION HRESULT Update(double opacity, const D2D1_COLOR_F& color)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CSolidColorLegacyMilBrushProxy::Update, opacity, color);
+			return static_cast<dwmcore::CChannel*>(GetProxy()->GetChannel())->SolidColorLegacyMilBrushUpdate(
+				GetProxy()->GetHandleId(),
+				opacity,
+				color,
+				0,
+				0,
+				0
+			);
 		}
 	};
 	struct CImageLegacyMilBrushProxy : CBaseLegacyMilBrushProxy
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE Update(
+		DECLSPEC_PROJECTION HRESULT Update(
 			double opacity,
 			[[maybe_unused]] const D2D1_RECT_F& viewport, // this parameter is will always be ignored, the bounding box of the geometry will be used instead
 			const D2D1_RECT_F& viewbox,
@@ -92,28 +116,30 @@ namespace OpenGlass::uDWM
 			const CBaseImageProxy* imageSource 
 		)
 		{
-			return HANDLE_PROJECTION_FUNCTION(
-				CImageLegacyMilBrushProxy::Update,
+			return static_cast<dwmcore::CChannel*>(GetProxy()->GetChannel())->ImageLegacyMilBrushUpdate(
+				GetProxy()->GetHandleId(),
 				opacity,
 				viewport,
 				viewbox,
-				opacityAnimation,
+				opacityAnimation ? opacityAnimation->GetProxy()->GetHandleId() : 0,
+				0,
+				0,
 				viewportUnits,
 				viewboxUnits,
-				viewportAnimations,
-				viewboxAnimations,
+				viewportAnimations ? viewportAnimations->GetProxy()->GetHandleId() : 0,
+				viewboxAnimations ? viewboxAnimations->GetProxy()->GetHandleId() : 0,
 				stretchMode,
 				tileMode,
 				alignmentX,
 				alignmentY,
-				imageSource
+				imageSource ? imageSource->GetProxy()->GetHandleId() : 0
 			);
 		}
 	};
 	struct CVisualProxy;
 	struct CCachedVisualImageProxy : CBaseImageProxy 
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE Update(
+		DECLSPEC_PROJECTION HRESULT Update(
 			const D2D1_RECT_F& viewbox,
 			const DWM::MilSizeD& realizationSize,
 			const uDWM::CRectResourceProxy* rectProxy,
@@ -124,6 +150,7 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				CCachedVisualImageProxy::Update,
+				this,
 				viewbox,
 				realizationSize,
 				rectProxy,
@@ -137,9 +164,9 @@ namespace OpenGlass::uDWM
 	struct VisualCollection;
 	struct CVisualProxy : CResource 
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetSize(double cx, double cy)
+		DECLSPEC_PROJECTION HRESULT SetSize(double cx, double cy)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CVisualProxy::SetSize, cx, cy);
+			return HANDLE_PROJECTION_FUNCTION(CVisualProxy::SetSize, this, cx, cy);
 		}
 	};
 
@@ -197,7 +224,7 @@ namespace OpenGlass::uDWM
 			auto current = GetTransformParent();
 			while (current && current != parent)
 			{
-				const auto currentPt = current->GetOffset();
+				const auto& currentPt = current->GetOffset();
 				pt.x += currentPt.x;
 				pt.y += currentPt.y;
 				current = current->GetTransformParent();
@@ -227,39 +254,39 @@ namespace OpenGlass::uDWM
 		DECLSPEC_PROJECTION CVisual* GetTransformParent() const
 		{
 			return std::invoke(
-				Util::PointerExecuteUnsafe<CVisual_GetTransformParent_Offsets, Util::DereferenceAt<decltype(&CVisual::GetTransformParent)>>(HookHelper::vftbl_of(this), g_versionInfo.build, g_versionInfo.revision),
+				Util::PointerExecuteUnsafe<CVisual_GetTransformParent_Offsets, Util::DereferenceAt<decltype(&CVisual::GetTransformParent)>>(HookHelper::get_vftable_from(this), g_versionInfo.build, g_versionInfo.revision),
 				this
 			);
 		}
 
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetSize(const SIZE* size)
+		DECLSPEC_PROJECTION void SetSize(const SIZE* size)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::SetSize, size);
+			return HANDLE_PROJECTION_FUNCTION(CVisual::SetSize, this, size);
 		}
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetInsetFromParent(const MARGINS& margins)
+		DECLSPEC_PROJECTION void SetInsetFromParent(const MARGINS& margins)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::SetInsetFromParent, margins);
+			return HANDLE_PROJECTION_FUNCTION(CVisual::SetInsetFromParent, this, margins);
 		}
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetInsetFromParentLeft(int left)
+		DECLSPEC_PROJECTION void SetInsetFromParentLeft(int left)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::SetInsetFromParentLeft, left);
+			return HANDLE_PROJECTION_FUNCTION(CVisual::SetInsetFromParentLeft, this, left);
 		}
-		DECLSPEC_PROJECTION void STDMETHODCALLTYPE SetDirtyFlags(int flags)
+		DECLSPEC_PROJECTION void SetDirtyFlags(int flags)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::SetDirtyFlags, flags);
+			return HANDLE_PROJECTION_FUNCTION(CVisual::SetDirtyFlags, this, flags);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE RenderRecursive()
+		DECLSPEC_PROJECTION HRESULT RenderRecursive()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CVisual::RenderRecursive);
+			return HANDLE_PROJECTION_FUNCTION(CVisual::RenderRecursive, this);
 		}
 		DECLSPEC_PROJECTION DWORD GetDirtyFlags() const
 		{
 			return *Util::PointerExecuteUnsafe<CVisual_GetDirtyFlags_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE _ValidateVisual()
+		DECLSPEC_PROJECTION HRESULT _ValidateVisual()
 		{
 			return std::invoke(
-				Util::PointerExecuteUnsafe<CVisual__ValidateVisual_Offsets, Util::DereferenceAt<decltype(&CVisual::_ValidateVisual)>>(HookHelper::vftbl_of(this), g_versionInfo.build, g_versionInfo.revision),
+				Util::PointerExecuteUnsafe<CVisual__ValidateVisual_Offsets, Util::DereferenceAt<decltype(&CVisual::_ValidateVisual)>>(HookHelper::get_vftable_from(this), g_versionInfo.build, g_versionInfo.revision),
 				this
 			);
 		}
@@ -267,11 +294,11 @@ namespace OpenGlass::uDWM
 
 	struct VisualCollection : CResource
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE Remove(CVisual* visual)
+		DECLSPEC_PROJECTION HRESULT Remove(CVisual* visual)
 		{
-			return HANDLE_PROJECTION_FUNCTION(VisualCollection::Remove, visual);
+			return HANDLE_PROJECTION_FUNCTION(VisualCollection::Remove, this, visual);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InsertRelative(
+		DECLSPEC_PROJECTION HRESULT InsertRelative(
 			CVisual* visual,
 			CVisual* referenceVisual,
 			bool insertAfter,
@@ -280,6 +307,7 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				VisualCollection::InsertRelative,
+				this,
 				visual,
 				referenceVisual,
 				insertAfter,
@@ -310,7 +338,7 @@ namespace OpenGlass::uDWM
 	};
 	struct CDrawGeometryInstruction : CRenderDataInstruction
 	{
-		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE Create(CBaseLegacyMilBrushProxy* brush, CBaseGeometryProxy* geometry, CDrawGeometryInstruction** instruction)
+		DECLSPEC_PROJECTION static HRESULT Create(CBaseLegacyMilBrushProxy* brush, CBaseGeometryProxy* geometry, CDrawGeometryInstruction** instruction)
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				CDrawGeometryInstruction::Create, 
@@ -333,7 +361,7 @@ namespace OpenGlass::uDWM
 	struct CSolidRectangleInstruction : CRenderDataInstruction
 	{
 		DWORD m_refCount{ 1 };
-		DWORD m_unknown{ 0 };
+		DWORD m_padding{ 0 };
 		D2D1_COLOR_F m_color{};
 		D2D1_RECT_F m_drawRect{};
 	public:
@@ -357,21 +385,31 @@ namespace OpenGlass::uDWM
 		}
 		DWORD GetCount() const
 		{
-			return GetInstructions().size;
+			return GetInstructions().count;
 		}
 		FORCEINLINE bool IsEmpty() const { return GetCount() == 0; }
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE AddInstruction(CRenderDataInstruction* instruction)
+
+		DECLSPEC_PROJECTION HRESULT AddInstruction(CRenderDataInstruction* instruction)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::AddInstruction, instruction);
+			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::AddInstruction, this, instruction);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE ClearInstructions()
+		DECLSPEC_PROJECTION HRESULT ClearInstructions()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::ClearInstructions);
+			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::ClearInstructions, this);
 		}
-		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE Create(CRenderDataVisual** visual)
+		DECLSPEC_PROJECTION HRESULT UpdateRenderData()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::Create, visual);
+			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::UpdateRenderData, this);
 		}
+		DECLSPEC_PROJECTION static HRESULT Create_At_Least_W10_1903(CRenderDataVisual** visual)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::Create_At_Least_W10_1903, visual);
+		}
+		DECLSPEC_PROJECTION static HRESULT Create_Pre_W10_1903(IDwmChannel* channel, CRenderDataVisual** visual)
+		{
+			return HANDLE_PROJECTION_FUNCTION(CRenderDataVisual::Create_Pre_W10_1903, channel, visual);
+		}
+		static HRESULT Create(CRenderDataVisual** visual);
 	};
 	struct CCanvasVisual : CRenderDataVisual {};
 	struct CText : CRenderDataVisual 
@@ -426,12 +464,12 @@ namespace OpenGlass::uDWM
 
 	struct CAtlasedRectsVisual : CVisual 
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE InitializeVisualTreeClone(
+		DECLSPEC_PROJECTION HRESULT InitializeVisualTreeClone(
 			CAtlasedRectsVisual* clonedVisual, 
 			UINT cloneOption
 		)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CAtlasedRectsVisual::InitializeVisualTreeClone, clonedVisual, cloneOption);
+			return HANDLE_PROJECTION_FUNCTION(CAtlasedRectsVisual::InitializeVisualTreeClone, this, clonedVisual, cloneOption);
 		}
 	};
 	struct CTopLevelAtlasedRectsVisual : CAtlasedRectsVisual {};
@@ -448,11 +486,11 @@ namespace OpenGlass::uDWM
 	{
 		inline static PVOID* vftable{ nullptr };
 
-		DECLSPEC_PROJECTION static HRESULT STDMETHODCALLTYPE Create(CButton** visual)
+		DECLSPEC_PROJECTION static HRESULT Create(CButton** visual)
 		{
 			return HANDLE_PROJECTION_FUNCTION(CButton::Create, visual);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetVisualStates_Win10(
+		DECLSPEC_PROJECTION HRESULT SetVisualStates_Win10(
 			uDWM::CBitmapSourceArray* buttonArray, 
 			uDWM::CBitmapSourceArray* glyphArray, 
 			uDWM::CBitmapSource* glowBitmap, 
@@ -461,13 +499,14 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				CButton::SetVisualStates_Win10,
+				this,
 				buttonArray,
 				glyphArray,
 				glowBitmap,
 				opacity
 			);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE SetVisualStates_Win11(
+		DECLSPEC_PROJECTION HRESULT SetVisualStates_Win11(
 			uDWM::CBitmapSourceArray* buttonArray,
 			uDWM::CBitmapSourceArray* glyphArray,
 			float opacity
@@ -475,12 +514,13 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				CButton::SetVisualStates_Win11,
+				this,
 				buttonArray,
 				glyphArray,
 				opacity
 			);
 		}
-		HRESULT STDMETHODCALLTYPE SetVisualStates(
+		HRESULT SetVisualStates(
 			uDWM::CBitmapSourceArray* buttonArray,
 			uDWM::CBitmapSourceArray* glyphArray,
 			float opacity
@@ -546,15 +586,25 @@ namespace OpenGlass::uDWM
 		{
 			return (AccentFlags & (1 << 4)) != 0;
 		}
+		bool IsClipRegionEffective() const
+		{
+			return (AccentFlags & ((1 << 4) | (1 << 9))) != 0;
+		}
 	};
-	struct CAccent : CRenderDataVisual {};
+	struct CAccent : CRenderDataVisual
+	{
+		ACCENT_POLICY& GetAccentPolicy()
+		{
+			return *Util::PointerExecuteUnsafe<CAccent_GetAccentPolicy_Offsets, Util::OffsetBy<ACCENT_POLICY*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+	};
 	struct CAccentBlurBehind : CRenderDataVisual {};
 	struct CAccentAcrylicBlurBehind : CRenderDataVisual {};
 	struct CWindowBorder : CVisual
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE EnableBorder(bool enable)
+		DECLSPEC_PROJECTION HRESULT EnableBorder(bool enable)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CWindowBorder::EnableBorder, enable);
+			return HANDLE_PROJECTION_FUNCTION(CWindowBorder::EnableBorder, this, enable);
 		}
 	};
 
@@ -603,6 +653,10 @@ namespace OpenGlass::uDWM
 			return *Util::PointerExecuteUnsafe<CWindowData_GetWindowDPI_Offsets, Util::OffsetBy<UINT const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
+		DECLSPEC_PROJECTION BYTE& GetNonClientAttributeReference()
+		{
+			return *Util::PointerExecuteUnsafe<CWindowData_GetNonClientAttribute_Offsets, Util::OffsetBy<BYTE*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
 		DECLSPEC_PROJECTION BYTE GetNonClientAttribute() const
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetNonClientAttribute_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
@@ -611,9 +665,21 @@ namespace OpenGlass::uDWM
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetClientBlurAttribute_Offsets, Util::OffsetBy<BYTE const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
+		DECLSPEC_PROJECTION BYTE& GetClientBlurAttributeReference()
+		{
+			return *Util::PointerExecuteUnsafe<CWindowData_GetClientBlurAttribute_Offsets, Util::OffsetBy<BYTE*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
 		bool ShouldTransitionOnMaximized() const
 		{
 			return GetClientBlurAttribute() & 0x8;
+		}
+		DECLSPEC_PROJECTION RECT& GetWindowRect() const
+		{
+			return *Util::PointerExecuteUnsafe<CWindowData_GetWindowRect_Offsets, Util::OffsetBy<RECT*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		DECLSPEC_PROJECTION MARGINS& GetClientMargins()
+		{
+			return *Util::PointerExecuteUnsafe<CWindowData_GetClientMargins_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 		DECLSPEC_PROJECTION MARGINS& GetExtendedFrameMargins()
 		{
@@ -632,6 +698,10 @@ namespace OpenGlass::uDWM
 		{
 			MARGINS& margins = GetExtendedFrameMargins();
 
+			return IsSheetOfGlass(margins);
+		}
+		static bool IsSheetOfGlass(const MARGINS& margins)
+		{
 			return 
 			margins.cxLeftWidth == 0x7FFFFFFF ||
 			margins.cxRightWidth == 0x7FFFFFFF ||
@@ -687,19 +757,25 @@ namespace OpenGlass::uDWM
 	};
 	struct CTopLevelWindow : CVisual
 	{
+		struct WindowFrame
+		{
+			DECLSPEC_PROJECTION UINT32& GetCornerRadius()
+			{
+				return *Util::PointerExecuteUnsafe<CTopLevelWindow_WindowFrame_GetCornerRadius_Offsets, Util::OffsetBy<UINT32*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			}
+		};
 		inline static PVOID* vftable{ nullptr };
-		inline static PVOID** s_rgpwfWindowFrames{ nullptr };
+		inline static WindowFrame*** s_rgpwfWindowFrames{ nullptr };
 		static auto GetWindowFrames()
 		{
 			return *s_rgpwfWindowFrames;
 		}
 
-		bool IsTrullyMinimized()
+		bool IsOffscreen()
 		{
-			RECT borderRect{};
-			THROW_HR_IF_NULL(E_INVALIDARG, GetActualWindowRect(&borderRect, false, true, false));
+			const auto& offset = GetOffset();
 
-			return borderRect.left <= -32000 || borderRect.top <= -32000;
+			return offset.x == -32000 || offset.y == -32000;
 		}
 
 		DECLSPEC_PROJECTION CWindowData* GetData() const
@@ -717,10 +793,6 @@ namespace OpenGlass::uDWM
 		DECLSPEC_PROJECTION CDWriteText* GetDWriteTextVisual() const
 		{
 			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetDWriteTextVisual_Index_Offsets, Util::OffsetBy<CDWriteText* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
-		}
-		DECLSPEC_PROJECTION CCanvasVisual* GetNonClientVisual() const
-		{
-			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetNonClientVisual_Index_Offsets, Util::OffsetBy<CCanvasVisual* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 		DECLSPEC_PROJECTION CAccent* GetAccent() const
 		{
@@ -805,8 +877,8 @@ namespace OpenGlass::uDWM
 
 		DECLSPEC_PROJECTION bool HasNonClientArea() const
 		{
-			const auto base = Util::PointerExecuteUnsafe<CTopLevelWindow_HasNonClientArea_BaseDwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision);
-			return base[0] || base[1] || base[2] || base[3];
+			const auto margins = GetFrameInsideMargins();
+			return margins.cxLeftWidth || margins.cxRightWidth || margins.cyBottomHeight || margins.cyTopHeight;
 		}
 		bool HasNonClientBackground(CWindowData* data = nullptr) const
 		{
@@ -827,7 +899,7 @@ namespace OpenGlass::uDWM
 			return true;
 		}
 
-		bool TreatAsMaximized() const;
+		bool TreatAsMaximized(const CWindowData* data) const;
 
 		DECLSPEC_PROJECTION CGlassColorizationResources* GetCaptionColorizationParameters() const
 		{
@@ -849,20 +921,24 @@ namespace OpenGlass::uDWM
 			}
 			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetFrameThickness_Offsets, Util::OffsetBy<DWORD const*>>(data, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DECLSPEC_PROJECTION MARGINS& GetMarginsVisibleOutside(bool zoomed)
+		DECLSPEC_PROJECTION MARGINS& GetFrameOutsideMargins(bool zoomed)
 		{
 			if (zoomed)
 			{
-				return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetMarginsVisibleOutside_Zoomed_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
+				return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetFrameOutsideMargins_Zoomed_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetMarginsVisibleOutside_Normal_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetFrameOutsideMargins_Normal_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		DECLSPEC_PROJECTION MARGINS& GetFrameInsideMargins() const
+		{
+			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetFrameInsideMargins_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 		DECLSPEC_PROJECTION MARGINS& GetBorderMargins()
 		{
 			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetBorderMargins_Offsets, Util::OffsetBy<MARGINS*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CloneVisualTreeForLivePreview_Win10(
+		DECLSPEC_PROJECTION HRESULT CloneVisualTreeForLivePreview_Win10(
 			bool windowFramesOnly,
 			bool unused1,
 			bool unused2,
@@ -871,24 +947,26 @@ namespace OpenGlass::uDWM
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				CTopLevelWindow::CloneVisualTreeForLivePreview_Win10,
+				this,
 				windowFramesOnly,
 				unused1,
 				unused2,
 				clonedWindow
 			);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CloneVisualTreeForLivePreview_Win11(
+		DECLSPEC_PROJECTION HRESULT CloneVisualTreeForLivePreview_Win11(
 			bool windowFramesOnly,
 			CTopLevelWindow** clonedWindow
 		)
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				CTopLevelWindow::CloneVisualTreeForLivePreview_Win11,
+				this,
 				windowFramesOnly,
 				clonedWindow
 			);
 		}
-		HRESULT STDMETHODCALLTYPE CloneVisualTreeForLivePreview(
+		HRESULT CloneVisualTreeForLivePreview(
 			bool windowFramesOnly,
 			CTopLevelWindow** clonedWindow
 		)
@@ -910,39 +988,36 @@ namespace OpenGlass::uDWM
 				);
 			}
 		}
-		DECLSPEC_PROJECTION bool STDMETHODCALLTYPE TreatAsActiveWindow()
+		DECLSPEC_PROJECTION bool TreatAsActiveWindow()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::TreatAsActiveWindow);
+			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::TreatAsActiveWindow, this);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE OnClipUpdated()
+		DECLSPEC_PROJECTION HRESULT OnBlurBehindUpdated()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::OnClipUpdated);
+			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::OnBlurBehindUpdated, this);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE OnBlurBehindUpdated()
+		DECLSPEC_PROJECTION HRESULT OnAccentPolicyUpdated()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::OnBlurBehindUpdated);
+			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::OnAccentPolicyUpdated, this);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE OnAccentPolicyUpdated()
+		DECLSPEC_PROJECTION HRESULT OnSystemBackdropUpdated()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::OnAccentPolicyUpdated);
+			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::OnSystemBackdropUpdated, this);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE OnSystemBackdropUpdated()
-		{
-			return HANDLE_PROJECTION_FUNCTION(CTopLevelWindow::OnSystemBackdropUpdated);
-		}
-		DECLSPEC_PROJECTION RECT* STDMETHODCALLTYPE GetActualWindowRect(
+		DECLSPEC_PROJECTION RECT* GetActualWindowRect(
 			RECT* rect,
-			char eraseOffset,
-			char includeNonClient,
-			bool excludeBorderMargins
+			char relative,
+			char respectMaximizedClip,
+			bool excludeShadowMargins
 		) const
 		{
 			return HANDLE_PROJECTION_FUNCTION(
 				CTopLevelWindow::GetActualWindowRect,
+				this,
 				rect,
-				eraseOffset,
-				includeNonClient,
-				excludeBorderMargins
+				relative,
+				respectMaximizedClip,
+				excludeShadowMargins
 			);
 		}
 	};
@@ -1041,13 +1116,13 @@ namespace OpenGlass::uDWM
 		{
 			return *Util::PointerExecuteUnsafe<CLivePreview_IsWindowCloneAsWindowFrames_DwordIndex_Offsets, Util::OffsetBy<DWORD const*>>(data, g_versionInfo.build, g_versionInfo.revision) == 1;
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE _UpdateResources()
+		DECLSPEC_PROJECTION HRESULT _UpdateResources()
 		{
-			return HANDLE_PROJECTION_FUNCTION(CLivePreview::_UpdateResources);
+			return HANDLE_PROJECTION_FUNCTION(CLivePreview::_UpdateResources, this);
 		}
-		DECLSPEC_PROJECTION bool STDMETHODCALLTYPE _IsTrulyMaximized(CWindowData* data)
+		DECLSPEC_PROJECTION bool _IsTrulyMaximized(CWindowData* data)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CLivePreview::_IsTrulyMaximized, data);
+			return HANDLE_PROJECTION_FUNCTION(CLivePreview::_IsTrulyMaximized, this, data);
 		}
 	};
 	struct CAnimatedGlassSheet : CVisual 
@@ -1084,25 +1159,29 @@ namespace OpenGlass::uDWM
 	};
 	struct CWindowList : CBaseObject
 	{
-		DECLSPEC_PROJECTION PRLIST_ENTRY STDMETHODCALLTYPE GetWindowListForDesktop(ULONG_PTR desktopID)
+		DECLSPEC_PROJECTION PRLIST_ENTRY GetWindowListForDesktop(ULONG_PTR desktopID)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CWindowList::GetWindowListForDesktop, desktopID);
-		}
-		DECLSPEC_PROJECTION CWindowData* STDMETHODCALLTYPE FindWindowDataByHwnd(HWND hwnd)
-		{
-			return HANDLE_PROJECTION_FUNCTION(CWindowList::FindWindowDataByHwnd, hwnd);
+			return HANDLE_PROJECTION_FUNCTION(CWindowList::GetWindowListForDesktop, this, desktopID);
 		}
 	};
 
 	struct CCompositor
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateSolidColorLegacyMilBrushProxy(CSolidColorLegacyMilBrushProxy** solidColorBrushProxy)
+		DECLSPEC_PROJECTION HRESULT CreateSolidColorLegacyMilBrushProxy(CSolidColorLegacyMilBrushProxy** solidColorBrushProxy)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CCompositor::CreateSolidColorLegacyMilBrushProxy, solidColorBrushProxy);
+			return CResource::Create(
+				DwmResourceType::SolidColorLegacyMilBrushProxy,
+				GetChannel(),
+				reinterpret_cast<CResource**>(solidColorBrushProxy)
+			);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateImageLegacyMilBrushProxy(CImageLegacyMilBrushProxy** imageBrushProxy)
+		DECLSPEC_PROJECTION HRESULT CreateImageLegacyMilBrushProxy(CImageLegacyMilBrushProxy** imageBrushProxy)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CCompositor::CreateImageLegacyMilBrushProxy, imageBrushProxy);
+			return CResource::Create(
+				DwmResourceType::ImageLegacyMilBrushProxy,
+				GetChannel(),
+				reinterpret_cast<CResource**>(imageBrushProxy)
+			);
 		}
 		IDwmChannel* GetChannel() const
 		{
@@ -1177,9 +1256,12 @@ namespace OpenGlass::uDWM
 			return *Util::PointerExecuteUnsafe<CDesktopManager_GetDPIValue_Index_Offsets, Util::OffsetBy<double const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
-	inline bool CTopLevelWindow::TreatAsMaximized() const
+	inline bool CTopLevelWindow::TreatAsMaximized(const CWindowData* data = nullptr) const
 	{
-		const auto data = GetData();
+		if (!data)
+		{
+			data = GetData();
+		}
 
 		return 
 		IsWindowMaximized() || 
@@ -1189,22 +1271,43 @@ namespace OpenGlass::uDWM
 			CDesktopManager::GetInstance()->HasMaximizedWindows()
 		);
 	}
+	inline HRESULT CRenderDataVisual::Create(CRenderDataVisual** visual)
+	{
+		HRESULT hr{ S_OK };
+
+		if (g_versionInfo.build < os::build_w10_1903)
+		{
+			struct CDesktopManager;
+			hr = Create_Pre_W10_1903(
+				uDWM::CDesktopManager::GetInstance()->GetCompositor()->GetChannel(),
+				visual
+			);
+		}
+		else
+		{
+			hr = Create_At_Least_W10_1903(visual);
+		}
+
+		return hr;
+	}
 
 	namespace ResourceHelper
 	{
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateGeometryFromHRGN(
+		DECLSPEC_PROJECTION HRESULT CreateGeometryFromHRGN(
 			HRGN hrgn,
 			CRgnGeometryProxy** geometry
 		)
 		{
 			return HANDLE_PROJECTION_FUNCTION(ResourceHelper::CreateGeometryFromHRGN, hrgn, geometry);
 		}
-		DECLSPEC_PROJECTION HRESULT STDMETHODCALLTYPE CreateRectangleGeometry(
-			LPCRECT lprc,
-			CRectangleGeometryProxy** geometry
+		DECLSPEC_PROJECTION HRESULT CreateCombinedGeometry(
+			CBaseGeometryProxy* geometry1,
+			CBaseGeometryProxy* geometry2,
+			D2D1_COMBINE_MODE combineMode, // this param is always ignored in udwm implementation
+			CCombinedGeometryProxy** geometry
 		)
 		{
-			return HANDLE_PROJECTION_FUNCTION(ResourceHelper::CreateRectangleGeometry, lprc, geometry);
+			return HANDLE_PROJECTION_FUNCTION(ResourceHelper::CreateCombinedGeometry, geometry1, geometry2, combineMode, geometry);
 		}
 	}
 
@@ -1212,7 +1315,7 @@ namespace OpenGlass::uDWM
 	{
 		auto current = visual->GetTransformParent();
 
-		while (current && HookHelper::vftbl_of(current) != uDWM::CTopLevelWindow::vftable)
+		while (current && HookHelper::get_vftable_from(current) != uDWM::CTopLevelWindow::vftable)
 		{
 			current = current->GetTransformParent();
 		}
@@ -1223,8 +1326,10 @@ namespace OpenGlass::uDWM
 	inline auto g_projectionArray = make_projection_array(
 		g_versionInfo.build,
 
-		MAKE_FUNCTION_PROJECTION_TUPLE(CSolidColorLegacyMilBrushProxy::Update, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CImageLegacyMilBrushProxy::Update, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CResource::Create, 0, os::build_w10_1903),
+
+		MAKE_FUNCTION_PROJECTION_TUPLE(CSolidColorLegacyMilBrushProxy::Update, os::build_w10_1903, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CImageLegacyMilBrushProxy::Update, os::build_w10_1903, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::UpdateOffset", os::build_w11_22h2, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CVisual::SetSize, 0, 0),
@@ -1237,39 +1342,42 @@ namespace OpenGlass::uDWM
 		MAKE_FUNCTION_PROJECTION_TUPLE(VisualCollection::InsertRelative, 0, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CText::ValidateResources", 0, os::build_w11_22h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CText::InitializeVisualTreeClone", 0, os::build_w11_22h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CText::CloneVisualTree", 0, os::build_w10_2004),
+		MAKE_EMPTY_PROJECTION_TUPLE("CText::InitializeVisualTreeClone", os::build_w10_2004, os::build_w11_22h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CDWriteText::ValidateVisual", os::build_w11_22h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CDWriteText::InitializeVisualTreeClone", os::build_w11_22h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CSpriteVisual::SetSize", os::build_w11_22h2, 0),
 
-		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::CloneVisualTree", 0, os::build_w11_22h2),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CAtlasedRectsVisual::InitializeVisualTreeClone, 0, os::build_w11_22h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::CloneVisualTree", os::build_w10_2004, os::build_w11_22h2),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CAtlasedRectsVisual::InitializeVisualTreeClone, os::build_w10_2004, os::build_w11_22h2),
+
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelAtlasedRectsVisual::ShouldCloneAtlasImage", 0, 0),
 
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CButton::vftable, "CButton::`vftable'", 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CButton::Create, 0, os::build_w11_22h2),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CButton::Create, os::build_w10_2004 , os::build_w11_22h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CButton::SetVisualStates_Win10, "CButton::SetVisualStates", 0, os::build_w11_21h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CButton::SetVisualStates_Win11, "CButton::SetVisualStates", os::build_w11_21h2, os::build_w11_22h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CButton::UpdateCrossfade", 0, os::build_w11_21h2),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawGeometryInstruction::Create, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CRenderDataVisual::Create, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CRenderDataVisual::Create_Pre_W10_1903, "CRenderDataVisual::Create", 0, os::build_w10_1903),
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CRenderDataVisual::Create_At_Least_W10_1903, "CRenderDataVisual::Create", os::build_w10_1903, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CRenderDataVisual::AddInstruction, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CRenderDataVisual::ClearInstructions, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(CRenderDataVisual::UpdateRenderData, 0, 0),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::UpdateAccentPolicy", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::_UpdateSolidFill", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CAccentBlurBehind::IsBlurBehindDirty", 0, os::build_w11_22h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::SetClipRegion", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAccent::~CAccent", 0, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CWindowBorder::EnableBorder, os::build_w11_21h2, 0),
-
-		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelAtlasedRectsVisual::ShouldCloneAtlasImage", 0, 0),
 
 		MAKE_VARIABLE_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::vftable, "CTopLevelWindow::`vftable'", 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win10, "CTopLevelWindow::CloneVisualTreeForLivePreview", 0, os::build_w11_22h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CTopLevelWindow::CloneVisualTreeForLivePreview_Win11, "CTopLevelWindow::CloneVisualTreeForLivePreview", os::build_w11_22h2, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::GetActualWindowRect, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::TreatAsActiveWindow, 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::OnClipUpdated, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::OnBlurBehindUpdated, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::OnAccentPolicyUpdated, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE(CTopLevelWindow::OnSystemBackdropUpdated, os::build_w11_21h2, 0),
@@ -1278,16 +1386,18 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateNCAreaPositionsAndSizes", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateClientBlur", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::ValidateVisual", 0, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateWindowVisuals", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateWindowVisuals", os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::~CTopLevelWindow", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::IsShadowNCAreaPart", os::build_w11_24h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateBitmapFromAtlas", 0, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateGlyphsFromAtlas", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::EnsureImages", 0, os::build_w11_24h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("SetMargin", os::build_w11_21h2, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CLivePreview::_UpdateResources, os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CLivePreview::_FadeOutToGlass", os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CLivePreview::_UpdateInstructions", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CLivePreview::_UpdateResourcesForMonitorHelper", os::build_w11_24h2, 0),
 		
 		MAKE_EMPTY_PROJECTION_TUPLE("CAnimatedGlassSheet::OnRectUpdated", 0, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CAnimatedGlassSheet::~CAnimatedGlassSheet", 0, os::build_w11_21h2),
@@ -1302,13 +1412,14 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CDesktopManager::ReleaseDXGIAdapter", 0, os::build_w11_21h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CGraphicsDeviceManager::ReleaseGraphicsDevice", os::build_w11_21h2, 0),
 
-		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateSolidColorLegacyMilBrushProxy, "CCompositor::CreateProxy<CSolidColorLegacyMilBrushProxy>", 0, 0),
-		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateImageLegacyMilBrushProxy, "CCompositor::CreateProxy<CImageLegacyMilBrushProxy>", 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateSolidColorLegacyMilBrushProxy, "CCompositor::CreateProxy<CSolidColorLegacyMilBrushProxy>", os::build_w10_1903, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateImageLegacyMilBrushProxy, "CCompositor::CreateProxy<CImageLegacyMilBrushProxy>", os::build_w10_1903, 0),
 
-		MAKE_FUNCTION_PROJECTION_TUPLE(ResourceHelper::CreateGeometryFromHRGN, 0, 0)
+		MAKE_FUNCTION_PROJECTION_TUPLE(ResourceHelper::CreateGeometryFromHRGN, 0, 0),
+		MAKE_FUNCTION_PROJECTION_TUPLE(ResourceHelper::CreateCombinedGeometry, 0, 0)
 	);
 	
-	inline bool ParserCallback(PSYMBOL_INFO info, [[maybe_unused]] ULONG size)
+	inline bool SymbolParserCallback(PSYMBOL_INFO info, [[maybe_unused]] ULONG size)
 	{
 		CHAR symbolName[128]{};
 		UnDecorateSymbolName(info->Name, symbolName, std::size(symbolName), UNDNAME_NAME_ONLY);
@@ -1331,10 +1442,7 @@ namespace OpenGlass::uDWM
 
 		g_projectionArray.Apply(
 			symbolName,
-			HookHelper::OffsetStorage::From(
-				info->ModBase,
-				info->Address
-			).To(g_moduleHandle)
+			reinterpret_cast<PVOID>(info->Address)
 		);
 
 		return !g_projectionArray.IsAllReady();

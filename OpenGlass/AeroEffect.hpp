@@ -8,7 +8,6 @@ namespace OpenGlass
 	struct CAeroParams : CBlurParams
 	{
 		D2D1_COLOR_F afterglow;
-		float afterglowBalance;
 		float blurBalance;
 	};
 
@@ -25,20 +24,21 @@ namespace OpenGlass
 			if (s_factory)
 			{
 				LOG_IF_FAILED(CAeroColorizationEffect::UnRegister(s_factory.get()));
+				s_factory = nullptr;
 			}
 		});
 
 		HRESULT Initialize(ID2D1DeviceContext* context);
 	public:
-		HRESULT STDMETHODCALLTYPE Build(
+		HRESULT Build(
 			ID2D1DeviceContext* context,
 			ID2D1Image* inputImage,
 			const D2D1_RECT_F& imageRectangle,
 			const void* additionalParams
 		) override;
-		D2D1_POINT_2F STDMETHODCALLTYPE GetOutputOffset() const override { return m_customBlurEffect->GetOutputOffset(); }
-		D2D1_MATRIX_3X2_F STDMETHODCALLTYPE GetOutputMatrix() const override;
-		void STDMETHODCALLTYPE GetOutput(ID2D1Image** output) const override;
-		void STDMETHODCALLTYPE Reset() override;
+		D2D1_POINT_2F GetOutputOffset() const override { return m_customBlurEffect->GetOutputOffset(); }
+		D2D1_MATRIX_3X2_F GetOutputMatrix() const override;
+		void GetOutput(ID2D1Image** output) const override;
+		void Reset() override;
 	};
 }

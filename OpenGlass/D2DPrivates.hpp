@@ -3,7 +3,7 @@
 
 namespace OpenGlass
 {
-	const GUID CLSID_D2D1DirectionalBlurKernel{ 0x58EB6E2A, 0x0D779, 0x4B7D, { 0x0AD, 0x39, 0x6F, 0x5A, 0x9F, 0x0C9, 0x0D2, 0x88} };
+	const GUID CLSID_D2D1DirectionalBlurKernel{ 0x58EB6E2A, 0x0D779, 0x4B7D, { 0x0AD, 0x39, 0x6F, 0x5A, 0x9F, 0x0C9, 0x0D2, 0x88 } };
 	enum D2D1_DIRECTIONALBLURKERNEL_PROP
 	{
 		D2D1_DIRECTIONALBLURKERNEL_PROP_STANDARD_DEVIATION,
@@ -22,11 +22,20 @@ namespace OpenGlass
 		D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE
 	};
 
+	const GUID CLSID_D2D1BorderRect{ 0x3CC23214, 0x73AD, 0x450B, { 0x84, 0x36, 0x0AA, 0x81, 0x94, 0x92, 0x7F, 0x0B8 } };
+	enum D2D1_BORDERRECT_PROP
+	{
+		D2D1_BORDERRECT_PROP_RECT,
+		D2D1_BORDERRECT_PROP_ENABLE_RECT,
+		D2D1_BORDERRECT_PROP_EDGE_MODE_X,
+		D2D1_BORDERRECT_PROP_EDGE_MODE_Y,
+	};
+
+	struct IDXGISwapChainDWM1;
 	struct ID2D1PrivateCompositorBuffer : IUnknown {};
 	struct ID2D1PrivateCompositorCommandList : IUnknown {};
 	struct ID2D1PrivateCompositorPrimitiveProperties : IUnknown {};
 	struct ID2D1PrivateDepthBuffer : IUnknown {};
-	struct IDXGISwapChainDWM1 : IUnknown {};
 	struct ID2D1PrivateCompositorRenderer : IUnknown {};
 	struct DXGI_PRESENT_MULTIPLANE_OVERLAY;
 	enum D2D1_DRAW_COMPOSITOR_COMMAND_LIST_OPTIONS : UINT {};
@@ -56,7 +65,7 @@ namespace OpenGlass
 
 	interface DX_DECLARE_INTERFACE("e7fda62a-6a94-4f17-9f7c-26a950c74010") ID2D1RegionGeometry : public ID2D1Geometry
 	{
-		virtual UINT STDMETHODCALLTYPE GetRectanglesCount() const = 0;
-		virtual void STDMETHODCALLTYPE GetRectangles(RECT* buffer, UINT count) const = 0;
+		virtual UINT GetRectanglesCount() const = 0;
+		virtual void GetRectangles(RECT* buffer, UINT count) const = 0;
 	};
 }

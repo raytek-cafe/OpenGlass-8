@@ -4,7 +4,7 @@
 #include "GlassRealizer.hpp"
 #include "AeroEffect.hpp"
 #include "BlurEffect.hpp"
-#include "Shared.hpp"
+#include "DxgiPrivates.hpp"
 
 using namespace OpenGlass;
 
@@ -40,48 +40,50 @@ bool CGlassRealizer::EnsureGlassEffect(Shared::GlassType type)
 
 HRESULT CGlassRealizer::Render(
 	ID2D1DeviceContext* context,
-	const CGlassInput& input
+	ID2D1Geometry* geometry,
+	const D2D1_RECT_F& drawingWorldBounds,
+	const std::span<const D2D1_RECT_F>& rectangles,
+	const CAeroParams& params,
+	Shared::GlassType type
 )
 {
-	if (!EnsureGlassEffect(Shared::g_type))
+	if (!EnsureGlassEffect(type))
 	{
 		return S_OK;
 	}
 
-	const auto renderTargetBitmap = Util::GetTargetBitmapFromDeviceContext(context);
-	if (!renderTargetBitmap)
-	{
-		return S_OK;
-	}
+	winrt::com_ptr<ID2D1Bitmap1> renderTargetBitmap{ nullptr };
+	RETURN_IF_FAILED(Util::GetTargetBitmapFromD2DContext(context, renderTargetBitmap));
 
-	const D2D1_RECT_F alignedSamplingWorldBounds
+	D2D1_RECT_F geometryBounds{};
+	RETURN_IF_FAILED(geometry->GetBounds(nullptr, &geometryBounds));
+
+	const auto targetSize = renderTargetBitmap->GetSize();
+	const auto expansion = GetBlurRadius(params.blurAmount);
+	D2D1_RECT_F samplingWorldBounds
 	{
-		std::floor(input.samplingWorldBoundsShapeClipped->left),
-		std::floor(input.samplingWorldBoundsShapeClipped->top),
-		std::ceil(input.samplingWorldBoundsShapeClipped->right),
-		std::ceil(input.samplingWorldBoundsShapeClipped->bottom)
+		std::max(drawingWorldBounds.left - expansion, 0.f),
+		std::max(drawingWorldBounds.top - expansion, 0.f),
+		std::min(drawingWorldBounds.right + expansion, targetSize.width),
+		std::min(drawingWorldBounds.bottom + expansion, targetSize.height)
 	};
-	const D2D1_RECT_F alignedDrawingWorldBounds
-	{
-		std::floor(input.drawingWorldBounds->left),
-		std::floor(input.drawingWorldBounds->top),
-		std::ceil(input.drawingWorldBounds->right),
-		std::ceil(input.drawingWorldBounds->bottom)
-	};
+	RectF::IntersectUnsafe(samplingWorldBounds, geometryBounds);
 
 	winrt::com_ptr<ID2D1PrivateCompositorDeviceContext> compositorDeviceContext{};
 	winrt::com_ptr<ID2D1Bitmap1> sharedAtlasBitmap{};
-	
+
 	if (
 		const auto bitmapProperties = D2D1::BitmapProperties1(
 			renderTargetBitmap->GetOptions(),
 			renderTargetBitmap->GetPixelFormat()
 		);
-		input.zeroCopyOptimization &&
+		rectangles.size() == 1 &&
+		!(bitmapProperties.bitmapOptions & D2D1_BITMAP_OPTIONS_CANNOT_DRAW) &&
 		SUCCEEDED(context->QueryInterface(compositorDeviceContext.put()))
 	)
 	{
-		LOG_IF_FAILED(
+		RETURN_IF_FAILED(context->QueryInterface(compositorDeviceContext.put()));
+		RETURN_IF_FAILED(
 			compositorDeviceContext->CreateSharedAtlasBitmap(
 				renderTargetBitmap.get(),
 				&bitmapProperties,
@@ -89,27 +91,90 @@ HRESULT CGlassRealizer::Render(
 			)
 		);
 	}
-
-	const auto buffer = input.buffer;
 	if (!sharedAtlasBitmap)
 	{
-		buffer->Reserve(renderTargetBitmap->GetPixelSize());
+		BOOL hwProtectionEnabled = FALSE;
+		winrt::com_ptr<ID3D11Texture2D> renderTargetTexture{ nullptr };
+		D3D11_TEXTURE2D_DESC renderTargetDesc{};
+
 		RETURN_IF_FAILED(
-			buffer->CopyFrom(
-				context,
-				D2D1::Point2U(
-					static_cast<UINT32>(alignedSamplingWorldBounds.left),
-					static_cast<UINT32>(alignedSamplingWorldBounds.top)
-				),
+			Util::GetTextureFromD2DBitmap(
 				renderTargetBitmap.get(),
-				D2D1::RectU(
-					static_cast<UINT32>(alignedSamplingWorldBounds.left),
-					static_cast<UINT32>(alignedSamplingWorldBounds.top),
-					static_cast<UINT32>(alignedSamplingWorldBounds.right),
-					static_cast<UINT32>(alignedSamplingWorldBounds.bottom)
+				renderTargetTexture
+			)
+		);
+		RETURN_IF_FAILED(
+			Util::GetDescAndHwProtectionStateFromTexture(
+				renderTargetTexture.get(),
+				renderTargetDesc,
+				hwProtectionEnabled
+			)
+		);
+
+		winrt::com_ptr<ID3D11Device> d3dDevice{};
+		renderTargetTexture->GetDevice(d3dDevice.put());
+		winrt::com_ptr<ID3D11DeviceContext> d3dContext{};
+		d3dDevice->GetImmediateContext(d3dContext.put());
+
+		RETURN_IF_FAILED(
+			m_buffer.Ensure(
+				d3dDevice.get(),
+				renderTargetDesc.Width,
+				renderTargetDesc.Height,
+				renderTargetDesc,
+				D3D11_BIND_SHADER_RESOURCE,
+				hwProtectionEnabled
+			)
+		);
+		RETURN_IF_FAILED(
+			m_buffer.EnsureD2D(
+				context,
+				D2D1::BitmapProperties1(
+					D2D1_BITMAP_OPTIONS_NONE,
+					renderTargetBitmap->GetPixelFormat()
 				)
 			)
 		);
+
+		if (rectangles.size() <= 12)
+		{
+			for (auto subRectangle : rectangles)
+			{
+				if (RectF::IntersectUnsafe(subRectangle, drawingWorldBounds))
+				{
+					subRectangle = 
+					{
+						std::max(subRectangle.left - expansion, 0.f),
+						std::max(subRectangle.top - expansion, 0.f),
+						std::min(subRectangle.right + expansion, targetSize.width),
+						std::min(subRectangle.bottom + expansion, targetSize.height)
+					};
+					RectF::IntersectUnsafe(subRectangle, geometryBounds);
+
+					const auto copyRegionRect = RectF::ToRectU(subRectangle);
+					Util::CopyTextureRegion(
+						d3dContext.get(),
+						renderTargetTexture.get(),
+						m_buffer.m_texture.get(),
+						copyRegionRect,
+						copyRegionRect.left,
+						copyRegionRect.top
+					);
+				}
+			}
+		}
+		else
+		{
+			const auto copyRegionRect = RectF::ToRectU(samplingWorldBounds);
+			Util::CopyTextureRegion(
+				d3dContext.get(),
+				renderTargetTexture.get(),
+				m_buffer.m_texture.get(),
+				copyRegionRect,
+				copyRegionRect.left,
+				copyRegionRect.top
+			);
+		}
 	}
 
 	const auto cleanupCustomEffect = wil::scope_exit([this]
@@ -120,9 +185,9 @@ HRESULT CGlassRealizer::Render(
 	RETURN_IF_FAILED(
 		m_glassEffect->Build(
 			context,
-			sharedAtlasBitmap ? sharedAtlasBitmap.get() : buffer->GetCompatibleD2DBitmap(context, renderTargetBitmap.get()),
-			alignedSamplingWorldBounds,
-			static_cast<const void*>(&input.params)
+			sharedAtlasBitmap ? sharedAtlasBitmap.get() : m_buffer.m_bitmap.get(),
+			samplingWorldBounds,
+			static_cast<const void*>(&params)
 		)
 	);
 	winrt::com_ptr<ID2D1Image> outputImage{};
@@ -133,13 +198,20 @@ HRESULT CGlassRealizer::Render(
 	D2D1_MATRIX_3X2_F originalMatrix, outputMatrix = m_glassEffect->GetOutputMatrix();
 	context->GetTransform(&originalMatrix);
 	context->SetTransform(outputMatrix);
+	D2D1_RENDERING_CONTROLS renderingControls{};
+	context->GetRenderingControls(&renderingControls);
+	if (const auto targetPixelSize = renderTargetBitmap->GetPixelSize(); renderingControls.tileSize.width < targetPixelSize.width || renderingControls.tileSize.height < targetPixelSize.height)
+	{
+		renderingControls.tileSize = targetPixelSize;
+		context->SetRenderingControls(renderingControls);
+	}
 
 	D2D1InvertMatrix(&outputMatrix);
 
 	const auto offset = m_glassEffect->GetOutputOffset();
-	for (auto subRectangle : input.rectangles)
+	for (auto subRectangle : rectangles)
 	{
-		if (RectF::IntersectUnsafe(subRectangle, alignedDrawingWorldBounds))
+		if (RectF::IntersectUnsafe(subRectangle, drawingWorldBounds))
 		{
 			auto transformedSubRectangle = RectF::TransformRect(subRectangle, outputMatrix);
 
@@ -164,4 +236,9 @@ HRESULT CGlassRealizer::Render(
 	context->SetTransform(originalMatrix);
 
 	return S_OK;
+}
+
+float CGlassRealizer::GetBlurRadius(float blurAmount)
+{
+	return std::ceil(blurAmount * 3.f);
 }

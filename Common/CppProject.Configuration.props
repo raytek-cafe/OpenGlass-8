@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!--
+    Shared configuration-time properties.
+
+    IMPORTANT:
+    - This file is intended to be imported BEFORE $(VCTargetsPath)\Microsoft.Cpp.props
+      so properties like PlatformToolset take effect.
+    - Per user request, ConfigurationType is NOT set here.
+  -->
+
+  <PropertyGroup Label="CppProject.Configuration.Common">
+    <PlatformToolset Condition="'$(PlatformToolset)'==''">v145</PlatformToolset>
+    <!-- Default to Unicode like the original project settings; projects can still override later if needed. -->
+    <CharacterSet>Unicode</CharacterSet>
+
+    <!-- Shared Windows SDK / vcpkg defaults (override in project if needed). -->
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)'==''">10.0</WindowsTargetPlatformVersion>
+    <VcpkgEnableManifest Condition="'$(VcpkgEnableManifest)'==''">true</VcpkgEnableManifest>
+    <VcpkgManifestInstall Condition="'$(VcpkgManifestInstall)'==''">true</VcpkgManifestInstall>
+    <VcpkgUseStatic Condition="'$(VcpkgUseStatic)'==''">true</VcpkgUseStatic>
+
+    <!-- VC-LTL (used by OpenGlass) -->
+    <SupportLTL Condition="'$(SupportLTL)'==''">ucrt</SupportLTL>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <UseDebugLibraries Condition="'$(UseDebugLibraries)'==''">true</UseDebugLibraries>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release' or '$(Configuration)'=='ReleaseSigned'">
+    <UseDebugLibraries Condition="'$(UseDebugLibraries)'==''">false</UseDebugLibraries>
+    <WholeProgramOptimization Condition="'$(WholeProgramOptimization)'==''">true</WholeProgramOptimization>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Optional Authenticode signing + installer packaging (disabled by default). -->
+  <PropertyGroup>
+    <OpenGlassSignEnabled Condition="'$(OpenGlassSignEnabled)'==''">false</OpenGlassSignEnabled>
+    <OpenGlassSignTool Condition="'$(OpenGlassSignTool)'==''">signtool.exe</OpenGlassSignTool>
+    <!-- Provide full signtool arguments (e.g. Certum SimplySign parameters) via MSBuild property. -->
+    <OpenGlassSignArgs Condition="'$(OpenGlassSignArgs)'==''"></OpenGlassSignArgs>
+    <!-- Preserve unsigned output when signing is enabled. -->
+    <OpenGlassPreserveUnsigned Condition="'$(OpenGlassPreserveUnsigned)'==''">true</OpenGlassPreserveUnsigned>
+    <OpenGlassUnsignedDir Condition="'$(OpenGlassUnsignedDir)'==''">$(OutDir)Unsigned\</OpenGlassUnsignedDir>
+      <OpenGlassIsccTool Condition="'$(OpenGlassIsccTool)'==''">ISCC.exe</OpenGlassIsccTool>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='ReleaseSigned'">
+    <OpenGlassSignEnabled>true</OpenGlassSignEnabled>
+    <OpenGlassSignArgs>sign /v /fd sha256 /sha1 4ba5f03b9aa8f305f93fc4ad2943199a3e62da07 /tr http://timestamp.digicert.com /td sha256</OpenGlassSignArgs>
+  </PropertyGroup>
+
+  <Target Name="OpenGlassPresignCopy"
+          BeforeTargets="OpenGlassSignOutputs"
+          Condition="'$(OpenGlassSignEnabled)'=='true' and '$(OpenGlassPreserveUnsigned)'=='true' and ( '$(TargetFileName)'=='OpenGlass.dll' or '$(TargetFileName)'=='OpenGlassGUI.exe' or '$(TargetFileName)'=='OpenGlassHost.exe' )">
+    <MakeDir Directories="$(OpenGlassUnsignedDir)" Condition="!Exists('$(OpenGlassUnsignedDir)')" />
+    <Copy SourceFiles="$(TargetPath)"
+          DestinationFiles="$(OpenGlassUnsignedDir)$(TargetFileName)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="OpenGlassSignOutputs"
+          AfterTargets="Build"
+          Condition="'$(OpenGlassSignEnabled)'=='true' and '$(OpenGlassSignArgs)'!='' and ( '$(TargetFileName)'=='OpenGlass.dll' or '$(TargetFileName)'=='OpenGlassGUI.exe' or '$(TargetFileName)'=='OpenGlassHost.exe' )">
+    <Message Text="Signing $(TargetPath)" Importance="High" />
+    <Exec Command="&quot;$(OpenGlassSignTool)&quot; $(OpenGlassSignArgs) &quot;$(TargetPath)&quot;" />
+  </Target>
+
+</Project>

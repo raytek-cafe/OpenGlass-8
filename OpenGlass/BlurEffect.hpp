@@ -6,7 +6,6 @@ namespace OpenGlass
 	struct CBlurParams : CCustomBlurParams
 	{
 		D2D1_COLOR_F color;
-		float colorBalance;
 	};
 
 	class CBlurEffect : public winrt::implements<CBlurEffect, IRenderingEffect, winrt::non_agile, winrt::no_weak_ref>
@@ -21,15 +20,15 @@ namespace OpenGlass
 
 		HRESULT Initialize(ID2D1DeviceContext* context);
 	public:
-		HRESULT STDMETHODCALLTYPE Build(
+		HRESULT Build(
 			ID2D1DeviceContext* context,
 			ID2D1Image* inputImage,
 			const D2D1_RECT_F& imageRectangle,
 			const void* additionalParams
 		) override;
-		D2D1_POINT_2F STDMETHODCALLTYPE GetOutputOffset() const override { return m_customBlurEffect->GetOutputOffset(); }
-		D2D1_MATRIX_3X2_F STDMETHODCALLTYPE GetOutputMatrix() const override;
-		void STDMETHODCALLTYPE GetOutput(ID2D1Image** output) const override;
-		void STDMETHODCALLTYPE Reset() override;
+		D2D1_POINT_2F GetOutputOffset() const override { return m_customBlurEffect->GetOutputOffset(); }
+		D2D1_MATRIX_3X2_F GetOutputMatrix() const override;
+		void GetOutput(ID2D1Image** output) const override;
+		void Reset() override;
 	};
 }

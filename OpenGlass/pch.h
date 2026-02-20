@@ -4,6 +4,5 @@
 #include "framework.hpp"
 #include "cpprt.hpp"
 #include "wil.hpp"
-#include "detours.h"
 
 #endif

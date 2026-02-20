@@ -57,13 +57,12 @@ namespace OpenGlass
 					0x00, 0x00, 0x00, 0x00,
 					0x00, 0x00, 0x00, 0x00
 				};
-				auto unprotectedScope = HookHelper::unprotect(from, sizeof(jmpInstructionBytes));
+				auto UnprotectedScope = HookHelper::Unprotect({ reinterpret_cast<uint8_t*>(from), sizeof(jmpInstructionBytes)});
 				*reinterpret_cast<PVOID*>(&jmpInstructionBytes[6]) = to;
 
 				HookHelper::PatchInstructions(
-					from,
-					jmpInstructionBytes,
-					sizeof(jmpInstructionBytes)
+					reinterpret_cast<uint8_t*>(from),
+					jmpInstructionBytes
 				);
 			}
 			if (type == ProjectionType::Variable && from)
@@ -198,29 +197,11 @@ namespace OpenGlass
 
 		return result;
 	}
-
-	template <typename T>
-	struct StubFunctionOf {};
-	template <typename T, typename Class, typename... Args>
-	struct StubFunctionOf<T(STDMETHODCALLTYPE Class::*)(Args...)>
-	{
-		using type = T(STDMETHODCALLTYPE*)(volatile void*, volatile Args...);
-	};
-	template <typename T, typename Class, typename... Args>
-	struct StubFunctionOf<T(STDMETHODCALLTYPE Class::*)(Args...) const>
-	{
-		using type = T(STDMETHODCALLTYPE*)(volatile void*, volatile Args...);
-	};
-	template <typename T, typename... Args>
-	struct StubFunctionOf<T(STDMETHODCALLTYPE*)(Args...)>
-	{
-		using type = T(STDMETHODCALLTYPE*)(volatile void*, volatile Args...);
-	};
 }
 
 #define DECLSPEC_PROJECTION DECLSPEC_NOINLINE inline
 #define HANDLE_PROJECTION_FUNCTION(function, ...) \
-(reinterpret_cast<StubFunctionOf<decltype(&function)>::type>(Util::compile_time_hash(#function, 0ull))(Util::force_cast_from(&function), ##__VA_ARGS__))
+std::invoke(Util::force_cast_to<decltype(&function)>(reinterpret_cast<PVOID>(Util::compile_time_hash(#function, 0ull))), ##__VA_ARGS__)
 
 #define MAKE_FUNCTION_PROJECTION_TUPLE(function, min_build, max_build) \
 OpenGlass::ProjectionEntry \
@@ -275,12 +256,12 @@ OpenGlass::ProjectionEntry \
 	ULONG{ max_build }, \
 }
 
-#define MAKE_OPTIONAL_EMPTY_PROJECTION_TUPLE(name, min_build, max_build) \
+#define MAKE_OPTIONAL_FUNCTION_PROJECTION_TUPLE(function, min_build, max_build) \
 OpenGlass::ProjectionEntry \
 { \
-	static_cast<OpenGlass::ProjectionType>(static_cast<UCHAR>(OpenGlass::ProjectionType::Variable) | static_cast<UCHAR>(OpenGlass::ProjectionType::Optional)), \
-	LPCSTR{ name }, \
-	PVOID{ nullptr }, \
+	static_cast<OpenGlass::ProjectionType>(static_cast<UCHAR>(OpenGlass::ProjectionType::Function) | static_cast<UCHAR>(OpenGlass::ProjectionType::Optional)), \
+	LPCSTR{ #function }, \
+	Util::force_cast_from(&function), \
 	PVOID{ nullptr }, \
 	ULONG{ min_build }, \
 	ULONG{ max_build }, \

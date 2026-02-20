@@ -1,10 +1,14 @@
 #include "pch.h"
+#include "Shared.hpp"
 #include "GlassEngine.hpp"
 #include "CaptionTextHandler.hpp"
+#include "CaptionMetricsTweaker.hpp"
 #include "ButtonGlowHandler.hpp"
 #include "GlassKernel.hpp"
 #include "AccentOverrider.hpp"
 #include "GlassFrameHandler.hpp"
+#include "GlassFrameDemodernizer.hpp"
+#include "GlassFrameEnhancer.hpp"
 #include "GlassReflectionHandler.hpp"
 #include "GlassRenderer.hpp"
 #include "GlassIntegrity.hpp"
@@ -16,7 +20,6 @@ namespace OpenGlass::GlassEngine
 {
 	wil::unique_hkey g_dwmKey{ nullptr };
 	wil::unique_hkey g_personalizeKey{ nullptr };
-	wil::unique_hkey g_dwmLocalMachineKey{ nullptr };
 }
 
 HKEY GlassEngine::GetDwmKey()
@@ -27,11 +30,6 @@ HKEY GlassEngine::GetDwmKey()
 HKEY GlassEngine::GetPersonalizeKey()
 {
 	return g_personalizeKey.get();
-}
-
-HKEY GlassEngine::GetDwmLocalMachineKey()
-{
-	return g_dwmLocalMachineKey.get();
 }
 
 void GlassEngine::LoadRegistry(bool redrawNow)
@@ -52,18 +50,11 @@ void GlassEngine::LoadRegistry(bool redrawNow)
 		}
 		Update(UpdateType::All, redrawNow);
 	}
-	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\DWM", g_dwmLocalMachineKey);
 }
 void GlassEngine::UnloadRegistry()
 {
 	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\DWM", g_dwmKey);
 	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", g_personalizeKey);
-	wil::reg::open_unique_key_nothrow(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\DWM", g_dwmLocalMachineKey);
-}
-
-void GlassEngine::RedrawAll()
-{
-	GlassKernel::RedrawAllTopLevelWindow();
 }
 
 void GlassEngine::Update(UpdateType type, bool redrawNow)
@@ -71,45 +62,69 @@ void GlassEngine::Update(UpdateType type, bool redrawNow)
 	{
 		const auto lock = wil::EnterCriticalSection(uDWM::CDesktopManager::s_csDwmInstance);
 		GlassKernel::Update(type);
+		GlassIntegrity::Update(type);
+		GlassRenderer::Update(type);
+
 		CustomThemeAtlasLoader::Update(type);
 		CaptionTextHandler::Update(type);
+		CaptionMetricsTweaker::Update(type);
 		ButtonGlowHandler::Update(type);
 		AccentOverrider::Update(type);
 		GlassFrameHandler::Update(type);
+		GlassFrameDemodernizer::Update(type);
+		GlassFrameEnhancer::Update(type);
 		GlassReflectionHandler::Update(type);
-		GlassRenderer::Update(type);
-		GlassIntegrity::Update(type);
+		if (redrawNow)
+		{
+			GlassKernel::RedrawAllTopLevelWindow(false);
+		}
 	}
-	if (redrawNow)
-	{
-		GlassKernel::RedrawAllTopLevelWindow();
-		//DwmFlush();
-	}
+	THROW_IF_FAILED(DwmFlush());
 }
 
 void GlassEngine::Startup()
 {
-	const auto lock = wil::EnterCriticalSection(uDWM::CDesktopManager::s_csDwmInstance);
+	Shared::g_disabledHooks = GetDwordFromRegistry(L"DisabledHooks", 0);
 	GlassKernel::Startup();
-	CustomThemeAtlasLoader::Startup();
-	CaptionTextHandler::Startup();
-	ButtonGlowHandler::Startup();
-	AccentOverrider::Startup();
-	GlassFrameHandler::Startup();
-	GlassReflectionHandler::Startup();
-	GlassRenderer::Startup();
 	GlassIntegrity::Startup();
+	GlassRenderer::Startup();
+
+	{
+		const auto lock = wil::EnterCriticalSection(uDWM::CDesktopManager::s_csDwmInstance);
+		CustomThemeAtlasLoader::Startup();
+		CaptionTextHandler::Startup();
+		CaptionMetricsTweaker::Startup();
+		ButtonGlowHandler::Startup();
+		AccentOverrider::Startup();
+		GlassFrameHandler::Startup();
+		GlassFrameEnhancer::Startup();
+		GlassFrameDemodernizer::Startup();
+		GlassReflectionHandler::Startup();
+		GlassKernel::RedrawAllTopLevelWindow(true);
+	}
 }
 void GlassEngine::Shutdown()
 {
-	const auto lock = wil::EnterCriticalSection(uDWM::CDesktopManager::s_csDwmInstance);
-	GlassIntegrity::Shutdown();
+	{
+		const auto lock = wil::EnterCriticalSection(uDWM::CDesktopManager::s_csDwmInstance);
+		GlassReflectionHandler::Shutdown();
+		GlassFrameDemodernizer::Shutdown();
+		GlassFrameEnhancer::Shutdown();
+		GlassFrameHandler::Shutdown();
+		AccentOverrider::Shutdown();
+		ButtonGlowHandler::Shutdown();
+		CaptionMetricsTweaker::Shutdown();
+		CaptionTextHandler::Shutdown();
+		CustomThemeAtlasLoader::Shutdown();
+		GlassKernel::RedrawAllTopLevelWindow(true);
+	}
+
+	for (int i = 0; i < 10; i++)
+	{
+		THROW_IF_FAILED(DwmFlush());
+	}
+
 	GlassRenderer::Shutdown();
-	GlassReflectionHandler::Shutdown();
-	GlassFrameHandler::Shutdown();
-	AccentOverrider::Shutdown();
-	ButtonGlowHandler::Shutdown();
-	CaptionTextHandler::Shutdown();
-	CustomThemeAtlasLoader::Shutdown();
+	GlassIntegrity::Shutdown();
 	GlassKernel::Shutdown();
 }

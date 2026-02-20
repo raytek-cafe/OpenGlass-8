@@ -39,12 +39,6 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 {
 	RETURN_IF_FAILED(
 		context->CreateEffect(
-			CLSID_D2D1Crop,
-			m_cropInputEffect.put()
-		)
-	);
-	RETURN_IF_FAILED(
-		context->CreateEffect(
 			CLSID_D2D1Scale,
 			m_scaleDownEffect.put()
 		)
@@ -52,7 +46,7 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 	RETURN_IF_FAILED(
 		context->CreateEffect(
 			CLSID_D2D1Crop,
-			m_cropAlignEffect.put()
+			m_cropInputEffect.put()
 		)
 	);
 	RETURN_IF_FAILED(
@@ -75,6 +69,13 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 	);
 
 	RETURN_IF_FAILED(
+		m_scaleDownEffect->SetValue(
+			D2D1_SCALE_PROP_BORDER_MODE,
+			D2D1_BORDER_MODE_HARD
+		)
+	);
+
+	RETURN_IF_FAILED(
 		m_cropInputEffect->SetValue(
 			D2D1_CROP_PROP_BORDER_MODE,
 			D2D1_BORDER_MODE_HARD
@@ -82,135 +83,131 @@ HRESULT CCustomBlurEffect::Initialize(ID2D1DeviceContext* context)
 	);
 
 	RETURN_IF_FAILED(
-		m_scaleDownEffect->SetValue(
-			D2D1_SCALE_PROP_BORDER_MODE,
-			D2D1_BORDER_MODE_HARD
-		)
-	);
-	m_scaleDownEffect->SetInputEffect(0, m_cropInputEffect.get());
-
-	RETURN_IF_FAILED(
-		m_cropAlignEffect->SetValue(
-			D2D1_CROP_PROP_BORDER_MODE,
-			D2D1_BORDER_MODE_HARD
-		)
-	);
-	m_cropAlignEffect->SetInputEffect(0, m_scaleDownEffect.get());
-
-	RETURN_IF_FAILED(
 		m_borderEffect->SetValue(
-			D2D1_BORDER_PROP_EDGE_MODE_X, 
+			D2D1_BORDER_PROP_EDGE_MODE_X,
 			D2D1_BORDER_EDGE_MODE_MIRROR
 		)
 	);
 	RETURN_IF_FAILED(
 		m_borderEffect->SetValue(
-			D2D1_BORDER_PROP_EDGE_MODE_Y, 
+			D2D1_BORDER_PROP_EDGE_MODE_Y,
 			D2D1_BORDER_EDGE_MODE_MIRROR
 		)
 	);
-	m_borderEffect->SetInputEffect(0, m_cropAlignEffect.get());
+	m_borderEffect->SetInputEffect(0, m_cropInputEffect.get());
 
-	m_directionalBlurXEffect->SetInputEffect(0, m_borderEffect.get());
 	RETURN_IF_FAILED(
 		m_directionalBlurXEffect->SetValue(
-			D2D1_DIRECTIONALBLURKERNEL_PROP_DIRECTION, 
+			D2D1_DIRECTIONALBLURKERNEL_PROP_DIRECTION,
 			D2D1_DIRECTIONALBLURKERNEL_DIRECTION_X
 		)
 	);
+	m_directionalBlurXEffect->SetInputEffect(0, m_borderEffect.get());
 
-	m_directionalBlurYEffect->SetInputEffect(0, m_directionalBlurXEffect.get());
 	RETURN_IF_FAILED(
 		m_directionalBlurYEffect->SetValue(
-			D2D1_DIRECTIONALBLURKERNEL_PROP_DIRECTION, 
+			D2D1_DIRECTIONALBLURKERNEL_PROP_DIRECTION,
 			D2D1_DIRECTIONALBLURKERNEL_DIRECTION_Y
 		)
 	);
+	m_directionalBlurYEffect->SetInputEffect(0, m_directionalBlurXEffect.get());
 
 	m_initialized = true;
 
 	return S_OK;
 }
 
-HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageRectangle)
+HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(ID2D1DeviceContext* context, ID2D1Image* inputImage)
 {
-	RETURN_IF_FAILED(
-		m_cropInputEffect->SetValue(
-			D2D1_CROP_PROP_RECT,
-			imageRectangle
-		)
-	);
+	D2D1_RECT_F scaledImageRectangle = m_imageRectangle;
+
+	D2D1_RECT_F imageBounds{};
+	RETURN_IF_FAILED(context->GetImageLocalBounds(inputImage, &imageBounds));
+
 	m_prescaleAmount = 
 	{
-		DetermineOutputScale(wil::rect_width(imageRectangle)),
-		DetermineOutputScale(wil::rect_height(imageRectangle))
+		DetermineOutputScale(wil::rect_width(imageBounds)),
+		DetermineOutputScale(wil::rect_height(imageBounds))
 	};
 
-	D2D1_VECTOR_2F finalBlurAmount{ m_blurAmount, m_blurAmount };
-	auto finalPrescaleAmount = m_prescaleAmount;
+	D2D1_VECTOR_2F deviation{ m_blurAmount, m_blurAmount };
+	auto scaleProduct = m_prescaleAmount;
 
 	m_offset = {};
-	if (m_prescaleAmount.x != 1.f && finalBlurAmount.x > k_optimizations[5 * static_cast<int>(m_optimization) + 2])
+	if (m_prescaleAmount.x != 1.f && deviation.x > k_optimizations[5 * static_cast<int>(m_optimization) + 2])
 	{
 		if (m_prescaleAmount.x <= 0.5f)
 		{
-			finalPrescaleAmount.x *= 2.f;
+			scaleProduct.x *= 2.f;
 			m_offset.x = 0.25f;
 		}
 	}
-	if (m_prescaleAmount.y != 1.f && finalBlurAmount.y > k_optimizations[5 * static_cast<int>(m_optimization) + 2])
+	if (m_prescaleAmount.y != 1.f && deviation.y > k_optimizations[5 * static_cast<int>(m_optimization) + 2])
 	{
 		if (m_prescaleAmount.y <= 0.5f)
 		{
-			finalPrescaleAmount.y *= 2.f;
+			scaleProduct.y *= 2.f;
 			m_offset.y = 0.25f;
 		}
 	}
 
-	RETURN_IF_FAILED(
-		m_scaleDownEffect->SetValue(
-			D2D1_SCALE_PROP_INTERPOLATION_MODE,
-			static_cast<D2D1_SCALE_PROP>(k_optimizations[5 * m_optimization + 4])
-		)
-	);
-	RETURN_IF_FAILED(
-		m_scaleDownEffect->SetValue(
-			D2D1_SCALE_PROP_SCALE,
-			finalPrescaleAmount
-		)
-	);
+	if (m_offset.x == 1.f && m_offset.y == 1.f)
+	{
+		m_scaleDownEffect->SetInput(0, nullptr);
+		m_cropInputEffect->SetInput(0, inputImage);
+	}
+	else
+	{
+		m_scaleDownEffect->SetInput(0, inputImage);
+		m_cropInputEffect->SetInput(0, nullptr);
+		m_cropInputEffect->SetInputEffect(0, m_scaleDownEffect.get());
 
-	auto alignedImageRectangle = imageRectangle;
-	alignedImageRectangle.right = alignedImageRectangle.right * finalPrescaleAmount.x - 1.f;
-	alignedImageRectangle.bottom = alignedImageRectangle.bottom * finalPrescaleAmount.y - 1.f;
-	alignedImageRectangle.left = alignedImageRectangle.left * finalPrescaleAmount.x + 1.f;
-	alignedImageRectangle.top = alignedImageRectangle.top * finalPrescaleAmount.y + 1.f;
-	if (wil::rect_width(alignedImageRectangle) < 1.f)
-	{
-		alignedImageRectangle.left = (imageRectangle.left + imageRectangle.right) / 2.f * finalPrescaleAmount.x - 0.5f;
-		alignedImageRectangle.right = alignedImageRectangle.left + 1.f;
-	}
-	if (wil::rect_height(alignedImageRectangle) < 1.f)
-	{
-		alignedImageRectangle.top = (imageRectangle.top + imageRectangle.bottom) / 2.f * finalPrescaleAmount.y - 0.5f;
-		alignedImageRectangle.bottom = alignedImageRectangle.top + 1.f;
+		RETURN_IF_FAILED(
+			m_scaleDownEffect->SetValue(
+				D2D1_SCALE_PROP_INTERPOLATION_MODE,
+				static_cast<D2D1_SCALE_INTERPOLATION_MODE>(k_optimizations[5 * m_optimization + 4])
+			)
+		);
+		RETURN_IF_FAILED(
+			m_scaleDownEffect->SetValue(
+				D2D1_SCALE_PROP_SCALE,
+				scaleProduct
+			)
+		);
+
+		deviation = D2D1::Vector2F(
+			deviation.x * scaleProduct.x,
+			deviation.y * scaleProduct.y
+		);
+		scaledImageRectangle =
+		{
+			m_imageRectangle.left * scaleProduct.x + 1.f,
+			m_imageRectangle.top * scaleProduct.y + 1.f,
+			m_imageRectangle.right * scaleProduct.x - 1.f,
+			m_imageRectangle.bottom * scaleProduct.y - 1.f,
+		};
+		if (wil::rect_width(scaledImageRectangle) < 1.f)
+		{
+			scaledImageRectangle.left = (m_imageRectangle.left + m_imageRectangle.right) / 2.f * scaleProduct.x - 0.5f;
+			scaledImageRectangle.right = scaledImageRectangle.left + 1.f;
+		}
+		if (wil::rect_height(scaledImageRectangle) < 1.f)
+		{
+			scaledImageRectangle.top = (m_imageRectangle.top + m_imageRectangle.bottom) / 2.f * scaleProduct.y - 0.5f;
+			scaledImageRectangle.bottom = scaledImageRectangle.top + 1.f;
+		}
 	}
 	RETURN_IF_FAILED(
-		m_cropAlignEffect->SetValue(
+		m_cropInputEffect->SetValue(
 			D2D1_CROP_PROP_RECT,
-			alignedImageRectangle
+			scaledImageRectangle
 		)
-	);
-
-	finalBlurAmount = D2D1::Vector2F(
-		finalBlurAmount.x * finalPrescaleAmount.x,
-		finalBlurAmount.y * finalPrescaleAmount.y
 	);
 
 	RETURN_IF_FAILED(
 		m_directionalBlurXEffect->SetValue(
 			D2D1_DIRECTIONALBLURKERNEL_PROP_STANDARD_DEVIATION,
-			finalBlurAmount.x
+			deviation.x
 		)
 	);
 	RETURN_IF_FAILED(
@@ -222,13 +219,13 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageR
 	RETURN_IF_FAILED(
 		m_directionalBlurXEffect->SetValue(
 			D2D1_DIRECTIONALBLURKERNEL_PROP_OPTIMIZATION_TRANSFORM,
-			(m_prescaleAmount.x != finalPrescaleAmount.x) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
+			(m_prescaleAmount.x != scaleProduct.x) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
 		)
 	);
 	RETURN_IF_FAILED(
 		m_directionalBlurYEffect->SetValue(
 			D2D1_DIRECTIONALBLURKERNEL_PROP_STANDARD_DEVIATION,
-			finalBlurAmount.y
+			deviation.y
 		)
 	);
 	RETURN_IF_FAILED(
@@ -240,76 +237,55 @@ HRESULT CCustomBlurEffect::CalculateAndSetEffectParams(const D2D1_RECT_F& imageR
 	RETURN_IF_FAILED(
 		m_directionalBlurYEffect->SetValue(
 			D2D1_DIRECTIONALBLURKERNEL_PROP_OPTIMIZATION_TRANSFORM,
-			(m_prescaleAmount.y != finalPrescaleAmount.y) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
+			(m_prescaleAmount.y != scaleProduct.y) ? D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_SCALE : D2D1_DIRECTIONALBLURKERNEL_OPTIMIZATION_TRANSFORM_IDENDITY
 		)
 	);
 
 	return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
+HRESULT CCustomBlurEffect::Build(
 	ID2D1DeviceContext* context,
 	ID2D1Image* inputImage,
 	const D2D1_RECT_F& imageRectangle,
 	const void* additionalParams
 )
 {
+	const auto params = static_cast<const CCustomBlurParams*>(additionalParams);
+
 	if (!m_initialized)
 	{
 		RETURN_IF_FAILED(Initialize(context));
 	}
 
-	m_cropInputEffect->SetInput(0, inputImage);
-
-	bool recalculateParams{ true };
-	do
+	bool recalculateParams{ false };
+	if (m_inputImage.get() != inputImage)
 	{
-		const auto params = static_cast<const CCustomBlurParams*>(additionalParams);
+		m_inputImage.copy_from(inputImage);
+		recalculateParams = true;
+	}
+	if (m_blurAmount != params->blurAmount)
+	{
+		m_blurAmount = params->blurAmount;
+		recalculateParams = true;
+	}
+	if (m_optimization != params->optimization)
+	{
+		m_optimization = params->optimization;
+		recalculateParams = true;
+	}
+	if (memcmp(&m_imageRectangle, &imageRectangle, sizeof(D2D1_RECT_F)) != 0)
+	{
+		m_imageRectangle = imageRectangle;
+		recalculateParams = true;
+	}
 
-		if (params->blurAmount == 0.f) [[unlikely]]
-		{
-			m_blurAmount = 0.f;
-			RETURN_IF_FAILED(
-				m_cropInputEffect->SetValue(
-					D2D1_CROP_PROP_RECT,
-					imageRectangle
-				)
-			);
-			return S_OK;
-		}
-
-		RETURN_IF_FAILED(
-			m_cropAlignEffect->SetValue(
-				D2D1_PROPERTY_CACHED,
-				static_cast<BOOL>(params->cachePrescaledImage)
-			)
-		);
-		if (m_blurAmount != params->blurAmount)
-		{
-			m_blurAmount = params->blurAmount;
-			break;
-		}
-		if (m_optimization != params->optimization)
-		{
-			m_optimization = params->optimization;
-			break;
-		}
-
-		D2D1_RECT_F m_imageRectangle;
-		RETURN_IF_FAILED(m_cropInputEffect->GetValue(D2D1_CROP_PROP_RECT, &m_imageRectangle));
-		if (memcmp(&m_imageRectangle, &imageRectangle, sizeof(D2D1_RECT_F)) != 0)
-		{
-			break;
-		}
-
-		recalculateParams = false;
-	} while (false);
-	
 	if (recalculateParams)
 	{
 		RETURN_IF_FAILED(
 			CalculateAndSetEffectParams(
-				imageRectangle
+				context,
+				inputImage
 			)
 		);
 	}
@@ -317,7 +293,7 @@ HRESULT STDMETHODCALLTYPE CCustomBlurEffect::Build(
 	return S_OK;
 }
 
-D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CCustomBlurEffect::GetOutputMatrix() const
+D2D1_MATRIX_3X2_F CCustomBlurEffect::GetOutputMatrix() const
 {
 	if (m_blurAmount == 0.f)
 	{
@@ -332,11 +308,11 @@ D2D1_MATRIX_3X2_F STDMETHODCALLTYPE CCustomBlurEffect::GetOutputMatrix() const
 	);
 }
 
-void STDMETHODCALLTYPE CCustomBlurEffect::GetOutput(ID2D1Image** output) const
+void CCustomBlurEffect::GetOutput(ID2D1Image** output) const
 {
 	if (m_blurAmount == 0.f)
 	{
-		m_cropInputEffect->GetOutput(output);
+		m_inputImage.copy_to(output);
 	}
 	else
 	{
@@ -344,10 +320,14 @@ void STDMETHODCALLTYPE CCustomBlurEffect::GetOutput(ID2D1Image** output) const
 	}
 }
 
-void STDMETHODCALLTYPE CCustomBlurEffect::Reset()
+void CCustomBlurEffect::Reset()
 {
+	if (m_scaleDownEffect)
+	{
+		m_scaleDownEffect->SetInput(0, nullptr);
+	}
 	if (m_cropInputEffect)
-	{ 
+	{
 		m_cropInputEffect->SetInput(0, nullptr);
 	}
 }

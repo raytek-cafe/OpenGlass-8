@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "resource.h"
+#include "Util.hpp"
 #include "AeroColorizationEffect.hpp"
 
 using namespace OpenGlass;
@@ -102,27 +103,14 @@ IFACEMETHODIMP CAeroColorizationEffect::Initialize(
 {
 	if (!effectContext->IsShaderLoaded(CLSID_AeroColorizationEffectPixelShader))
 	{
-		const auto currentModule = wil::GetModuleInstanceHandle();
-		const auto resourceHandle = FindResourceW(currentModule, MAKEINTRESOURCE(IDR_RCDATA1), RT_RCDATA);
-		RETURN_LAST_ERROR_IF_NULL(resourceHandle);
-		const auto globalHandle = LoadResource(currentModule, resourceHandle);
-		RETURN_LAST_ERROR_IF_NULL(globalHandle);
-		const auto cleanup = wil::scope_exit([=]
-		{
-			if (globalHandle)
-			{
-				UnlockResource(globalHandle);
-				FreeResource(globalHandle);
-			}
-		});
-		const auto resourceSize = SizeofResource(currentModule, resourceHandle);
-		RETURN_LAST_ERROR_IF(resourceSize == 0);
-		const auto resourceAddress = reinterpret_cast<PBYTE>(LockResource(globalHandle));
+		std::span<const UCHAR> shaderBytes{};
+		RETURN_IF_FAILED(Util::GetResDataView(shaderBytes, IDR_RCDATA_AEROCOLORIZATION_PS));
+
 		RETURN_IF_FAILED(
 			effectContext->LoadPixelShader(
 				CLSID_AeroColorizationEffectPixelShader,
-				resourceAddress,
-				resourceSize
+				shaderBytes.data(),
+				static_cast<UINT32>(shaderBytes.size_bytes())
 			)
 		);
 	}

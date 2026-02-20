@@ -16,7 +16,8 @@ namespace OpenGlass::GlassService
 		HKEY personalizeKey;
 	};
 	HRESULT SendRequest(RequestBuffer& content);
-	bool IsRunning();
+	bool IsActive();
+	bool IsDwmProcess(HANDLE processHandle);
 
 	// service side apis
 	enum class ThreadStatus

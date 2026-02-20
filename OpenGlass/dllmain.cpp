@@ -2,6 +2,7 @@
 #include "resource.h"
 #include "Util.hpp"
 #include "module.hpp"
+#include "GlassService.hpp"
 #if defined _M_X64
 	#pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #else
@@ -10,14 +11,14 @@
 #endif
 
 
- _NODISCARD _Ret_notnull_ _Post_writable_byte_size_(size) _VCRT_ALLOCATOR 
+ _NODISCARD _Ret_notnull_ _Post_writable_byte_size_(size) _VCRT_ALLOCATOR
 [[nodiscard]] void* operator new(size_t size) noexcept(false)
 {
 	auto memory = HeapAlloc(OpenGlass::Util::g_processHeap, 0, size);
 	THROW_LAST_ERROR_IF_NULL(memory);
 	return memory;
 }
-_NODISCARD _Ret_maybenull_ _Success_(return != NULL) _Post_writable_byte_size_(size) _VCRT_ALLOCATOR 
+_NODISCARD _Ret_maybenull_ _Success_(return != NULL) _Post_writable_byte_size_(size) _VCRT_ALLOCATOR
 [[nodiscard]] void* operator new(
 	size_t size,
 	std::nothrow_t const&
@@ -77,7 +78,7 @@ void operator delete[](
 void operator delete(
 	void* ptr,
 	[[maybe_unused]] size_t size
-) noexcept 
+) noexcept
 {
 	FAIL_FAST_IF_NULL(ptr);
 	HeapFree(OpenGlass::Util::g_processHeap, 0, ptr);
@@ -91,17 +92,88 @@ void operator delete[](
 	HeapFree(OpenGlass::Util::g_processHeap, 0, ptr);
 }
 
+bool VerifyOpenGlassHostSignature(HMODULE hostModule) noexcept
+{
+	WCHAR hostPath[MAX_PATH]{};
+	const auto hostPathLength = GetModuleFileNameW(hostModule, hostPath, ARRAYSIZE(hostPath));
+	if (!hostPathLength || hostPathLength >= ARRAYSIZE(hostPath))
+	{
+		return false;
+	}
+
+	WINTRUST_FILE_INFO fileInfo{};
+	fileInfo.cbStruct = sizeof(fileInfo);
+	fileInfo.pcwszFilePath = hostPath;
+
+	WINTRUST_DATA trustData{};
+	trustData.cbStruct = sizeof(trustData);
+	trustData.dwUIChoice = WTD_UI_NONE;
+	trustData.fdwRevocationChecks = WTD_REVOKE_NONE;
+	trustData.dwUnionChoice = WTD_CHOICE_FILE;
+	trustData.pFile = &fileInfo;
+	trustData.dwStateAction = WTD_STATEACTION_VERIFY;
+	// Don't do network activity in DllMain.
+	trustData.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL | WTD_REVOCATION_CHECK_NONE;
+	trustData.dwUIContext = WTD_UICONTEXT_EXECUTE;
+
+	GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+	const auto verifyStatus = WinVerifyTrust(nullptr, &action, &trustData);
+
+	trustData.dwStateAction = WTD_STATEACTION_CLOSE;
+	WinVerifyTrust(nullptr, &action, &trustData);
+
+	return verifyStatus == ERROR_SUCCESS;
+}
+
 BOOL APIENTRY DllMain(
 	HMODULE hModule,
 	DWORD  dwReason,
 	[[maybe_unused]] LPVOID lpReserved
 )
 {
+	using namespace OpenGlass;
+
 	switch (dwReason)
 	{
 		case DLL_PROCESS_ATTACH:
 		{
 			DisableThreadLibraryCalls(hModule);
+
+			const auto dwmModule = GetModuleHandleW(L"dwm.exe");
+			const auto hostModule = GetModuleHandleW(L"OpenGlassHost.exe");
+
+			if (!dwmModule && !hostModule)
+			{
+				return FALSE;
+			}
+
+			if (dwmModule)
+			{
+				if (!GlassService::IsActive())
+				{
+					return FALSE;
+				}
+				if (!GlassService::IsDwmProcess(GetCurrentProcess()))
+				{
+					return FALSE;
+				}
+			}
+
+			if (hostModule)
+			{
+				if (GlassService::IsActive())
+				{
+					return FALSE;
+				}
+
+#if defined(OPENGLASS_ENFORCE_SIGNING) && (OPENGLASS_ENFORCE_SIGNING)
+				if (!VerifyOpenGlassHostSignature(hostModule))
+				{
+					return FALSE;
+				}
+#endif
+			}
+
 			break;
 		}
 		case DLL_PROCESS_DETACH:
@@ -110,187 +182,4 @@ BOOL APIENTRY DllMain(
 		}
 	}
 	return TRUE;
-}
-
-struct ExecutionParameters
-{
-	enum class CommandAction : UCHAR
-	{
-		Unknown,
-		Startup,
-		Shutdown,
-		Install,
-		Uninstall,
-		Help
-	} type{ CommandAction::Unknown };
-	bool reserved{ false };
-};
-ExecutionParameters AnalyseCommandLine(LPCWSTR lpCmdLine)
-{
-	int args{ 0 };
-	auto argv = CommandLineToArgvW(lpCmdLine, &args);
-	ExecutionParameters params{};
-
-	for (int i = 0; i < args; i++)
-	{
-		if (!_wcsicmp(argv[i], L"/startup") || !_wcsicmp(argv[i], L"-startup") || !_wcsicmp(argv[i], L"--startup"))
-		{
-			params.type = ExecutionParameters::CommandAction::Startup;
-		}
-		if (!_wcsicmp(argv[i], L"/shutdown") || !_wcsicmp(argv[i], L"-shutdown") || !_wcsicmp(argv[i], L"--shutdown"))
-		{
-			params.type = ExecutionParameters::CommandAction::Shutdown;
-		}
-		if (!_wcsicmp(argv[i], L"/install") || !_wcsicmp(argv[i], L"/i") || !_wcsicmp(argv[i], L"-install") || !_wcsicmp(argv[i], L"-i") || !_wcsicmp(argv[i], L"--install"))
-		{
-			params.type = ExecutionParameters::CommandAction::Install;
-		}
-		if (!_wcsicmp(argv[i], L"/uninstall") || !_wcsicmp(argv[i], L"/u") || !_wcsicmp(argv[i], L"-uninstall") || !_wcsicmp(argv[i], L"-u") || !_wcsicmp(argv[i], L"--uninstall"))
-		{
-			params.type = ExecutionParameters::CommandAction::Uninstall;
-		}
-		if (!_wcsicmp(argv[i], L"/help") || !_wcsicmp(argv[i], L"/h") || !_wcsicmp(argv[i], L"-help") || !_wcsicmp(argv[i], L"-h") || !_wcsicmp(argv[i], L"--help") || !_wcsicmp(argv[i], L"-?") || !_wcsicmp(argv[i], L"/?"))
-		{
-			params.type = ExecutionParameters::CommandAction::Help;
-		}
-	}
-
-	return params;
-}
-EXTERN_C int CALLBACK OpenGlass_RunDLL(
-	[[maybe_unused]] HWND hWnd,
-	[[maybe_unused]] HINSTANCE hInstance,
-	LPCSTR    lpCmdLine,
-	[[maybe_unused]] int       nCmdShow
-)
-{
-	using namespace OpenGlass;
-
-	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-	RETURN_IF_FAILED(SetThreadDescription(GetCurrentThread(), L"OpenGlass Client Thread"));
-
-	RETURN_IF_FAILED(RoInitialize(RO_INIT_MULTITHREADED));
-	wil::unique_rouninitialize_call wrtScope{};
-
-	// Convert the ansi string back to unicode string
-	HRESULT hr{ S_OK };
-	std::unique_ptr<WCHAR[]> convertedCommandLine{};
-	RETURN_IF_FAILED(Util::MB2WC(convertedCommandLine, lpCmdLine));
-
-	const auto to_error_string = [](HRESULT hr) static
-	{
-		return winrt::hresult_error{ hr }.message();
-	};
-	auto params = AnalyseCommandLine(convertedCommandLine.get());
-	switch (params.type)
-	{
-	case ExecutionParameters::CommandAction::Startup:
-	{
-		hr = StartupService();
-		if (FAILED(hr))
-		{
-			Util::TaskDialog(
-				nullptr,
-				nullptr,
-				nullptr,
-				Util::GetResourceStringView<IDS_STRING102>().data(),
-				to_error_string(hr).c_str(),
-				TDCBF_CLOSE_BUTTON,
-				TD_ERROR_ICON,
-				nullptr
-			);
-		}
-		break;
-	}
-	case ExecutionParameters::CommandAction::Shutdown:
-	{
-		hr = ShutdownService();
-		if (true)
-		{
-			Util::TaskDialog(
-				nullptr,
-				nullptr,
-				nullptr,
-				Util::GetResourceStringView<IDS_STRING102>().data(),
-				to_error_string(hr).c_str(),
-				TDCBF_CLOSE_BUTTON,
-				FAILED(hr) ? TD_ERROR_ICON : TD_INFORMATION_ICON,
-				nullptr
-			);
-		}
-		break;
-	}
-	case ExecutionParameters::CommandAction::Install:
-	{
-		hr = InstallApp();
-		if (true)
-		{
-			Util::TaskDialog(
-				nullptr,
-				nullptr,
-				nullptr,
-				Util::GetResourceStringView<IDS_STRING102>().data(),
-				to_error_string(hr).c_str(),
-				TDCBF_CLOSE_BUTTON,
-				FAILED(hr) ? TD_ERROR_ICON : TD_INFORMATION_ICON,
-				nullptr
-			);
-		}
-		break;
-	}
-	case ExecutionParameters::CommandAction::Uninstall:
-	{
-		hr = UninstallApp();
-		if (true)
-		{
-			Util::TaskDialog(
-				nullptr,
-				nullptr,
-				nullptr,
-				Util::GetResourceStringView<IDS_STRING102>().data(),
-				to_error_string(hr).c_str(),
-				TDCBF_CLOSE_BUTTON,
-				FAILED(hr) ? TD_ERROR_ICON : TD_INFORMATION_ICON,
-				nullptr
-			);
-		}
-		break;
-	}
-	case ExecutionParameters::CommandAction::Help:
-	{
-		hr = S_OK;
-		if (true)
-		{
-			Util::TaskDialog(
-				nullptr,
-				nullptr,
-				nullptr,
-				L"Help",
-				L"--help, -help, -h, /h, -?, /?\n--startup, -startup, /startup\n--shutdown, -shutdown, /shutdown\n--install, -i, /install, /i\n--uninstall, -u, /uninstall, /u",
-				TDCBF_OK_BUTTON,
-				TD_INFORMATION_ICON,
-				nullptr
-			);
-		}
-		break;
-	}
-	default:
-		hr = E_INVALIDARG;
-		if (true)
-		{
-			Util::TaskDialog(
-				nullptr,
-				nullptr,
-				nullptr,
-				Util::GetResourceStringView<IDS_STRING102>().data(),
-				to_error_string(hr).c_str(),
-				TDCBF_CLOSE_BUTTON,
-				TD_ERROR_ICON,
-				nullptr
-			);
-		}
-		break;
-	}
-
-	return hr;
 }

@@ -2,46 +2,60 @@
 #include "AccentOverrider.hpp"
 #include "GlassKernel.hpp"
 #include "uDWMProjection.hpp"
+#include "dwmcoreProjection.hpp"
 #include "Shared.hpp"
+#include "GlassEffectBrush.hpp"
 #include "GlassReflectionBrush.hpp"
 
 using namespace OpenGlass;
 namespace OpenGlass::AccentOverrider
 {
-	HRESULT STDMETHODCALLTYPE MyCAccent_UpdateAccentPolicy(
+	HRESULT MyCAccent_UpdateAccentPolicy(
 		uDWM::CAccent* This,
 		LPCRECT rect,
 		uDWM::ACCENT_POLICY* policy,
 		uDWM::CBaseGeometryProxy* geometry
 	);
-	HRESULT STDMETHODCALLTYPE MyCAccent__UpdateSolidFill(
+	HRESULT MyCAccent__UpdateSolidFill(
 		uDWM::CAccent* This,
 		uDWM::CRenderDataVisual* visual,
 		UINT color,
 		const D2D1_RECT_F& rect,
 		float opacity
 	);
-	bool STDMETHODCALLTYPE MyCAccentBlurBehind_IsBlurBehindDirty(
-		uDWM::CAccentBlurBehind* This,
-		const uDWM::CWindowData* data,
-		LPCRECT rectangle,
-		ULONG_PTR desktopId,
-		HWND hwnd
+	void MyCAccent_SetClipRegion(
+		uDWM::CAccent* This,
+		uDWM::CBaseGeometryProxy* geometry
+	);
+	void MyCAccent_Destructor(
+		uDWM::CAccent* This
 	);
 	decltype(&MyCAccent_UpdateAccentPolicy) g_CAccent_UpdateAccentPolicy_Org{ nullptr };
 	decltype(&MyCAccent__UpdateSolidFill) g_CAccent__UpdateSolidFill_Org{ nullptr };
-	decltype(&MyCAccentBlurBehind_IsBlurBehindDirty) g_CAccentBlurBehind_IsBlurBehindDirty_Org{ nullptr };
+	decltype(&MyCAccent_SetClipRegion) g_CAccent_SetClipRegion_Org{ nullptr };
+	decltype(&MyCAccent_Destructor) g_CAccent_Destructor_Org{ nullptr };
 
-	bool g_disableGlassHooks{ false };
+	struct CAccentInfo
+	{
+		winrt::com_ptr<uDWM::CBaseGeometryProxy> clipRegion;
+		winrt::com_ptr<uDWM::CRgnGeometryProxy> drawRegion;
+		winrt::com_ptr<uDWM::CRenderDataVisual> visual;
+	};
+	std::unordered_map<uDWM::CAccent*, CAccentInfo> g_accentClipRegions{};
 }
 
-HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent_UpdateAccentPolicy(
+HRESULT AccentOverrider::MyCAccent_UpdateAccentPolicy(
 	uDWM::CAccent* This,
 	LPCRECT rect,
 	uDWM::ACCENT_POLICY* policy,
 	uDWM::CBaseGeometryProxy* geometry
 )
 {
+	if (!Shared::g_overrideAccent)
+	{
+		return g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
+	}
+
 	if (
 		policy->AccentState != 1 &&
 		policy->AccentState != 3 &&
@@ -51,22 +65,13 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent_UpdateAccentPolicy(
 		return g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
 	}
 
-	HRESULT hr{ S_OK };
-	if (!Shared::g_overrideAccent)
-	{
-		hr = g_CAccent_UpdateAccentPolicy_Org(This, rect, policy, geometry);
-	}
-	else
-	{
-		auto accentPolicy = *policy;
-		accentPolicy.AccentState = 1;
-		accentPolicy.dwGradientColor = 0;
-		hr = g_CAccent_UpdateAccentPolicy_Org(This, rect, &accentPolicy, geometry);
-	}
+	auto accentPolicy = *policy;
+	accentPolicy.AccentState = 1;
+	accentPolicy.dwGradientColor = 0;
 
-	return hr;
+	return g_CAccent_UpdateAccentPolicy_Org(This, rect, &accentPolicy, geometry);
 }
-HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
+HRESULT AccentOverrider::MyCAccent__UpdateSolidFill(
 	uDWM::CAccent* This,
 	uDWM::CRenderDataVisual* visual,
 	UINT color,
@@ -74,69 +79,96 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
 	float opacity
 )
 {
-	if (!Shared::g_overrideAccent)
-	{
-		return g_CAccent__UpdateSolidFill_Org(
-			This,
-			visual,
-			color,
-			rect,
-			opacity
-		);
-	}
-
-	RETURN_IF_FAILED(visual->ClearInstructions());
-	winrt::com_ptr<uDWM::CRgnGeometryProxy> geometry{ nullptr };
-	RETURN_IF_FAILED(
-		uDWM::ResourceHelper::CreateGeometryFromHRGN(
-			wil::unique_hrgn
-			{
-				CreateRectRgn(
-					static_cast<LONG>(rect.left),
-					static_cast<LONG>(rect.top),
-					static_cast<LONG>(rect.right),
-					static_cast<LONG>(rect.bottom)
-				)
-			}.get(),
-			geometry.put()
-		)
+	const auto result = g_CAccent__UpdateSolidFill_Org(
+		This,
+		visual,
+		color,
+		rect,
+		opacity
 	);
 
-	const auto window = uDWM::TryGetWindowFromVisual(This);
+	if (!Shared::g_overrideAccent)
 	{
-		winrt::com_ptr<uDWM::CSolidColorLegacyMilBrushProxy> brush{ nullptr };
-		RETURN_IF_FAILED(
-			uDWM::CDesktopManager::GetInstance()->GetCompositor()->CreateSolidColorLegacyMilBrushProxy(
-				brush.put()
-			)
-		);
-
-		const auto opaque = Shared::IsTransparencyDisabled();
-		auto glassColor = GlassKernel::RealizeWindowColorization(
-			GlassKernel::GetBlendingBaseColor(opaque, false),
-			GlassKernel::GetBlendingSourceColor(true),
-			GlassKernel::GetColorizationBlendingOpacity(true, false),
-			opaque,
-			false
-		).effectiveBlendColor;
-		glassColor.a = GlassKernel::AlphaChannelReinterpreter(true, false).ToFloat();
-		RETURN_IF_FAILED(brush->Update(1.0, glassColor));
-		winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
-		RETURN_IF_FAILED(
-			uDWM::CDrawGeometryInstruction::Create(
-				brush.get(),
-				geometry.get(),
-				instruction.put()
-			)
-		);
-		RETURN_IF_FAILED(visual->AddInstruction(instruction.get()));
+		return result;
 	}
 
-	if (window)
+	const auto& accentPolicy = This->GetAccentPolicy();
+	if (accentPolicy.AccentState == 2)
 	{
+		return result;
+	}
+
+	const auto window = uDWM::TryGetWindowFromVisual(This);
+	if (!window)
+	{
+		visual->ClearInstructions();
+		return result;
+	}
+
+	auto data = window->GetData();
+	if (!data)
+	{
+		visual->ClearInstructions();
+		return result;
+	}
+
+	auto& accentInfo = g_accentClipRegions[This];
+	accentInfo.visual.copy_from(visual);
+
+	// indicates window should transition on maximized, so we can receive colorization updates
+	// this make permanent change to the attribute during its lifetime, until a update to the attribute is made
+	// is there any better way to implement it?
+	data->GetClientBlurAttributeReference() |= 8;
+
+	auto effectBrush = GlassEffectBrush::GetOrCreate(window);
+	const auto maximized = window->TreatAsMaximized(data);
+
+	{
+		winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
+		{
+			const auto drawRect = RectF::ToRectL(reinterpret_cast<uDWM::CSolidRectangleInstruction*>(visual->GetInstructions().views().front())->GetRectangle());
+			RETURN_IF_FAILED(
+				uDWM::ResourceHelper::CreateGeometryFromHRGN(
+					wil::unique_hrgn{ CreateRectRgnIndirect(&drawRect) }.get(),
+					accentInfo.drawRegion.put()
+				)
+			);
+			if (!effectBrush)
+			{
+				RETURN_IF_FAILED(
+					uDWM::CDesktopManager::GetInstance()->GetCompositor()->CreateSolidColorLegacyMilBrushProxy(
+						effectBrush.put()
+					)
+				);
+				auto glassColor = Color::sRGBToscRGB(
+					GlassKernel::RealizeWindowColorization(
+						GlassKernel::GetBaseColor(Shared::IsTransparencyDisabled(), maximized),
+						GlassKernel::GetSourceColor(true),
+						GlassKernel::GetColorizationOpacity(true, maximized),
+						Shared::IsTransparencyDisabled(),
+						false
+					).GetEffectivescRGBBlendColor(0.f),
+					0.f
+				);
+				glassColor.a = GlassKernel::AlphaChannelReinterpreter(true, maximized).ToFloat();
+				RETURN_IF_FAILED(effectBrush->Update(1.0, glassColor));
+			}
+
+			RETURN_IF_FAILED(
+				uDWM::CDrawGeometryInstruction::Create(
+					effectBrush.get(),
+					accentInfo.drawRegion.get(),
+					instruction.put()
+				)
+			);
+			RETURN_IF_FAILED(visual->ClearInstructions());
+			RETURN_IF_FAILED(visual->AddInstruction(instruction.get()));
+		}
+
 		if (
 			const auto brush = GlassReflectionBrush::GetOrCreate(
 				window,
+				2,
 				true
 			);
 			brush
@@ -145,13 +177,13 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
 			RETURN_IF_FAILED(
 				brush->Update(
 					(Shared::g_reflectionPolicy & Shared::ReflectionPolicy::NonClient) ?
-					Shared::g_reflectionIntensity :
+					GlassKernel::GetAdjustedReflectionIntensity(true, maximized) :
 					0.f,
 					GlassReflectionBrush::CalculateTargetViewport(
 						visual->GetLocalToParentVisualOffset(window->GetTransformParent()),
 						Shared::g_reflectionParallaxIntensity,
 						window->IsRTLMirrored(),
-						visual->GetWidth(),
+						window->GetWidth(),
 						visual->GetScale()
 					),
 					D2D1::RectF(),
@@ -167,86 +199,170 @@ HRESULT STDMETHODCALLTYPE AccentOverrider::MyCAccent__UpdateSolidFill(
 					nullptr
 				)
 			);
-			winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
 			RETURN_IF_FAILED(
 				uDWM::CDrawGeometryInstruction::Create(
 					brush.get(),
-					geometry.get(),
+					accentInfo.drawRegion.get(),
 					instruction.put()
 				)
 			);
 			RETURN_IF_FAILED(visual->AddInstruction(instruction.get()));
 		}
 	}
-	return S_OK;
+
+	if (
+		accentPolicy.IsClipRegionEffective() &&
+		accentInfo.clipRegion
+	)
+	{
+		for (auto& instruction : accentInfo.visual->GetInstructions().views())
+		{
+			auto& originalGeometry = reinterpret_cast<uDWM::CDrawGeometryInstruction*>(instruction)->GetGeometry();
+			if (originalGeometry)
+			{
+				originalGeometry->Release();
+				originalGeometry = nullptr;
+			}
+			if (accentInfo.clipRegion)
+			{
+				winrt::com_ptr<uDWM::CCombinedGeometryProxy> combinedGeometry{ nullptr };
+				RETURN_IF_FAILED(
+					uDWM::ResourceHelper::CreateCombinedGeometry(
+						accentInfo.clipRegion.get(),
+						accentInfo.drawRegion.get(),
+						D2D1_COMBINE_MODE_INTERSECT,
+						combinedGeometry.put()
+					)
+				);
+				originalGeometry = combinedGeometry.detach();
+			}
+			else
+			{
+				originalGeometry = accentInfo.drawRegion.get();
+				originalGeometry->AddRef();
+			}
+		}
+	}
+
+	return result;
 }
-bool STDMETHODCALLTYPE AccentOverrider::MyCAccentBlurBehind_IsBlurBehindDirty(
-	[[maybe_unused]] uDWM::CAccentBlurBehind* This,
-	[[maybe_unused]] const uDWM::CWindowData* data,
-	[[maybe_unused]] LPCRECT rectangle,
-	[[maybe_unused]] ULONG_PTR desktopId,
-	[[maybe_unused]] HWND hwnd
+void AccentOverrider::MyCAccent_SetClipRegion(
+	uDWM::CAccent* This,
+	uDWM::CBaseGeometryProxy* geometry
 )
 {
-	return false;
-}
+	if (!Shared::g_overrideAccent)
+	{
+		return g_CAccent_SetClipRegion_Org(This, geometry);
+	}
 
+	auto& accentInfo = g_accentClipRegions[This];
+	accentInfo.clipRegion.copy_from(geometry);
+
+	if (
+		const auto& accentPolicy = This->GetAccentPolicy();
+		accentPolicy.IsClipRegionEffective() &&
+		accentInfo.visual &&
+		accentInfo.drawRegion
+	)
+	{
+		for (auto& instruction : accentInfo.visual->GetInstructions().views())
+		{
+			auto& originalGeometry = reinterpret_cast<uDWM::CDrawGeometryInstruction*>(instruction)->GetGeometry();
+			if (originalGeometry)
+			{
+				originalGeometry->Release();
+				originalGeometry = nullptr;
+			}
+			if (accentInfo.clipRegion)
+			{
+				winrt::com_ptr<uDWM::CCombinedGeometryProxy> combinedGeometry{ nullptr };
+				THROW_IF_FAILED(
+					uDWM::ResourceHelper::CreateCombinedGeometry(
+						accentInfo.clipRegion.get(),
+						accentInfo.drawRegion.get(),
+						D2D1_COMBINE_MODE_INTERSECT,
+						combinedGeometry.put()
+					)
+				);
+				originalGeometry = combinedGeometry.detach();
+			}
+			else
+			{
+				originalGeometry = accentInfo.drawRegion.get();
+				originalGeometry->AddRef();
+			}
+			THROW_IF_FAILED(accentInfo.visual->UpdateRenderData());
+		}
+	}
+	return g_CAccent_SetClipRegion_Org(This, nullptr);
+}
+void AccentOverrider::MyCAccent_Destructor(
+	uDWM::CAccent* This
+)
+{
+	if (!Shared::g_overrideAccent)
+	{
+		return g_CAccent_Destructor_Org(This);
+	}
+	g_accentClipRegions.erase(This);
+	return g_CAccent_Destructor_Org(This);
+}
 void AccentOverrider::Update(GlassEngine::UpdateType type)
 {
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
 		Shared::g_overrideAccent = static_cast<bool>(GlassEngine::GetDwordFromRegistry(L"GlassOverrideAccent"));
+		if (!Shared::g_overrideAccent)
+		{
+			g_accentClipRegions.clear();
+		}
 	}
 }
 
 void AccentOverrider::Startup()
 {
-	DWORD value{ 0ul };
-	wil::reg::get_value_dword_nothrow(
-		GlassEngine::GetDwmLocalMachineKey(),
-		L"DisabledHooks",
-		&value
-	);
-	g_disableGlassHooks = (value & 2) != 0;
-
-	if (g_disableGlassHooks)
+	if (Shared::g_disabledHooks.test(Shared::DisabledHooks_AccentOverrider))
 	{
 		return;
 	}
 
 	uDWM::g_projectionArray.ApplyToVariable("CAccent::UpdateAccentPolicy", g_CAccent_UpdateAccentPolicy_Org);
 	uDWM::g_projectionArray.ApplyToVariable("CAccent::_UpdateSolidFill", g_CAccent__UpdateSolidFill_Org);
-	uDWM::g_projectionArray.ApplyToVariable("CAccentBlurBehind::IsBlurBehindDirty", g_CAccentBlurBehind_IsBlurBehindDirty_Org);
+	uDWM::g_projectionArray.ApplyToVariable("CAccent::SetClipRegion", g_CAccent_SetClipRegion_Org);
+	uDWM::g_projectionArray.ApplyToVariable("CAccent::~CAccent", g_CAccent_Destructor_Org);
 
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]() static
+	HookHelper::PatchFunctions(
+		std::initializer_list<HookHelper::DetourInfo>
 		{
-			HookHelper::Detours::Attach(&g_CAccent_UpdateAccentPolicy_Org, MyCAccent_UpdateAccentPolicy);
-			HookHelper::Detours::Attach(&g_CAccent__UpdateSolidFill_Org, MyCAccent__UpdateSolidFill);
-			if (uDWM::g_versionInfo.build < os::build_w11_22h2)
-			{
-				HookHelper::Detours::Attach(&g_CAccentBlurBehind_IsBlurBehindDirty_Org, MyCAccentBlurBehind_IsBlurBehindDirty);
-			}
-		})
+			{ &g_CAccent_UpdateAccentPolicy_Org, &MyCAccent_UpdateAccentPolicy },
+			{ &g_CAccent__UpdateSolidFill_Org, &MyCAccent__UpdateSolidFill },
+			{ &g_CAccent_SetClipRegion_Org, &MyCAccent_SetClipRegion },
+			{ &g_CAccent_Destructor_Org, &MyCAccent_Destructor },
+		},
+		true
 	);
 }
 
 void AccentOverrider::Shutdown()
 {
-	if (g_disableGlassHooks)
+	if (Shared::g_disabledHooks.test(Shared::DisabledHooks_AccentOverrider))
 	{
 		return;
 	}
 
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]() static
+	HookHelper::PatchFunctions(
+		std::initializer_list<HookHelper::DetourInfo>
 		{
-			HookHelper::Detours::Detach(&g_CAccent_UpdateAccentPolicy_Org, MyCAccent_UpdateAccentPolicy);
-			HookHelper::Detours::Detach(&g_CAccent__UpdateSolidFill_Org, MyCAccent__UpdateSolidFill);
-			if (uDWM::g_versionInfo.build < os::build_w11_22h2)
-			{
-				HookHelper::Detours::Detach(&g_CAccentBlurBehind_IsBlurBehindDirty_Org, MyCAccentBlurBehind_IsBlurBehindDirty);
-			}
-		})
+			{ &g_CAccent_UpdateAccentPolicy_Org, &MyCAccent_UpdateAccentPolicy },
+			{ &g_CAccent__UpdateSolidFill_Org, &MyCAccent__UpdateSolidFill },
+			{ &g_CAccent_SetClipRegion_Org, &MyCAccent_SetClipRegion },
+			{ &g_CAccent_Destructor_Org, &MyCAccent_Destructor },
+		},
+		false
 	);
+
+	SwitchToThread();
+
+	g_accentClipRegions.clear();
 }

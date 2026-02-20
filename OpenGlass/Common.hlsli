@@ -1,7 +1,13 @@
 #if !defined(COMMON_HLSL)
 #define COMMON_HLSL
 
-#define minp(type) min10##type
+#if defined(MINP_PREFIX)
+#   define MINP_CONCAT(a, b) a##b
+#   define minp(type) MINP_CONCAT(MINP_PREFIX, type)
+#else
+#   define minp(type) type
+#endif
+
 #define minfloat minp(float)
 #define minfloat2 minp(float2)
 #define minfloat3 minp(float3)

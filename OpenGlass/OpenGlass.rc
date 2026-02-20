@@ -34,8 +34,8 @@ IDB_REFLECTION          PNG                     "reflection.png"
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 2,4,3,2085
- PRODUCTVERSION 2,4,3,2085
+ FILEVERSION 2,5,0,2803
+ PRODUCTVERSION 2,5,0,2803
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -51,13 +51,13 @@ BEGIN
         BLOCK "040004b0"
         BEGIN
             VALUE "CompanyName", "ALTaleX"
-            VALUE "FileDescription", "Aero Glass extension for Desktop Window Manager"
-            VALUE "FileVersion", "2.4.3.2085"
+            VALUE "FileDescription", "Aero Glass Extension for Desktop Window Manager"
+            VALUE "FileVersion", "2.5.0.2803"
             VALUE "InternalName", "Aero Glass for Win10+"
-            VALUE "LegalCopyright", "Copyright (C) 2024-2025 ALTaleX"
+            VALUE "LegalCopyright", "Copyright (C) 2024-2026 ALTaleX531"
             VALUE "OriginalFilename", "OpenGlass.dll"
-            VALUE "ProductName", "Aero Glass for Win10+"
-            VALUE "ProductVersion", "2.4.3.2085"
+            VALUE "ProductName", "OpenGlass"
+            VALUE "ProductVersion", "2.5.0.2803"
         END
     END
     BLOCK "VarFileInfo"
@@ -65,6 +65,22 @@ BEGIN
         VALUE "Translation", 0x400, 1200
     END
 END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// RCDATA
+//
+
+IDR_RCDATA_AEROCOLORIZATION_PS RCDATA                  "AeroColorizationEffect.cso"
+
+IDR_RCDATA_BLUR_VS      RCDATA                  "Blur.VS.cso"
+
+IDR_RCDATA_BLUR_PS_BLURH RCDATA                  "Blur.PS_BlurH.cso"
+
+IDR_RCDATA_BLUR_PS_BLURV RCDATA                  "Blur.PS_BlurV.cso"
+
+IDR_RCDATA_BLUR_PS_BLURV_VISTA RCDATA                  "Blur.PS_BlurV_Vista.cso"
 
 #endif    // Neutral (Default) resources
 /////////////////////////////////////////////////////////////////////////////
@@ -82,18 +98,18 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
 // TEXTINCLUDE
 //
 
-1 TEXTINCLUDE 
+1 TEXTINCLUDE
 BEGIN
     "resource.h\0"
 END
 
-2 TEXTINCLUDE 
+2 TEXTINCLUDE
 BEGIN
     "#include ""winres.h""\r\n"
     "\0"
 END
 
-3 TEXTINCLUDE 
+3 TEXTINCLUDE
 BEGIN
     "\r\n"
     "\0"
@@ -104,30 +120,27 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 //
-// RCDATA
-//
-
-IDR_RCDATA1             RCDATA                  "AeroColorizationEffect.cso"
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
 // String Table
 //
 
 STRINGTABLE
 BEGIN
     IDS_STRING101           "OpenGlass 兼容性问题"
-    IDS_STRING102           "OpenGlass API 调用结果"
+    IDS_STRING102           "预留"
     IDS_STRING103           "显示详细信息"
     IDS_STRING104           "隐藏详细信息"
-    IDS_STRING105           "该版本的 OpenGlass 不支持您的系统。\n仍然继续吗？"
-    IDS_STRING106           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM (0x%X)。\n\n我们尝试从微软服务器下载合适的符号文件，但是失败了。\n您现在想再试一次吗？\n\n!!! 不要反馈因为这不是BUG !!!"
-    IDS_STRING107           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM (0x%X)。\n\nDbgHelp API 在解析符号过程中出现错误。\n您现在想再试一次吗？"
-    IDS_STRING108           "OpenGlass 不知道如何挂钩您当前系统版本的 DWM 因必要符号的缺失。\n\n!!! 这不是BUG而是目前不支持你的系统 !!!"
-    IDS_STRING109           "DWM 在注入后不到 30 秒崩溃，DLL 注入已暂停。\n\n要中止 OpenGlass 服务进程以结束之后所有的注入，请单击“中止”。\n要再试一次，请单击“重试”。\n要排除这个 DWM 进程，请点击“忽略”。"
-    IDS_STRING110           "该任务会为您将 DLL 注入 DWM，并确保 OpenGlass 能正确加载用户配置。"
+    IDS_STRING105           "该版本的 OpenGlass 不支持您的系统版本。\n是否仍要继续？"
+    IDS_STRING106           "OpenGlass 无法挂钩您当前系统版本的 DWM (0x%X)。\n\n我们已尝试从微软服务器下载对应的符号文件，但是失败了。\n您现在想重试吗？"
+    IDS_STRING107           "OpenGlass 无法挂钩您当前系统版本的 DWM (0x%X)。\n\n我们已尝试解析符号文件，但是失败了。\n您现在想重试吗？"
+    IDS_STRING108           "OpenGlass 无法挂钩您当前系统版本的 DWM。\n\n!!! 这不是BUG而是尚未支持你的系统 !!!"
+    IDS_STRING109           "DWM 在注入后不到 15 秒就发生崩溃，DLL 注入已暂停。\n\n要关闭 OpenGlass 服务进程并停止所有后续注入，请单击“中止”。\n要再次尝试注入，请单击“重试”。\n要排除此 DWM 进程，请点击“忽略”。"
+    IDS_STRING110           "预留"
     IDS_STRING111           "正在下载符号文件..."
+END
+
+STRINGTABLE
+BEGIN
+    IDS_STRING112           "稍等..."
 END
 
 #endif    // Chinese (Simplified, China) resources
@@ -148,16 +161,21 @@ LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL
 STRINGTABLE
 BEGIN
     IDS_STRING101           "OpenGlass 相容性問題"
-    IDS_STRING102           "OpenGlass API 呼叫結果"
+    IDS_STRING102           "預留"
     IDS_STRING103           "顯示詳細資訊"
     IDS_STRING104           "隱藏詳細資訊"
-    IDS_STRING105           "該版本的 OpenGlass 不支援閣下的系統。\n仍然繼續嗎？"
-    IDS_STRING106           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM (0x%X)。\n\n我們嘗試從 Microsoft 伺服器下載合適的符號檔案，但是失敗了。\n閣下現在想再試一次嗎？\n\n!!! 不要報告因爲這不是BUG !!!"
-    IDS_STRING107           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM (0x%X)。\n\nDbgHelp API 在解析符號過程中出現錯誤。\n閣下現在想再試一次嗎？"
-    IDS_STRING108           "OpenGlass 不知道如何鈎住閣下當前系統版本的 DWM 因必要符號之缺失。\n\n!!! 這不是BUG而是目前不支援你的系統 !!!"
-    IDS_STRING109           "DWM 在注入后不到 30 秒崩潰，DLL 注入已暫停。\n\n要中止 OpenGlass 服務進程以結束過後一切之注入，請按一下“中止”。\n要再試一次，請按一下“重試”。\n要排除這個 DWM 進程，請按一下“忽略”。"
-    IDS_STRING110           "該任務會為閣下將 DLL 注入 DWM，並確保 OpenGlass 能正確加載用戶設定。"
+    IDS_STRING105           "該版本的 OpenGlass 不支援閣下的系統版本。\n是否仍要繼續？"
+    IDS_STRING106           "OpenGlass 無法掛鉤閣下當前系統版本的 DWM (0x%X) 。\n\n我們已嘗試從 Microsoft 伺服器下載對應的符號檔案，但是失敗了。\n閣下現在想重試嗎？"
+    IDS_STRING107           "OpenGlass 無法掛鉤閣下當前系統版本的 DWM (0x%X) 。\n\n我們已嘗試解析符號檔案，但是失敗了。\n閣下現在想重試嗎？"
+    IDS_STRING108           "OpenGlass 無法掛鉤閣下當前系統版本的 DWM。\n\n!!! 這不是BUG而是目尚未支援你的系統 !!!"
+    IDS_STRING109           "DWM 在注入後不到 15 秒即崩潰，DLL 注入已暫停。\n\n要關閉 OpenGlass 服務進程並停止所有後續注入，請按一下“中止”。\n要再次嘗試注入，請按一下“重試”。\n要排除這個 DWM 進程，請按一下“忽略”。"
+    IDS_STRING110           "預留"
     IDS_STRING111           "正在下載符號檔案..."
+END
+
+STRINGTABLE
+BEGIN
+    IDS_STRING112           "稍等..."
 END
 
 #endif    // Chinese (Traditional, Taiwan) resources
@@ -178,16 +196,21 @@ LANGUAGE LANG_ENGLISH, SUBLANG_NEUTRAL
 STRINGTABLE
 BEGIN
     IDS_STRING101           "OpenGlass Incompatibility issue"
-    IDS_STRING102           "OpenGlass API result"
+    IDS_STRING102           "Reserved"
     IDS_STRING103           "Show details"
     IDS_STRING104           "Hide details"
     IDS_STRING105           "Your system version is NOT supported by this version of OpenGlass. \nContinue anyway?"
-    IDS_STRING106           "OpenGlass does not know how to hook your version of DWM (0x%X).\n\nWe tried to download appropriate symbols files from Microsoft server but it failed.\nDo you want to retry it now?\n\n!!! DO NOT REPORT THIS BECAUSE THIS IS NOT A BUG !!!"
-    IDS_STRING107           "OpenGlass does not know how to hook your version of DWM (0x%X).\n\nThe DbgHelp API fails during symbol parsing.\nDo you want to retry it now?"
-    IDS_STRING108           "OpenGlass does not know how to hook your version of DWM due to missing required symbols.\n\n!!! THIS IS NOT A BUG BUT YOUR SYSTEM IS NOT YET SUPPORTED !!!"
-    IDS_STRING109           "DWM crashed less than 30 seconds after injection, DLL injection has been suspended.\n\nClick ""Abort"" to shut down the OpenGlass service process and end all subsequent injections.\nClick ""Retry"" to inject again.\nClick ""Ignore"" to exclude this DWM process."
-    IDS_STRING110           "This task injects DLL into DWM for you and also maintains that user settings are correctly loaded."
+    IDS_STRING106           "OpenGlass does not know how to hook your version of DWM (0x%X).\n\nWe tried to download appropriate symbols files from Microsoft server but it failed.\nDo you want to retry it now?"
+    IDS_STRING107           "OpenGlass does not know how to hook your version of DWM (0x%X).\n\nWe tried to parse symbols files but it failed.\nDo you want to retry it now?"
+    IDS_STRING108           "OpenGlass does not know how to hook your version of DWM.\n\n!!! THIS IS NOT A BUG BUT YOUR SYSTEM IS NOT YET SUPPORTED !!!"
+    IDS_STRING109           "DWM crashed less than 15 seconds after injection, DLL injection has been suspended.\n\nClick ""Abort"" to shut down the OpenGlass service process and end all subsequent injections.\nClick ""Retry"" to inject again.\nClick ""Ignore"" to exclude this DWM process."
+    IDS_STRING110           "Reserved"
     IDS_STRING111           "Downloading symbol files..."
+END
+
+STRINGTABLE
+BEGIN
+    IDS_STRING112           "Pending..."
 END
 
 #endif    // English (Neutral) resources

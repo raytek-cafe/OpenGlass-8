@@ -1,25 +1,25 @@
 #pragma once
-#include "D2DBuffer.hpp"
+#include "framework.hpp"
 #include "dwmcoreProjection.hpp"
+#include "Buffer2D.hpp"
 
 namespace OpenGlass
 {
 	class CGlassSafetyZoneLayer
 	{
-		CD2DBuffer m_safetyZoneBufferVertical{};
-		CD2DBuffer m_safetyZoneBufferHorizontal{};
+		CBuffer2D m_safetyZoneBufferVertical{};
+		CBuffer2D m_safetyZoneBufferHorizontal{};
 		D2D1_RECT_U m_safetyZoneBounds[4]{};
-		winrt::com_ptr<ID2D1Bitmap1> m_renderTargetBitmap{};
+		winrt::com_ptr<ID3D11Texture2D> m_renderTargetTexture{};
 	public:
 		HRESULT Push(
 			ID2D1DeviceContext* context,
-			ID2D1Bitmap1* renderTargetBitmap,
 			const D2D1_MATRIX_3X2_F& deviceTransform,
 			const D2D1_RECT_F& originalPixelRectangle,
-			float extendedAmount,
+			float expansion,
 			D2D1_RECT_F& extendedPixelRectangle
 		);
 		void Pop();
-		ID2D1Bitmap1* GetOwner() const { return m_renderTargetBitmap.get(); }
+		ID3D11Texture2D* GetOwner() const { return m_renderTargetTexture.get(); }
 	};
 }

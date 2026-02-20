@@ -5,6 +5,7 @@
 #include "OpenGlass.hpp"
 #include "HookHelper.hpp"
 #include "SymbolParser.hpp"
+#include "SymbolDownloader.hpp"
 #include "OSHelper.hpp"
 #include "uDWMProjection.hpp"
 #include "dwmcoreProjection.hpp"
@@ -16,16 +17,6 @@ namespace OpenGlass
 	void Shutdown();
 	bool g_startup{ false };
 
-	LONG NTAPI TopLevelExceptionFilter(EXCEPTION_POINTERS* exceptionInfo);
-	LPTOP_LEVEL_EXCEPTION_FILTER g_old{ nullptr };
-
-	[[noreturn]] VOID WINAPI MyRaiseFailFastException(
-		_In_opt_ PEXCEPTION_RECORD pExceptionRecord,
-		_In_opt_ PCONTEXT pContextRecord,
-		_In_ DWORD dwFlags
-	);
-	decltype(&MyRaiseFailFastException) g_RaiseFailFastException_Org{ nullptr };
-
 	_Function_class_(EFFECTIVE_POWER_MODE_CALLBACK)
 	VOID CALLBACK EffectivePowerModeCallback(
 		EFFECTIVE_POWER_MODE mode,
@@ -33,13 +24,13 @@ namespace OpenGlass
 	);
 	LRESULT CALLBACK DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	HWND g_notificationWindow{ nullptr };
-	UINT g_msgHotKeyStateChanged{ RegisterWindowMessageW(L"OpenGlassHotKeyStateChanged")};
 	PVOID g_powerNotify{ nullptr };
 	WNDPROC g_oldWndProc{ nullptr };
 
 	DWORD SymbolLoaderUIThreadEntryPoint(PVOID);
 	bool g_asyncTaskDialogCreated{ false };
 	HWND g_symbolDownloaderHwnd{ nullptr };
+	bool g_progressIndetermine{ false };
 	ULONGLONG g_progressCompleted{ 0 };
 	ULONGLONG g_progressPreviouslyCompleted{ 0 };
 	const ULONGLONG g_progressTotal{ 200 };
@@ -52,94 +43,15 @@ namespace OpenGlass
 		Paused,
 	};
 	auto g_status = DownloaderStatus::None;
+	std::wstring g_currentlyDownloadingSymbol{};
+	CDownloadContext* g_downloaderContext{};
 
 	bool InitializeProjectionBySymbols();
-	bool SymEventCallback(PIMAGEHLP_CBA_EVENTW event);
+	void SymbolDownloaderCallback(const CDownloadProgress& progress);
 	bool g_symbolIsDownloading{ false };
 	bool g_symbolRequiresDownloading{ false };
 	bool g_symbolDownloadCompleted{ false };
 	std::wstring g_detailsInfo{};
-}
-
-LONG NTAPI OpenGlass::TopLevelExceptionFilter(EXCEPTION_POINTERS* exceptionInfo)
-{
-	DWORD value{ 0ul };
-	wil::reg::get_value_dword_nothrow(
-		GlassEngine::GetDwmLocalMachineKey(),
-		L"DisableMemoryDump",
-		&value
-	);
-
-	if (value)
-	{
-		// DWM wont exit after returning,
-		// here we manually terminate the process
-		ExitProcess(exceptionInfo->ExceptionRecord->ExceptionCode);
-	}
-
-	const auto dumpFolder = Util::make_current_folder_file(L"dumps");
-	if (!PathFileExistsW(dumpFolder.get()))
-	{
-		FAIL_FAST_IF_WIN32_BOOL_FALSE(CreateDirectoryW(dumpFolder.get(), nullptr));
-	}
-
-	WCHAR dumpFileName[MAX_PATH]{};
-	SYSTEMTIME localTime{};
-	GetLocalTime(&localTime);
-	swprintf_s(
-		dumpFileName,
-		L"dumps\\minidump-%04d-%02d-%02d-%02d-%02d-%02d.dmp",
-		localTime.wYear,
-		localTime.wMonth,
-		localTime.wDay,
-		localTime.wHour,
-		localTime.wMinute,
-		localTime.wSecond
-	);
-
-	wil::unique_hfile fileHandle
-	{
-		CreateFile2(
-			Util::make_current_folder_file(dumpFileName).get(),
-			GENERIC_WRITE,
-			FILE_SHARE_READ,
-			CREATE_ALWAYS,
-			nullptr
-		)
-	};
-	FAIL_FAST_IF(!fileHandle.is_valid());
-
-	MINIDUMP_EXCEPTION_INFORMATION minidumpExceptionInfo{ GetCurrentThreadId(), exceptionInfo, FALSE };
-	FAIL_FAST_IF_WIN32_BOOL_FALSE(
-		MiniDumpWriteDump(
-			GetCurrentProcess(),
-			GetCurrentProcessId(),
-			fileHandle.get(),
-			static_cast<MINIDUMP_TYPE>(
-				MINIDUMP_TYPE::MiniDumpWithProcessThreadData |
-				MINIDUMP_TYPE::MiniDumpWithThreadInfo |
-				MINIDUMP_TYPE::MiniDumpWithFullMemory |
-				MINIDUMP_TYPE::MiniDumpWithUnloadedModules
-				),
-			&minidumpExceptionInfo,
-			nullptr,
-			nullptr
-		)
-	);
-
-	// DWM wont exit after returning,
-	// here we manually terminate the process
-	ExitProcess(exceptionInfo->ExceptionRecord->ExceptionCode);
-}
-
-[[noreturn]] VOID WINAPI OpenGlass::MyRaiseFailFastException(
-	_In_opt_ PEXCEPTION_RECORD pExceptionRecord,
-	_In_opt_ [[maybe_unused]] PCONTEXT pContextRecord,
-	_In_ [[maybe_unused]] DWORD dwFlags
-)
-{
-	THROW_HR_IF_NULL(E_INVALIDARG, pExceptionRecord);
-	THROW_HR(static_cast<HRESULT>(pExceptionRecord->ExceptionInformation[0]));
 }
 
 _Function_class_(EFFECTIVE_POWER_MODE_CALLBACK)
@@ -148,7 +60,7 @@ VOID CALLBACK OpenGlass::EffectivePowerModeCallback(
 	[[maybe_unused]] PVOID context
 )
 {
-	if (mode < (os::buildNumber < os::build_w11_24h2 ? 1 : 2))
+	if (mode < (os::buildNumber < os::build_w11_24h2 ? EffectivePowerModeBetterBattery : EffectivePowerModeBalanced))
 	{
 		Shared::g_xxSaver = true;
 	}
@@ -161,61 +73,23 @@ VOID CALLBACK OpenGlass::EffectivePowerModeCallback(
 
 LRESULT CALLBACK OpenGlass::DwmNotificationWndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	constexpr UINT c_hotkeyId = 114514;
-	if (uMsg == g_msgHotKeyStateChanged)
-	{
-		if (wParam)
-		{
-			LOG_IF_WIN32_BOOL_FALSE(
-				RegisterHotKey(
-					hWnd,
-					c_hotkeyId,
-					MOD_NOREPEAT | MOD_CONTROL | MOD_SHIFT | MOD_WIN,
-					'Q'
-				)
-			);
-		}
-		else
-		{
-			LOG_IF_WIN32_BOOL_FALSE(
-				UnregisterHotKey(
-					hWnd,
-					c_hotkeyId
-				)
-			);
-		}
-
-		return 0;
-	}
 	switch (uMsg)
 	{
-		case WM_HOTKEY:
-		{
-			if (wParam == c_hotkeyId)
-			{
-				THROW_WIN32(ERROR_CANCELLED);
-			}
-			break;
-		}
 		case WM_CLOSE:
 		{
-			LOG_IF_WIN32_BOOL_FALSE(
-				UnregisterHotKey(
-					hWnd,
-					c_hotkeyId
-				)
-			);
 			g_notificationWindow = nullptr;
 			break;
 		}
 		case WM_WININICHANGE:
 		case WM_DWMCOLORIZATIONCOLORCHANGED: // accent color changed
 		{
+			Util::ClearMessageQueue(hWnd, uMsg);
 			GlassEngine::Update(GlassEngine::UpdateType::Backdrop);
 			break;
 		}
 		case WM_THEMECHANGED: // theme switched, we can handle this to load our custom theme atlas
 		{
+			Util::ClearMessageQueue(hWnd, uMsg);
 			GlassEngine::Update(GlassEngine::UpdateType::Theme);
 			break;
 		}
@@ -340,8 +214,9 @@ DWORD OpenGlass::SymbolLoaderUIThreadEntryPoint(PVOID)
 			auto instruction = Util::GetResourceString<IDS_STRING111>();
 			instruction.pop_back();
 			instruction += (g_progressPreviouslyCompleted < 100 ? L" (1/2)" : L" (2/2)");
-			const auto content = (g_progressPreviouslyCompleted < 100 ? L"uDWM.pdb" : L"dwmcore.pdb") + (g_status == DownloaderStatus::Indeterminate ? std::wstring{} : (L" (" + std::to_wstring(actualProgress)) + L"%)");
 			SendMessageW(hwnd, TDM_SET_ELEMENT_TEXT, TDE_MAIN_INSTRUCTION, reinterpret_cast<LPARAM>(instruction.c_str()));
+
+			const auto content = g_currentlyDownloadingSymbol + (g_status == DownloaderStatus::Indeterminate ? Util::GetResourceString<IDS_STRING112>() : (g_progressIndetermine ? L"" : (L"(" + std::to_wstring(actualProgress)) + L"%)"));
 			SendMessageW(hwnd, TDM_SET_ELEMENT_TEXT, TDE_CONTENT, reinterpret_cast<LPARAM>(content.c_str()));
 
 			break;
@@ -390,64 +265,28 @@ DWORD OpenGlass::SymbolLoaderUIThreadEntryPoint(PVOID)
 	return S_OK;
 }
 
-bool OpenGlass::SymEventCallback(PIMAGEHLP_CBA_EVENTW event)
+void OpenGlass::SymbolDownloaderCallback(const CDownloadProgress& progress)
 {
-	std::wstring_view description{ event->desc };
-	if (!description.starts_with(L"DBGHELP"))
-	{
-		g_detailsInfo.append(description);
-	}
+	g_currentlyDownloadingSymbol = {};
+	g_currentlyDownloadingSymbol.append(g_downloaderContext->pdbFileName);
+	g_currentlyDownloadingSymbol.append(L" - ");
 
-	if (std::wcsstr(event->desc, L"HTTPGET: "))
+	if (progress.downloadedBytes)
 	{
-		g_symbolIsDownloading = true;
-		g_symbolRequiresDownloading = true;
-		g_progressCompleted = g_progressPreviouslyCompleted;
-		g_status = DownloaderStatus::Indeterminate;
+		g_currentlyDownloadingSymbol += std::to_wstring(progress.downloadedBytes);
+		g_currentlyDownloadingSymbol.append(L" bytes ");
+		g_status = DownloaderStatus::Normal;
 
-		if (!g_asyncTaskDialogCreated)
+		if (progress.percent >= 0.0)
 		{
-			g_asyncTaskDialogCreated = true;
-			[[maybe_unused]] wil::unique_handle uiThread
-			{
-				CreateThread(
-					nullptr,
-					0,
-					SymbolLoaderUIThreadEntryPoint,
-					nullptr,
-					0,
-					nullptr
-				)
-			};
-		}
-	}
-	if (g_symbolIsDownloading)
-	{
-		if (auto end = std::wcsstr(event->desc, L" percent"); end)
-		{
-			WCHAR number[12]{};
-			auto begin = end;
-			while ((*(--begin)) != L' ');
-			begin += 1;
-			// "\b\b\b\b\b\b\b\b\b\b\b\b 100 percent"
-			std::wmemcpy(number, begin, std::min(std::size(number), static_cast<size_t>(end - begin + 1)));
-			g_progressCompleted = g_progressPreviouslyCompleted + _wtol(number);
-			g_status = DownloaderStatus::Normal;
+			g_progressIndetermine = false;
+			g_progressCompleted = g_progressPreviouslyCompleted + static_cast<int>(progress.percent);
 		}
 		else
 		{
-			g_status = DownloaderStatus::Indeterminate;
+			g_progressIndetermine = true;
 		}
 	}
-	if (std::wcsstr(event->desc, L"copied"))
-	{
-		g_symbolIsDownloading = false;
-		g_progressCompleted = g_progressPreviouslyCompleted + 100;
-		g_status = DownloaderStatus::None;
-		g_symbolDownloadCompleted = true;
-	}
-
-	return false;
 }
 
 bool OpenGlass::InitializeProjectionBySymbols()
@@ -493,16 +332,74 @@ bool OpenGlass::InitializeProjectionBySymbols()
 			}
 		});
 
-		const auto parser = std::make_unique<CSymbolParser>(SymEventCallback);
+		const auto udwmModuleHandle = GetModuleHandleW(L"uDWM.dll");
+		const auto dwmcoreModuleHandle = GetModuleHandleW(L"dwmcore.dll");
+		// Keep writable caches out of the installation root.
+		// The installer grants Window Manager (S-1-5-90-0) write permissions to this subdirectory.
+		const auto symbolPath = Util::make_current_folder_file(L"symbols");
+		if (!PathFileExistsW(symbolPath.get()))
+		{
+			wil::CreateDirectoryDeep(symbolPath.get());
+		}
+		const auto symbolServerBase = L"https://msdl.microsoft.com/download/symbols/";
+		const auto downloader = std::make_unique<CSymbolDownloader>();
+		const auto parser = std::make_unique<CSymbolParser>(symbolPath.get());
 		HRESULT hr{ S_OK };
 
-		do
+		const auto showSymbolDownloaderUI = []()
+		{
+			g_symbolIsDownloading = true;
+			g_symbolRequiresDownloading = true;
+			g_progressCompleted = g_progressPreviouslyCompleted;
+			g_status = DownloaderStatus::Indeterminate;
+
+			if (!g_asyncTaskDialogCreated)
+			{
+				g_asyncTaskDialogCreated = true;
+				[[maybe_unused]] wil::unique_handle uiThread
+				{
+					CreateThread(
+						nullptr,
+						0,
+						SymbolLoaderUIThreadEntryPoint,
+						nullptr,
+						0,
+						nullptr
+					)
+				};
+			}
+		};
+
+		for(;;)
 		{
 			g_progressPreviouslyCompleted = 0;
 			g_symbolDownloadCompleted = false;
 			g_symbolRequiresDownloading = false;
 			g_detailsInfo.clear();
-			hr = parser->LoadAndParse(L"uDWM.dll", uDWM::ParserCallback);
+			hr = parser->ParsePdb(udwmModuleHandle, uDWM::SymbolParserCallback);
+			if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+			{
+				showSymbolDownloaderUI();
+
+				hr = DownloadSymbolForModuleAsync(
+					*downloader,
+					udwmModuleHandle,
+					symbolServerBase,
+					symbolPath.get(),
+					&g_downloaderContext,
+					SymbolDownloaderCallback
+				).get();
+				g_symbolIsDownloading = false;
+				g_status = DownloaderStatus::Indeterminate;
+
+				if (SUCCEEDED(hr))
+				{
+					g_progressCompleted = g_progressPreviouslyCompleted + 100;
+					g_currentlyDownloadingSymbol = {};
+					g_symbolDownloadCompleted = true;
+					hr = parser->ParsePdb(udwmModuleHandle, uDWM::SymbolParserCallback);
+				}
+			}
 			if (FAILED(hr))
 			{
 				const auto contentTemplate = g_symbolRequiresDownloading && !g_symbolDownloadCompleted ? Util::GetResourceStringView<IDS_STRING106>() : Util::GetResourceStringView<IDS_STRING107>();
@@ -536,15 +433,38 @@ bool OpenGlass::InitializeProjectionBySymbols()
 			{
 				break;
 			}
-		} while (true);
+		}
 
-		do
+		for (;;)
 		{
 			g_progressPreviouslyCompleted = 100;
 			g_symbolDownloadCompleted = false;
 			g_symbolRequiresDownloading = false;
 			g_detailsInfo.clear();
-			hr = parser->LoadAndParse(L"dwmcore.dll", dwmcore::ParserCallback);
+			hr = parser->ParsePdb(dwmcoreModuleHandle, dwmcore::SymbolParserCallback);
+			if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+			{
+				showSymbolDownloaderUI();
+
+				hr = DownloadSymbolForModuleAsync(
+					*downloader,
+					dwmcoreModuleHandle,
+					symbolServerBase,
+					symbolPath.get(),
+					&g_downloaderContext,
+					SymbolDownloaderCallback
+				).get();
+				g_symbolIsDownloading = false;
+				g_status = DownloaderStatus::Indeterminate;
+
+				if (SUCCEEDED(hr))
+				{
+					g_progressCompleted = g_progressPreviouslyCompleted + 100;
+					g_currentlyDownloadingSymbol = {};
+					g_symbolDownloadCompleted = true;
+					hr = parser->ParsePdb(dwmcoreModuleHandle, dwmcore::SymbolParserCallback);
+				}
+			}
 			if (FAILED(hr))
 			{
 				const auto contentTemplate = g_symbolRequiresDownloading && !g_symbolDownloadCompleted ? Util::GetResourceStringView<IDS_STRING106>() : Util::GetResourceStringView<IDS_STRING107>();
@@ -578,7 +498,7 @@ bool OpenGlass::InitializeProjectionBySymbols()
 			{
 				break;
 			}
-		} while (true);
+		}
 	}
 
 	std::string missingFunctionsOrVariables{};
@@ -592,7 +512,7 @@ bool OpenGlass::InitializeProjectionBySymbols()
 
 		std::unique_ptr<WCHAR[]> convertedMissingInfo{};
 		THROW_IF_FAILED(Util::MB2WC(convertedMissingInfo, missingFunctionsOrVariables.c_str(), static_cast<int>(missingFunctionsOrVariables.size())));
-		
+
 		config.hwndParent = nullptr;
 		config.pszMainInstruction = mainInstruction.data();
 		config.pszContent = content.data();
@@ -635,6 +555,14 @@ DWORD WINAPI OpenGlass::UnInitializationThreadEntryPoint(PVOID)
 
 void OpenGlass::Startup()
 {
+	if (GetAsyncKeyState(VK_CONTROL) & 0x8000)
+	{
+		return;
+	}
+
+	// just wait patiently, in case the dwm notification window is not ready...
+	while (!(g_notificationWindow = FindWindowW(L"DWM", nullptr))) { Sleep(50); }
+
 	wil::SetResultLoggingCallback([](const wil::FailureInfo& failure) static noexcept
 	{
 		WCHAR logMessage[MAX_PATH]{};
@@ -649,26 +577,16 @@ void OpenGlass::Startup()
 	THROW_IF_FAILED(RoInitialize(RO_INIT_MULTITHREADED));
 	wil::unique_rouninitialize_call wrtScope{};
 
-	g_old = SetUnhandledExceptionFilter(TopLevelExceptionFilter);
-
-	#pragma warning(suppress : 6387)
-	g_RaiseFailFastException_Org = reinterpret_cast<decltype(g_RaiseFailFastException_Org)>(GetProcAddress(GetModuleHandleW(L"kernelbase.dll"), "RaiseFailFastException"));
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]() static
-		{
-			HookHelper::Detours::Attach(&g_RaiseFailFastException_Org, MyRaiseFailFastException);
-		})
-	);
-
-	constexpr std::array supportList
-	{
-		os::build_w10_2004,
-		os::build_w11_21h2,
-		os::build_w11_22h2,
-		os::build_w11_24h2,
-	};
-
 	if (
+		constexpr std::array supportList
+		{
+			os::build_w10_1809,
+			os::build_w10_1903,
+			os::build_w10_2004,
+			os::build_w11_21h2,
+			os::build_w11_22h2,
+			os::build_w11_24h2,
+		};
 		std::find(supportList.begin(), supportList.end(), uDWM::g_versionInfo.build) == supportList.end() ||
 		std::find(supportList.begin(), supportList.end(), dwmcore::g_versionInfo.build) == supportList.end()
 	)
@@ -692,15 +610,20 @@ void OpenGlass::Startup()
 		}
 	}
 
+	//SYSTEM_POWER_CAPABILITIES powerCaps{};
+	//if (GetPwrCapabilities(&powerCaps) && powerCaps.ThermalControl)
+	//{
+	//	// we are not running in a virtual machine and thermal control is supported
+	//}
+
 	if (!InitializeProjectionBySymbols())
 	{
 		return;
 	}
 
-	// just wait patiently, in case the dwm notification window is not ready...
-	while (!(g_notificationWindow = FindWindowW(L"DWM", nullptr))) { Sleep(5); }
+	GlassEngine::LoadRegistry(false);
 
-	// make sure our third-party ui creators can send message to dwm
+	// make sure guis can send message to dwm
 	THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_DWMCOLORIZATIONCOLORCHANGED, MSGFLT_ALLOW, nullptr));
 
 	THROW_IF_WIN32_BOOL_FALSE(WTSRegisterSessionNotification(g_notificationWindow, NOTIFY_FOR_THIS_SESSION));
@@ -714,21 +637,19 @@ void OpenGlass::Startup()
 		)
 	);
 	THROW_LAST_ERROR_IF(g_oldWndProc == 0);
-	SendMessageW(g_notificationWindow, g_msgHotKeyStateChanged, TRUE, 0);
 
 	THROW_IF_FAILED(
 		PowerRegisterForEffectivePowerModeNotifications(
-			EFFECTIVE_POWER_MODE_V2,
+			EFFECTIVE_POWER_MODE_V1,
 			EffectivePowerModeCallback,
 			nullptr,
 			&g_powerNotify
 		)
 	);
 
-	GlassEngine::LoadRegistry(false);
 	GlassEngine::Startup();
 
-#if defined(_DEBUG) || defined(BUILD_BETA)
+#if defined(_DEBUG)
 	winrt::com_ptr<IDCompositionDeviceDebug> debugDevice{ nullptr };
 	uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(
 		debugDevice.put()
@@ -736,7 +657,9 @@ void OpenGlass::Startup()
 	debugDevice->EnableDebugCounters();
 #endif // _DEBUG
 
-	GlassEngine::RedrawAll();
+	/*DWORD broadcastInfo{ BSM_APPLICATIONS };
+	BroadcastSystemMessageW(BSF_IGNORECURRENTTASK | BSF_FORCEIFHUNG | BSF_ALLOWSFW, &broadcastInfo, WM_THEMECHANGED, 0, 0);
+	RedrawWindow(GetShellWindow(), nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE);*/
 
 	g_startup = true;
 	return;
@@ -744,25 +667,13 @@ void OpenGlass::Startup()
 
 void OpenGlass::Shutdown()
 {
-	if (!g_startup)
+	if (!g_notificationWindow)
 	{
 		return;
 	}
 
-#if defined(_DEBUG) || defined(BUILD_BETA)
-	winrt::com_ptr<IDCompositionDeviceDebug> debugDevice{ nullptr };
-	uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(
-		debugDevice.put()
-	);
-	debugDevice->DisableDebugCounters();
-#endif // _DEBUG
-
-	g_startup = false;
-
-	if (g_notificationWindow)
+	if (g_startup)
 	{
-		SendMessageW(g_notificationWindow, g_msgHotKeyStateChanged, FALSE, 0);
-
 		THROW_LAST_ERROR_IF(SetWindowLongPtrW(g_notificationWindow, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_oldWndProc)) == 0);
 		g_oldWndProc = nullptr;
 
@@ -771,24 +682,28 @@ void OpenGlass::Shutdown()
 
 		THROW_IF_WIN32_BOOL_FALSE(ChangeWindowMessageFilterEx(g_notificationWindow, WM_DWMCOLORIZATIONCOLORCHANGED, MSGFLT_DISALLOW, nullptr));
 
-		g_notificationWindow = nullptr;
+		THROW_IF_FAILED(
+			PowerUnregisterFromEffectivePowerModeNotifications(g_powerNotify)
+		);
+		g_powerNotify = nullptr;
+
+		GlassEngine::Shutdown();
+		GlassEngine::UnloadRegistry();
+
+#if defined(_DEBUG)
+		winrt::com_ptr<IDCompositionDeviceDebug> debugDevice{ nullptr };
+		uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(
+			debugDevice.put()
+		);
+		debugDevice->DisableDebugCounters();
+#endif // _DEBUG
+
+		/*DWORD broadcastInfo{ BSM_APPLICATIONS };
+		BroadcastSystemMessageW(BSF_IGNORECURRENTTASK | BSF_FORCEIFHUNG | BSF_ALLOWSFW, &broadcastInfo, WM_THEMECHANGED, 0, 0);
+		RedrawWindow(GetShellWindow(), nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE);*/
+
+		g_startup = false;
 	}
 
-	THROW_IF_FAILED(
-		PowerUnregisterFromEffectivePowerModeNotifications(g_powerNotify)
-	);
-	g_powerNotify = nullptr;
-
-	GlassEngine::Shutdown();
-	GlassEngine::UnloadRegistry();
-	GlassEngine::RedrawAll();
-
-	THROW_IF_FAILED(
-		HookHelper::Detours::Write([]() static
-		{
-			HookHelper::Detours::Detach(&g_RaiseFailFastException_Org, MyRaiseFailFastException);
-		})
-	);
-
-	SetUnhandledExceptionFilter(g_old);
+	g_notificationWindow = nullptr;
 }

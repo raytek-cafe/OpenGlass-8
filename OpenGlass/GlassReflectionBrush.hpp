@@ -12,11 +12,12 @@ namespace OpenGlass::GlassReflectionBrush
 		LONG width = 0,
 		const DWM::MilSizeD& scale = { 1.0, 1.0 }
 	);
-
+	
 	winrt::com_ptr<uDWM::CImageLegacyMilBrushProxy> GetOrCreate(
-		void* resource,
+		void* owner,
+		unsigned int slot,
 		bool createIfNecessary = false
 	);
-	void Remove(void* resource);
-	void Shutdown();
+	void Remove(void* owner);
+	void RemoveAll();
 }
