@@ -198,12 +198,16 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 
 	const auto calcGlowClipRect = [&windowState](LPCRECT lprc, RECT& glowClipRect, bool mirrored)
 	{
+		LONG offset = 0;
+		offset += windowState.windowRectLeft;
+		offset -= g_textVisual->GetX();
+		offset -= g_centerCaption ? static_cast<LONG>(std::round(static_cast<DOUBLE>(g_textVisual->GetWidth() - g_textSize.cx) / 2.)) : 0l;
 		if (!mirrored)
 		{
 			glowClipRect.left = std::max(
 				glowClipRect.left,
 				lprc->left +
-				(-g_textVisual->GetX() + (windowState.windowRectLeft))
+				offset
 			);
 		}
 		else
@@ -211,7 +215,7 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 			glowClipRect.right = std::min(
 				glowClipRect.right,
 				lprc->right -
-				(-g_textVisual->GetX() + (windowState.windowRectLeft))
+				offset
 			);
 		}
 	};
@@ -666,12 +670,16 @@ void CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 
 		const auto calcGlowClipRect = [&windowState](const D2D1_RECT_F& textRect, D2D1_RECT_F& glowClipRect, bool mirrored)
 		{
+			LONG offset = 0;
+			offset += windowState.windowRectLeft;
+			offset -= g_dwriteTextVisual->GetX();
+			offset -= g_centerCaption ? static_cast<LONG>(std::round((static_cast<float>(g_dwriteTextVisual->GetWidth()) - g_textSizeF.Width) / 2.f)) : 0l;
 			if (!mirrored)
 			{
 				glowClipRect.left = std::max(
 					glowClipRect.left,
 					textRect.left +
-					(-g_dwriteTextVisual->GetX() + (windowState.windowRectLeft))
+					offset
 				);
 			}
 			else
@@ -679,7 +687,7 @@ void CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 				glowClipRect.right = std::min(
 					glowClipRect.right,
 					textRect.right -
-					(-g_dwriteTextVisual->GetX() + (windowState.windowRectLeft))
+					offset
 				);
 			}
 		};
