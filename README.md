@@ -10,9 +10,9 @@ This utility returns the full glass effect to the window frame like [glass8](htt
 - Windows 11 21H2-26H2
 
 > [!IMPORTANT]
-> **OpenGlass is incompatible with Windows 11 26H1 (Build 28000+) and newer.** Microsoft has removed the legacy MIL infrastructure in these builds, which prevents OpenGlass from functioning. See [Issue #260](https://github.com/ALTaleX531/OpenGlass/issues/260) for details.
+> **OpenGlass is not supported on Windows 11 26H1 or any versions with build 28000 and above.** Microsoft has removed the legacy MIL infrastructure in these builds, which makes it impossible for OpenGlass to continue supporting them. See [#260](https://github.com/ALTaleX531/OpenGlass/issues/260) for details.
 
-> [!CAUTION]
+> [!NOTE]
 > OpenGlass only supports Windows builds from the General Availability channel. Builds from other channels (such as Cannary, Dev, Release Preview and Beta) and Windows Server are **NOT supported**. Running on unsupported builds can crash DWM.
 
 ## Who should use OpenGlass?
@@ -28,7 +28,7 @@ OpenGlass is for advanced users who are comfortable editing the Windows registry
 3. **Reference**: Review the release notes and source code to stay informed about behavior changes and technical updates.
 
 > [!TIP]
-> **Emergency Exit**: Press <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> to immediately terminate DWM if the system becomes unresponsive.
+> **Emergency Exit**: Long press <kbd>Ctrl</kbd>+<kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>Q</kbd> to immediately terminate DWM if the system becomes unresponsive.
 
 ### Reporting issues
 
