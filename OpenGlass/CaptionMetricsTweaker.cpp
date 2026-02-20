@@ -18,7 +18,9 @@ namespace OpenGlass::CaptionMetricsTweaker
 		Disabled = 0,
 		WindowsVista,
 		Windows7,
-		Windows8
+		Windows8,
+		Windows8DP,
+		Custom
 	} g_captionButtons{ 0 };
 	SIZE CalculateButtonSize(int cySize, int buttonType);
 }
@@ -49,6 +51,27 @@ SIZE CaptionMetricsTweaker::CalculateButtonSize(int cySize, int buttonType)
 	case CaptionButtons::Windows8:
 		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
 			std::make_tuple(0.95454544f, 1.6363636f, 2.2272727f, 1.2272727f, 1.3181819f);
+		break;
+	case CaptionButtons::Windows8DP:
+		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
+			std::make_tuple(0.95454544f, 1.5428571f, 2.1344696f, 1.1800699f, 1.2763636f);
+		break;
+	case CaptionButtons::Custom:
+		{
+			int customHeight = GlassEngine::GetDwordFromRegistry(L"CustomHeight", 33);
+			int customLoneWidth = GlassEngine::GetDwordFromRegistry(L"CustomLoneWidth", 33);
+			int customCloseWidth = GlassEngine::GetDwordFromRegistry(L"CustomCloseWidth", 33);
+			int customMaxWidth = GlassEngine::GetDwordFromRegistry(L"CustomMaxWidth", 33);
+			int customMinWidth = GlassEngine::GetDwordFromRegistry(L"CustomMinWidth", 33);
+			int titleBarHeight = GlassEngine::GetDwordFromRegistry(L"CustomTitlebarHeight", 21);
+
+			// Calculate ratios using title bar height; shoutouts to ImSwordQueen
+			heightRatio = std::max(0.0f, static_cast<float>(customHeight) / static_cast<float>(titleBarHeight));
+			loneWidthRatio = std::max(0.0f, static_cast<float>(customLoneWidth) / customHeight);
+			closeWidthRatio = std::max(0.0f, static_cast<float>(customCloseWidth) / customHeight);
+			maxWidthRatio = std::max(0.0f, static_cast<float>(customMaxWidth) / customHeight);
+			minWidthRatio = std::max(0.0f, static_cast<float>(customMinWidth) / customHeight);
+		}
 		break;
 	}
 
