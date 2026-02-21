@@ -256,11 +256,28 @@ void AccentOverrider::MyCAccent_SetClipRegion(
 		return g_CAccent_SetClipRegion_Org(This, geometry);
 	}
 
+	const auto& accentPolicy = This->GetAccentPolicy();
+	if (accentPolicy.AccentState == 2)
+	{
+		return g_CAccent_SetClipRegion_Org(This, geometry);
+	}
+
+	const auto window = uDWM::TryGetWindowFromVisual(This);
+	if (!window)
+	{
+		return g_CAccent_SetClipRegion_Org(This, geometry);
+	}
+
+	auto data = window->GetData();
+	if (!data)
+	{
+		return g_CAccent_SetClipRegion_Org(This, geometry);
+	}
+
 	auto& accentInfo = g_accentClipRegions[This];
 	accentInfo.clipRegion.copy_from(geometry);
 
 	if (
-		const auto& accentPolicy = This->GetAccentPolicy();
 		accentPolicy.IsClipRegionEffective() &&
 		accentInfo.visual &&
 		accentInfo.drawRegion
@@ -301,10 +318,6 @@ void AccentOverrider::MyCAccent_Destructor(
 	uDWM::CAccent* This
 )
 {
-	if (!Shared::g_overrideAccent)
-	{
-		return g_CAccent_Destructor_Org(This);
-	}
 	g_accentClipRegions.erase(This);
 	return g_CAccent_Destructor_Org(This);
 }
