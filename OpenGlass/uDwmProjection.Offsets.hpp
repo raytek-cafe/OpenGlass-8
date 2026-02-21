@@ -272,7 +272,8 @@ namespace OpenGlass::uDWM
 				Util::OffsetInfo{ .offset = 605, .build = os::build_w10_2004, .revision = 0 },
 				Util::OffsetInfo{ .offset = 609, .build = os::build_w11_21h2, .revision = 0 },
 				Util::OffsetInfo{ .offset = 665, .build = os::build_w11_22h2, .revision = 0 },
-				Util::OffsetInfo{ .offset = 673, .build = 0, .revision = 0 }
+				Util::OffsetInfo{ .offset = 673, .build = os::build_w11_24h2, .revision = 7019 },
+				Util::OffsetInfo{ .offset = 737, .build = 0, .revision = 0 }
 			};
 		}
 	};
