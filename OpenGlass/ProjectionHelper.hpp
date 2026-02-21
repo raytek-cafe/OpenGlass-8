@@ -266,3 +266,14 @@ OpenGlass::ProjectionEntry \
 	ULONG{ min_build }, \
 	ULONG{ max_build }, \
 }
+
+#define MAKE_OPTIONAL_EMPTY_PROJECTION_TUPLE_BY_ALIAS(name, min_build, max_build) \
+OpenGlass::ProjectionEntry \
+{ \
+	static_cast<OpenGlass::ProjectionType>(static_cast<UCHAR>(OpenGlass::ProjectionType::Variable) | static_cast<UCHAR>(OpenGlass::ProjectionType::Optional)), \
+	LPCSTR{ name }, \
+	PVOID{ nullptr }, \
+	PVOID{ nullptr }, \
+	ULONG{ min_build }, \
+	ULONG{ max_build }, \
+}

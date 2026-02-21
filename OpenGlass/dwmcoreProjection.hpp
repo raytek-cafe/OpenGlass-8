@@ -682,7 +682,10 @@ namespace OpenGlass::dwmcore
 	};
 	struct CComposeTop;
 	struct CHwndRenderTarget : CResource {};
-	struct COverlayContext : CResource {};
+	struct COverlayContext : CResource
+	{
+		struct OverlayPlaneInfo;
+	};
 	struct CDrawingContext
 	{
 		// since windows 10 2004
@@ -831,11 +834,15 @@ namespace OpenGlass::dwmcore
 		{
 			return Util::PointerExecuteUnsafe<COcclusionContext_GetDeviceTransformFlag_Offsets, Util::OffsetBy<UINT*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		D2D1_RECT_F PageInPixelsRectToDeviceRect(const D2D1_RECT_F& pixelsRect)
+		DECLSPEC_PROJECTION UINT GetDeviceTransformFlagValue() const
+		{
+			return *Util::PointerExecuteUnsafe<COcclusionContext_GetDeviceTransformFlag_Offsets, Util::OffsetBy<UINT*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		D2D1_RECT_F PageInPixelsRectToDeviceRect(const D2D1_RECT_F& pixelsRect) const
 		{
 			auto result = pixelsRect;
 
-			if (*GetDeviceTransformFlag() & 0x1)
+			if (GetDeviceTransformFlagValue() & 0x1)
 			{
 				result = RectF::TransformRect(pixelsRect, GetDeviceTransform()->GetD2DMatrix());
 			}
@@ -936,7 +943,8 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CDrawingContext::DrawVisualTree", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CDrawingContext::PreSubgraph", 0, 0),
 
-		MAKE_EMPTY_PROJECTION_TUPLE("COverlayContext::EndOverlayCandidateCollection", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("COverlayContext::EndOverlayCandidateCollection", 0, os::build_w11_24h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("COverlayContext::IsCandidateOverlayCompatible", os::build_w11_24h2, 0),
 		
 		MAKE_FUNCTION_PROJECTION_TUPLE(COcclusionContext::SetDeviceTransform, 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("COcclusionContext::IsOccluded", os::build_w11_24h2, 0),

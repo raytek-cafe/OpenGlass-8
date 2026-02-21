@@ -25,6 +25,7 @@ namespace OpenGlass::GlassIntegrity
 		void* param1,
 		void* param2
 	);
+	bool MyCOverlayContext_IsCandidateOverlayCompatible(...) { return false; }
 
 	HRESULT MyCOcclusionContext_Compute_Pre_W10_2004(
 		dwmcore::COcclusionContext* This,
@@ -160,6 +161,7 @@ namespace OpenGlass::GlassIntegrity
 		decltype(&MyCOverlayContext_EndOverlayCandidateCollection_Pre_W10_2004) g_COverlayContext_EndOverlayCandidateCollection_Pre_W10_2004_Org;
 		decltype(&MyCOverlayContext_EndOverlayCandidateCollection) g_COverlayContext_EndOverlayCandidateCollection_Org{ nullptr };
 	};
+	decltype(&MyCOverlayContext_IsCandidateOverlayCompatible) g_COverlayContext_IsCandidateOverlayCompatible_Org{ nullptr };
 
 	static union
 	{
@@ -1312,6 +1314,7 @@ void GlassIntegrity::Update([[maybe_unused]] GlassEngine::UpdateType type)
 void GlassIntegrity::Startup()
 {
 	dwmcore::g_projectionArray.ApplyToVariable("COverlayContext::EndOverlayCandidateCollection", g_COverlayContext_EndOverlayCandidateCollection_Org);
+	dwmcore::g_projectionArray.ApplyToVariable("COverlayContext::IsCandidateOverlayCompatible", g_COverlayContext_IsCandidateOverlayCompatible_Org);
 
 	dwmcore::g_projectionArray.ApplyToVariable("COcclusionContext::Compute", g_COcclusionContext_Compute_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("COcclusionContext::SetDeviceTransform", g_COcclusionContext_SetDeviceTransform_Org);
@@ -1353,7 +1356,8 @@ void GlassIntegrity::Startup()
 		std::initializer_list<HookHelper::DetourInfo>
 		{
 			{ &g_COverlayContext_EndOverlayCandidateCollection_Pre_W10_2004_Org, &MyCOverlayContext_EndOverlayCandidateCollection_Pre_W10_2004, build_before_w10_2004 },
-			{ &g_COverlayContext_EndOverlayCandidateCollection_Org, &MyCOverlayContext_EndOverlayCandidateCollection, !build_before_w10_2004 },
+			{ &g_COverlayContext_EndOverlayCandidateCollection_Org, &MyCOverlayContext_EndOverlayCandidateCollection, !build_before_w10_2004 && build_before_w11_24h2 },
+			{ &g_COverlayContext_IsCandidateOverlayCompatible_Org, &MyCOverlayContext_IsCandidateOverlayCompatible, !build_before_w11_24h2 },
 
 			{ &g_COcclusionContext_Compute_Pre_W10_2004_Org, &MyCOcclusionContext_Compute_Pre_W10_2004, build_before_w10_2004 },
 			{ &g_COcclusionContext_Compute_Org, &MyCOcclusionContext_Compute, !build_before_w10_2004 },
@@ -1398,8 +1402,9 @@ void GlassIntegrity::Shutdown()
 	HookHelper::PatchFunctions(
 		std::initializer_list<HookHelper::DetourInfo>
 		{
-			{ &g_COverlayContext_EndOverlayCandidateCollection_Pre_W10_2004_Org, &MyCOverlayContext_EndOverlayCandidateCollection_Pre_W10_2004, build_before_w10_2004 },
-			{ &g_COverlayContext_EndOverlayCandidateCollection_Org, &MyCOverlayContext_EndOverlayCandidateCollection, !build_before_w10_2004 },
+			{ &g_COverlayContext_EndOverlayCandidateCollection_Pre_W10_2004_Org, & MyCOverlayContext_EndOverlayCandidateCollection_Pre_W10_2004, build_before_w10_2004 },
+			{ &g_COverlayContext_EndOverlayCandidateCollection_Org, &MyCOverlayContext_EndOverlayCandidateCollection, !build_before_w10_2004 && build_before_w11_24h2 },
+			{ &g_COverlayContext_IsCandidateOverlayCompatible_Org, &MyCOverlayContext_IsCandidateOverlayCompatible, !build_before_w11_24h2 },
 
 			{ &g_COcclusionContext_Compute_Pre_W10_2004_Org, &MyCOcclusionContext_Compute_Pre_W10_2004, build_before_w10_2004 },
 			{ &g_COcclusionContext_Compute_Org, &MyCOcclusionContext_Compute, !build_before_w10_2004 },
