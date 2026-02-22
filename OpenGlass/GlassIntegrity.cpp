@@ -658,7 +658,6 @@ HRESULT GlassIntegrity::MyCOcclusionContext_DrawGeometry(
 					false
 				),
 				Shared::IsTransparencyDisabled() ||
-				Shared::IsOpaqueOnMaximized(maximized) ||
 				Shared::IsGlassFullyOpaque(
 					realizedGlassColorizationParameters.color.a,
 					realizedGlassColorizationParameters.blurBalance,

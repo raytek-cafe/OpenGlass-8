@@ -113,10 +113,6 @@ namespace OpenGlass::Shared
 
 		return false;
 	}
-	FORCEINLINE bool IsOpaqueOnMaximized(bool maximized)
-	{
-		return maximized && g_colorizationBaseMaximized.a == 1.f;
-	}
 	FORCEINLINE bool IsGlassFullyOpaque(
 		float alpha,
 		float blurBalance,

@@ -536,13 +536,12 @@ HRESULT GlassRenderer::MyCDrawingContext_DrawGeometry(
 				GlassKernel::GetSourceColor(active),
 				GlassKernel::GetColorizationOpacity(active, maximized),
 				Shared::IsTransparencyDisabled(),
-				GlassKernel::IsCurrentCVIFullyTransparent()
+				false
 			);
 
 			if (
 				!(
 					Shared::IsTransparencyDisabled() ||
-					Shared::IsOpaqueOnMaximized(maximized) ||
 					Shared::IsGlassFullyOpaque(
 						realizedGlassColorizationParameters.color.a,
 						realizedGlassColorizationParameters.blurBalance,
