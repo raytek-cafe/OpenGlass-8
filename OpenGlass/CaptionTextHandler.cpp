@@ -436,27 +436,29 @@ HRESULT CaptionTextHandler::MyCChannel_MatrixTransformUpdate(dwmcore::CChannel* 
 		matrix->DX -= static_cast<DOUBLE>(g_textGlowSize);
 		matrix->DY -= static_cast<DOUBLE>(g_textGlowSize);
 
-		if (g_centerCaption > 0)
+		if (g_centerCaption == 1)
 		{
-			const DOUBLE containerWidth =
-				(g_centerCaption == 2)
-				? static_cast<DOUBLE>(g_textVisual->GetTransformParent()->GetWidth())
-				: static_cast<DOUBLE>(g_textVisual->GetWidth());
+			const DOUBLE offset = std::floor((static_cast<DOUBLE>(g_textVisual->GetWidth()) - static_cast<DOUBLE>(g_textSize.cx)) / 2.0);
+			matrix->DX += g_textVisual->IsRTLMirrored() ? -offset : offset;
+		}
+		else if (g_centerCaption == 2)
+		{
+			// Code shamefully stolen from AWM (Adapted for Windows 11)
+			// https://github.com/Dulappy/aero-window-manager/blob/fc44618f507e5a39c3d4ef7f66eaef61dbd01858/awmdll/awmdll.cpp#L1795
+			const DOUBLE parentWidth = static_cast<DOUBLE>(g_textVisual->GetTransformParent()->GetWidth());
+			const DOUBLE textWidth = static_cast<DOUBLE>(g_textSize.cx);
+			const DOUBLE visualWidth = static_cast<DOUBLE>(g_textVisual->GetWidth());
+			const DOUBLE visualOffset = static_cast<DOUBLE>(g_textVisual->GetX());
 
-			const DOUBLE parentXOffset =
-				(g_centerCaption == 2)
-				? static_cast<DOUBLE>(g_textVisual->GetX())
-				: 0.0;
+			DOUBLE xoffset = std::floor((parentWidth - textWidth) / 2.0 + 0.5) - visualOffset;
+			xoffset = std::max(0.0, xoffset);
 
-			const DOUBLE candidate =
-				(containerWidth - static_cast<DOUBLE>(g_textSize.cx)) / 2.0 - parentXOffset;
+			if (xoffset + textWidth >= visualWidth)
+			{
+				xoffset = std::max(0.0, (visualWidth - textWidth) / 2.0);
+			}
 
-			const DOUBLE maxOffset =
-				static_cast<DOUBLE>(g_textVisual->GetWidth()) -
-				static_cast<DOUBLE>(g_textSize.cx);
-
-			const DOUBLE offset = std::floor(std::min(candidate, maxOffset));
-
+			const DOUBLE offset = std::floor(xoffset);
 			matrix->DX += g_textVisual->IsRTLMirrored() ? -offset : offset;
 		}
 	}
@@ -796,25 +798,31 @@ HRESULT CaptionTextHandler::MyICompositionSurfaceBrush2_put_Offset(
 
 		if (g_centerCaption > 0)
 		{
-			float containerWidth =
-				(g_centerCaption == 2)
-				? static_cast<float>(g_dwriteTextVisual->GetTransformParent()->GetWidth())
-				: static_cast<float>(g_dwriteTextVisual->GetWidth());
+			if (g_centerCaption == 1)
+			{
+				const float offset = std::floor((static_cast<float>(g_dwriteTextVisual->GetWidth()) - g_textSizeF.Width) / 2.0f);
+				value.X += g_dwriteTextVisual->IsRTLMirrored() ? -offset : offset;
+			}
+			else if (g_centerCaption == 2)
+			{
+				// Code shamefully stolen and adapted from AWM
+				// https://github.com/Dulappy/aero-window-manager/blob/fc44618f507e5a39c3d4ef7f66eaef61dbd01858/awmdll/awmdll.cpp#L1795
+				const float parentWidth = static_cast<float>(g_dwriteTextVisual->GetTransformParent()->GetWidth());
+				const float textWidth = g_textSizeF.Width;
+				const float visualWidth = static_cast<float>(g_dwriteTextVisual->GetWidth());
+				const float visualOffset = static_cast<float>(g_dwriteTextVisual->GetX());
 
-			float parentOffsetX =
-				(g_centerCaption == 2)
-				? static_cast<float>(g_dwriteTextVisual->GetX())
-				: 0.f;
+				float xoffset = std::floor((parentWidth - textWidth) / 2.0f + 0.5f) - visualOffset;
+				xoffset = std::max(0.0f, xoffset);
 
-			float candidate =
-				(containerWidth - g_textSizeF.Width) / 2.f - parentOffsetX;
+				if (xoffset + textWidth >= visualWidth)
+				{
+					xoffset = std::max(0.0f, (visualWidth - textWidth) / 2.0f);
+				}
 
-			float maxOffset =
-				static_cast<float>(g_dwriteTextVisual->GetWidth()) - g_textSizeF.Width;
-
-			float offset = std::floor(std::min(candidate, maxOffset));
-
-			value.X += g_dwriteTextVisual->IsRTLMirrored() ? -offset : offset;
+				const float offset = std::floor(xoffset);
+				value.X += g_dwriteTextVisual->IsRTLMirrored() ? -offset : offset;
+			}
 		}
 	}
 	return g_ICompositionSurfaceBrush2_put_Offset_Org(
