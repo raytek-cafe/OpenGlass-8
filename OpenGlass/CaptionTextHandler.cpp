@@ -448,9 +448,8 @@ HRESULT CaptionTextHandler::MyCChannel_MatrixTransformUpdate(dwmcore::CChannel* 
 			const DOUBLE parentWidth = static_cast<DOUBLE>(g_textVisual->GetTransformParent()->GetWidth());
 			const DOUBLE textWidth = static_cast<DOUBLE>(g_textSize.cx);
 			const DOUBLE visualWidth = static_cast<DOUBLE>(g_textVisual->GetWidth());
-			const DOUBLE visualOffset = static_cast<DOUBLE>(g_textVisual->GetX());
 
-			DOUBLE xoffset = std::floor((parentWidth - textWidth) / 2.0 + 0.5) - visualOffset;
+			DOUBLE xoffset = std::floor((parentWidth - textWidth) / 2.0 + 0.5) - static_cast<DOUBLE>(g_textVisual->GetX());
 			xoffset = std::max(0.0, xoffset);
 
 			if (xoffset + textWidth >= visualWidth)
@@ -810,9 +809,8 @@ HRESULT CaptionTextHandler::MyICompositionSurfaceBrush2_put_Offset(
 				const float parentWidth = static_cast<float>(g_dwriteTextVisual->GetTransformParent()->GetWidth());
 				const float textWidth = g_textSizeF.Width;
 				const float visualWidth = static_cast<float>(g_dwriteTextVisual->GetWidth());
-				const float visualOffset = static_cast<float>(g_dwriteTextVisual->GetX());
 
-				float xoffset = std::floor((parentWidth - textWidth) / 2.0f + 0.5f) - visualOffset;
+				float xoffset = std::floor((parentWidth - textWidth) / 2.0f + 0.5f) - static_cast<float>(g_dwriteTextVisual->GetX());
 				xoffset = std::max(0.0f, xoffset);
 
 				if (xoffset + textWidth >= visualWidth)
