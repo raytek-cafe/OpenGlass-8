@@ -12,8 +12,8 @@ namespace OpenGlass::ButtonGlowHandler
 	* where offset can be found inside, used to get the image to pass into CButton::SetVisualStates
 	* there will be many calls, but they all get at the same 2 offset, which correspond to these
 	*/
-	constexpr int MINMAXBUTTONGLOWIMAGE = 0xD0; 
-	constexpr int CLOSEBUTTONGLOWIMAGE = 0xC8; 
+	constexpr int MINMAXBUTTONGLOWIMAGE = 0xD0;
+	constexpr int CLOSEBUTTONGLOWIMAGE = 0xC8;
 
 	static int MINMAXBUTTONGLOW = 93; //16 in windows 7
 	static int CLOSEBUTTONGLOW = 92; //11 in windows 7
@@ -92,17 +92,175 @@ namespace OpenGlass::ButtonGlowHandler
 		return CTopLevelWindow_CreateGlyphsFromAtlas(hTheme);
 	}
 
-	// for those people who want to restore button glow on windows 11, you should implement required code for these functions
-	// 
-	// CAtlasButton::AddApproximateAtlasSize
-	// CAtlasButton::AppendAtlas
-	// CAtlasButton::SetGlowImage
-	// CButton::DrawStateW
-	// CButton::SetVisualStates
-	// CTopLevelWindow::UpdateButtonVisuals
-	// (function that loads button glow atlas images from theme)
-	// 
-	// consider using std::unordered_map to store missing glow image member (CAtlasImage)
+	// Win11 21H2+ Button Glow Implementation:
+	// Windows 11 removed the glow image member from CAtlasButton and CButton.
+	// We use external maps to store the glow bitmaps and hook the rendering pipeline.
+
+	std::unordered_map<void*, winrt::com_ptr<uDWM::CBitmapSource>> g_atlasGlowMap;
+	std::unordered_map<void*, winrt::com_ptr<uDWM::CBitmapSource>> g_buttonGlowMap;
+
+	winrt::com_ptr<uDWM::CBitmapSource> g_glowMinMax;
+	winrt::com_ptr<uDWM::CBitmapSource> g_glowClose;
+	winrt::com_ptr<uDWM::CBitmapSource> g_glowToolClose;
+
+	using fn_AppendAtlasNineGrid = HRESULT(__fastcall*)(void*, void*, uDWM::CBitmapSource*);
+	using fn_AddNineGridAtlasSize = void(__fastcall*)(void*, const MARGINS&, unsigned int*);
+	using fn_AtlasedImage_SetDirtyFlags = void(__fastcall*)(void*, unsigned int, unsigned int);
+	using fn_CVisual_MoveToFront = HRESULT(__fastcall*)(void*, int);
+	fn_AppendAtlasNineGrid g_AppendAtlasNineGrid{ nullptr };
+	fn_AddNineGridAtlasSize g_AddNineGridAtlasSize{ nullptr };
+	fn_AtlasedImage_SetDirtyFlags g_AtlasedImage_SetDirtyFlags{ nullptr };
+	fn_CVisual_MoveToFront g_CVisual_MoveToFront{ nullptr };
+
+	// Reuse same CreateBitmapFromAtlas as Win10 (still exists on Win11)
+	HRESULT(WINAPI* CTopLevelWindow__CreateBitmapFromAtlas_Win11)(HTHEME hTheme, int iPartId, MARGINS* outMargins, void** outBitmapSource);
+
+	// Original function pointers for our hooks
+	using fn_CAtlasButton_AppendAtlas = HRESULT(__fastcall*)(void*, void*);
+	using fn_CAtlasButton_AddApproxAtlasSize = void(__fastcall*)(void*, unsigned int*);
+	using fn_CButton_DrawStateW = void(__fastcall*)(void*, void*, unsigned int);
+	using fn_CTopLevelWindow_UpdateButtonVisuals = HRESULT(__fastcall*)(void*, const void*);
+
+	fn_CAtlasButton_AppendAtlas g_CAtlasButton_AppendAtlas_Org{ nullptr };
+	fn_CAtlasButton_AddApproxAtlasSize g_CAtlasButton_AddApproxAtlasSize_Org{ nullptr };
+	fn_CButton_DrawStateW g_CButton_DrawStateW_Org{ nullptr };
+	fn_CTopLevelWindow_UpdateButtonVisuals g_CTopLevelWindow_UpdateButtonVisuals_Org{ nullptr };
+
+	// Theme glyph hook for Win11 (to load glow bitmaps when theme loads)
+	HRESULT(WINAPI* CTopLevelWindow_CreateGlyphsFromAtlas_Win11)(HTHEME hTheme);
+
+	void Win11_SetGlowImage(void* atlasButton, uDWM::CBitmapSource* glow)
+	{
+		auto& stored = g_atlasGlowMap[atlasButton];
+		if (stored.get() != glow)
+		{
+			stored.copy_from(glow);
+			if (g_AtlasedImage_SetDirtyFlags)
+				g_AtlasedImage_SetDirtyFlags(atlasButton, 1u, 0x2000u);
+		}
+	}
+
+	HRESULT Win11_LoadGlowBitmaps(void* hTheme)
+	{
+		if (!CTopLevelWindow__CreateBitmapFromAtlas_Win11)
+			return E_NOTIMPL;
+
+		g_glowMinMax = nullptr;
+		g_glowClose = nullptr;
+		g_glowToolClose = nullptr;
+
+		MARGINS margins{};
+		void* bmp = nullptr;
+
+		if (SUCCEEDED(CTopLevelWindow__CreateBitmapFromAtlas_Win11(static_cast<HTHEME>(hTheme), MINMAXBUTTONGLOW, &margins, &bmp)) && bmp)
+		{
+			*(MARGINS*)(reinterpret_cast<uintptr_t>(bmp) + MARGIN_OFFSET) = margins;
+			g_glowMinMax.attach(static_cast<uDWM::CBitmapSource*>(bmp));
+		}
+
+		bmp = nullptr;
+		if (SUCCEEDED(CTopLevelWindow__CreateBitmapFromAtlas_Win11(static_cast<HTHEME>(hTheme), CLOSEBUTTONGLOW, &margins, &bmp)) && bmp)
+		{
+			*(MARGINS*)(reinterpret_cast<uintptr_t>(bmp) + MARGIN_OFFSET) = margins;
+			g_glowClose.attach(static_cast<uDWM::CBitmapSource*>(bmp));
+		}
+
+		bmp = nullptr;
+		if (SUCCEEDED(CTopLevelWindow__CreateBitmapFromAtlas_Win11(static_cast<HTHEME>(hTheme), TOOLCLOSEBUTTONGLOW, &margins, &bmp)) && bmp)
+		{
+			*(MARGINS*)(reinterpret_cast<uintptr_t>(bmp) + MARGIN_OFFSET) = margins;
+			g_glowToolClose.attach(static_cast<uDWM::CBitmapSource*>(bmp));
+		}
+
+		return S_OK;
+	}
+
+	HRESULT WINAPI CTopLevelWindow_CreateGlyphsFromAtlas_Hook_Win11(HTHEME hTheme)
+	{
+		Win11_LoadGlowBitmaps(hTheme);
+		return CTopLevelWindow_CreateGlyphsFromAtlas_Win11(hTheme);
+	}
+
+	// Hook: CAtlasButton::AppendAtlas — also add glow nine-grid
+	HRESULT __fastcall CAtlasButton_AppendAtlas_Hook(void* thisButton, void* atlasedRects)
+	{
+		HRESULT hr = g_CAtlasButton_AppendAtlas_Org(thisButton, atlasedRects);
+		if (FAILED(hr)) return hr;
+
+		auto it = g_atlasGlowMap.find(thisButton);
+		if (it != g_atlasGlowMap.end() && it->second && g_AppendAtlasNineGrid)
+		{
+			hr = g_AppendAtlasNineGrid(thisButton, atlasedRects, it->second.get());
+			if (FAILED(hr)) return hr;
+		}
+		return S_OK;
+	}
+
+	// Hook: CAtlasButton::AddApproximateAtlasSize — account for glow
+	void __fastcall CAtlasButton_AddApproxAtlasSize_Hook(void* thisButton, unsigned int* sizeOut)
+	{
+		g_CAtlasButton_AddApproxAtlasSize_Org(thisButton, sizeOut);
+
+		auto it = g_atlasGlowMap.find(thisButton);
+		if (it != g_atlasGlowMap.end() && it->second && g_AddNineGridAtlasSize)
+		{
+			const auto& margins = *reinterpret_cast<const MARGINS*>(
+				reinterpret_cast<uintptr_t>(it->second.get()) + MARGIN_OFFSET
+			);
+			g_AddNineGridAtlasSize(thisButton, margins, sizeOut);
+		}
+	}
+
+	// Hook: CButton::DrawStateW — restore glow rendering
+	void __fastcall CButton_DrawStateW_Hook(void* thisButton, void* atlasedImage, unsigned int state)
+	{
+		g_CButton_DrawStateW_Org(thisButton, atlasedImage, state);
+
+		uDWM::CBitmapSource* glowBitmap = nullptr;
+
+		// States 1 (hot) and 2 (pressed) show glow, matching Win10 logic: (state - 1 <= 1)
+		if (state >= 1 && state <= 2)
+		{
+			auto it = g_buttonGlowMap.find(thisButton);
+			if (it != g_buttonGlowMap.end() && it->second)
+			{
+				// OpenGlass is active, so glass effects are always enabled — no need for
+				// the CDesktopManager byte 17 check (which is build-specific anyway)
+				if (g_CVisual_MoveToFront)
+					g_CVisual_MoveToFront(thisButton, 0);
+				glowBitmap = it->second.get();
+			}
+		}
+
+		Win11_SetGlowImage(atlasedImage, glowBitmap);
+	}
+
+	// Hook: CTopLevelWindow::UpdateButtonVisuals — associate our stored glow bitmaps with buttons
+	HRESULT __fastcall CTopLevelWindow_UpdateButtonVisuals_Hook(void* thisWindow, const void* windowFrame)
+	{
+		auto* tlw = reinterpret_cast<uDWM::CTopLevelWindow*>(thisWindow);
+
+		auto* helpBtn = tlw->GetButton(0);
+		auto* minBtn = tlw->GetButton(1);
+		auto* maxBtn = tlw->GetButton(2);
+		auto* closeBtn = tlw->GetButton(3);
+
+		if (helpBtn)  g_buttonGlowMap[helpBtn].copy_from(g_glowMinMax.get());
+		if (minBtn)   g_buttonGlowMap[minBtn].copy_from(g_glowMinMax.get());
+		if (maxBtn)   g_buttonGlowMap[maxBtn].copy_from(g_glowMinMax.get());
+		if (closeBtn) g_buttonGlowMap[closeBtn].copy_from(g_glowClose.get());
+
+		return g_CTopLevelWindow_UpdateButtonVisuals_Org(thisWindow, windowFrame);
+	}
+
+	void Win11_ClearMaps()
+	{
+		g_atlasGlowMap.clear();
+		g_buttonGlowMap.clear();
+		g_glowMinMax = nullptr;
+		g_glowClose = nullptr;
+		g_glowToolClose = nullptr;
+	}
 
 	void Update([[maybe_unused]] GlassEngine::UpdateType type)
 	{
@@ -130,6 +288,39 @@ namespace OpenGlass::ButtonGlowHandler
 				true
 			);
 		}
+		else
+		{
+			// Win11 21H2+: resolve symbols and install hooks
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasedImage::AppendAtlasNineGrid", g_AppendAtlasNineGrid);
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasedImage::AddNineGridAtlasSize", g_AddNineGridAtlasSize);
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasedImage::SetDirtyFlags", g_AtlasedImage_SetDirtyFlags);
+			uDWM::g_projectionArray.ApplyToVariable("CVisual::MoveToFront", g_CVisual_MoveToFront);
+			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateBitmapFromAtlas", CTopLevelWindow__CreateBitmapFromAtlas_Win11);
+			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateGlyphsFromAtlas", CTopLevelWindow_CreateGlyphsFromAtlas_Win11);
+
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasButton::AppendAtlas", g_CAtlasButton_AppendAtlas_Org);
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasButton::AddApproximateAtlasSize", g_CAtlasButton_AddApproxAtlasSize_Org);
+			uDWM::g_projectionArray.ApplyToVariable("CButton::DrawStateW", g_CButton_DrawStateW_Org);
+			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::UpdateButtonVisuals", g_CTopLevelWindow_UpdateButtonVisuals_Org);
+
+			// Crossfade workaround also needed on Win11
+			uDWM::g_projectionArray.ApplyToVariable("CVisual::SetDirtyFlags", CVisual_SetDirtyFlags_orig);
+			uDWM::g_projectionArray.ApplyToVariable("CButton::UpdateCrossfade", CButton_UpdateCrossfade_orig);
+
+			HookHelper::PatchFunctions(
+				std::initializer_list<HookHelper::DetourInfo>
+				{
+					{ &g_CAtlasButton_AppendAtlas_Org, &CAtlasButton_AppendAtlas_Hook },
+					{ &g_CAtlasButton_AddApproxAtlasSize_Org, &CAtlasButton_AddApproxAtlasSize_Hook },
+					{ &g_CButton_DrawStateW_Org, &CButton_DrawStateW_Hook },
+					{ &g_CTopLevelWindow_UpdateButtonVisuals_Org, &CTopLevelWindow_UpdateButtonVisuals_Hook },
+					{ &CTopLevelWindow_CreateGlyphsFromAtlas_Win11, &CTopLevelWindow_CreateGlyphsFromAtlas_Hook_Win11 },
+					{ &CVisual_SetDirtyFlags_orig, &CVisual_SetDirtyFlags_hook },
+					{ &CButton_UpdateCrossfade_orig, &CButton_UpdateCrossfade_hook }
+				},
+				true
+			);
+		}
 	}
 
 	void Shutdown()
@@ -147,6 +338,25 @@ namespace OpenGlass::ButtonGlowHandler
 			);
 
 			SwitchToThread();
+		}
+		else
+		{
+			HookHelper::PatchFunctions(
+				std::initializer_list<HookHelper::DetourInfo>
+				{
+					{ &g_CAtlasButton_AppendAtlas_Org, &CAtlasButton_AppendAtlas_Hook },
+					{ &g_CAtlasButton_AddApproxAtlasSize_Org, &CAtlasButton_AddApproxAtlasSize_Hook },
+					{ &g_CButton_DrawStateW_Org, &CButton_DrawStateW_Hook },
+					{ &g_CTopLevelWindow_UpdateButtonVisuals_Org, &CTopLevelWindow_UpdateButtonVisuals_Hook },
+					{ &CTopLevelWindow_CreateGlyphsFromAtlas_Win11, &CTopLevelWindow_CreateGlyphsFromAtlas_Hook_Win11 },
+					{ &CVisual_SetDirtyFlags_orig, &CVisual_SetDirtyFlags_hook },
+					{ &CButton_UpdateCrossfade_orig, &CButton_UpdateCrossfade_hook }
+				},
+				false
+			);
+
+			SwitchToThread();
+			Win11_ClearMaps();
 		}
 	}
 }
