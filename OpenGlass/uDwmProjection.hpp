@@ -1382,6 +1382,9 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateButtonVisuals", os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::MoveToFront", os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CButton::RedrawVisual", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::RemoveAtlasImage", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::AddAtlasImage", os::build_w11_24h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::InsertAtlasImageAtIndex", os::build_w11_21h2, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawGeometryInstruction::Create, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CRenderDataVisual::Create_Pre_W10_1903, "CRenderDataVisual::Create", 0, os::build_w10_1903),

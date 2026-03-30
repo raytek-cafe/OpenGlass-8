@@ -103,6 +103,8 @@ namespace OpenGlass::ButtonGlowHandler
 
 	HTHEME g_glowThemeHandle{ nullptr };
 
+	void* g_currentHotButton{ nullptr };
+
 	winrt::com_ptr<uDWM::CBitmapSource> g_glowMinMax;
 	winrt::com_ptr<uDWM::CBitmapSource> g_glowClose;
 	winrt::com_ptr<uDWM::CBitmapSource> g_glowToolClose;
@@ -127,6 +129,33 @@ namespace OpenGlass::ButtonGlowHandler
 
 	using fn_CButton_RedrawVisual = HRESULT(__fastcall*)(void*);
 	fn_CButton_RedrawVisual g_CButton_RedrawVisual_Org{ nullptr };
+
+	// change atlas image order within CAtlasedRectsVisual
+	using fn_RemoveAtlasImage = HRESULT(__fastcall*)(void*, void*);
+	using fn_AddAtlasImage = HRESULT(__fastcall*)(void*, void*);
+	using fn_InsertAtlasImageAtIndex = HRESULT(__fastcall*)(void*, void*, unsigned int);
+	fn_RemoveAtlasImage g_RemoveAtlasImage{ nullptr };
+	fn_AddAtlasImage g_AddAtlasImage{ nullptr };
+	fn_InsertAtlasImageAtIndex g_InsertAtlasImageAtIndex{ nullptr };
+
+	// Move atlas image to end of parent's array for highest z-order.
+	void MoveAtlasImageToEnd(void* parent, void* atlasImage)
+	{
+		if (!parent || !atlasImage || !g_RemoveAtlasImage) return;
+
+		if (g_AddAtlasImage) // 24h2+
+		{
+			g_RemoveAtlasImage(parent, atlasImage);
+			g_AddAtlasImage(parent, atlasImage);
+		}
+		else if (g_InsertAtlasImageAtIndex
+			&& uDWM::g_versionInfo.build < os::build_w11_24h2) //21H2-23H2
+		{
+			g_RemoveAtlasImage(parent, atlasImage);
+			auto count = *reinterpret_cast<DWORD*>(reinterpret_cast<uintptr_t>(parent) + 272);
+			g_InsertAtlasImageAtIndex(parent, atlasImage, count);
+		}
+	}
 
 	// Reuse same CreateBitmapFromAtlas as Win10 (still exists on Win11)
 	HRESULT(WINAPI* CTopLevelWindow__CreateBitmapFromAtlas_Win11)(HTHEME hTheme, int iPartId, MARGINS* outMargins, void** outBitmapSource);
@@ -306,6 +335,34 @@ namespace OpenGlass::ButtonGlowHandler
 				if (secondImg)
 					Win11_SetGlowImage(secondImg, nullptr);
 			}
+
+			if (glowBitmap)
+				g_currentHotButton = thisButton;
+			else if (g_currentHotButton == thisButton)
+				g_currentHotButton = nullptr;
+		}
+
+		if (g_currentHotButton && g_RemoveAtlasImage)
+		{
+			auto* hotBtn = reinterpret_cast<uDWM::CButton*>(g_currentHotButton);
+			void* hotImg = *hotBtn->GetFirstAtlasImage();
+			if (hotImg)
+			{
+				auto* parent = *reinterpret_cast<void**>(
+					reinterpret_cast<uintptr_t>(hotImg) + 80);
+				if (parent)
+				{
+					if (g_AddAtlasImage || parent != g_currentHotButton)
+					{
+						// Parent is CAtlasedRectsVisual: reorder atlas image array
+						MoveAtlasImageToEnd(parent, hotImg);
+					}
+					else if (g_CVisual_MoveToFront)
+					{
+						g_CVisual_MoveToFront(g_currentHotButton, 0);
+					}
+				}
+			}
 		}
 
 		return hr;
@@ -368,11 +425,13 @@ namespace OpenGlass::ButtonGlowHandler
 		}
 		else
 		{
-			// Win11 21H2+: resolve symbols and install hooks
 			uDWM::g_projectionArray.ApplyToVariable("CAtlasedImage::AppendAtlasNineGrid", g_AppendAtlasNineGrid);
 			uDWM::g_projectionArray.ApplyToVariable("CAtlasedImage::AddNineGridAtlasSize", g_AddNineGridAtlasSize);
 			uDWM::g_projectionArray.ApplyToVariable("CAtlasedImage::SetDirtyFlags", g_AtlasedImage_SetDirtyFlags);
 			uDWM::g_projectionArray.ApplyToVariable("CVisual::MoveToFront", g_CVisual_MoveToFront);
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasedRectsVisual::RemoveAtlasImage", g_RemoveAtlasImage);
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasedRectsVisual::AddAtlasImage", g_AddAtlasImage);
+			uDWM::g_projectionArray.ApplyToVariable("CAtlasedRectsVisual::InsertAtlasImageAtIndex", g_InsertAtlasImageAtIndex);
 			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateBitmapFromAtlas", CTopLevelWindow__CreateBitmapFromAtlas_Win11);
 			uDWM::g_projectionArray.ApplyToVariable("CTopLevelWindow::CreateGlyphsFromAtlas", CTopLevelWindow_CreateGlyphsFromAtlas_Win11);
 
