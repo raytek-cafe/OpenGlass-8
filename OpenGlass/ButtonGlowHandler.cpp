@@ -101,6 +101,8 @@ namespace OpenGlass::ButtonGlowHandler
 	enum class ButtonGlowType { None, MinMax, Close };
 	std::unordered_map<void*, ButtonGlowType> g_buttonGlowMap;
 
+	HTHEME g_glowThemeHandle{ nullptr };
+
 	winrt::com_ptr<uDWM::CBitmapSource> g_glowMinMax;
 	winrt::com_ptr<uDWM::CBitmapSource> g_glowClose;
 	winrt::com_ptr<uDWM::CBitmapSource> g_glowToolClose;
@@ -189,8 +191,29 @@ namespace OpenGlass::ButtonGlowHandler
 		return S_OK;
 	}
 
+	// Ensure glow bitmaps are loaded. Called lazily from hooks that need them.
+	void EnsureGlowBitmapsLoaded()
+	{
+		if (g_glowMinMax || g_glowClose)
+			return;
+
+		void* hTheme = g_glowThemeHandle;
+		if (!hTheme && uDWM::CDesktopManager::s_pDesktopManagerInstance)
+		{
+			auto* dm = *uDWM::CDesktopManager::s_pDesktopManagerInstance;
+			if (dm)
+				hTheme = *reinterpret_cast<void**>(reinterpret_cast<uintptr_t>(dm) + 69 * 8);
+		}
+		if (!hTheme)
+			return;
+
+		g_glowThemeHandle = static_cast<HTHEME>(hTheme);
+		Win11_LoadGlowBitmaps(hTheme);
+	}
+
 	HRESULT WINAPI CTopLevelWindow_CreateGlyphsFromAtlas_Hook_Win11(HTHEME hTheme)
 	{
+		g_glowThemeHandle = hTheme;
 		Win11_LoadGlowBitmaps(hTheme);
 		return CTopLevelWindow_CreateGlyphsFromAtlas_Win11(hTheme);
 	}
@@ -198,6 +221,8 @@ namespace OpenGlass::ButtonGlowHandler
 	// Hook: CAtlasButton::AppendAtlas — also add glow nine-grid
 	HRESULT __fastcall CAtlasButton_AppendAtlas_Hook(void* thisButton, void* atlasedRects)
 	{
+		EnsureGlowBitmapsLoaded();
+
 		HRESULT hr = g_CAtlasButton_AppendAtlas_Org(thisButton, atlasedRects);
 		if (FAILED(hr)) return hr;
 
@@ -218,12 +243,14 @@ namespace OpenGlass::ButtonGlowHandler
 		if (!g_AddNineGridAtlasSize)
 			return;
 
-		auto* glowRef = g_glowMinMax.get();
-		if (!glowRef) glowRef = g_glowClose.get();
+		EnsureGlowBitmapsLoaded();
 
 		auto it = g_atlasGlowMap.find(thisButton);
-		if (it != g_atlasGlowMap.end() && it->second)
-			glowRef = it->second.get();
+		uDWM::CBitmapSource* glowRef = (it != g_atlasGlowMap.end() && it->second)
+			? it->second.get() : nullptr;
+
+		if (!glowRef) glowRef = g_glowMinMax.get();
+		if (!glowRef) glowRef = g_glowClose.get();
 
 		if (glowRef)
 		{
@@ -231,6 +258,11 @@ namespace OpenGlass::ButtonGlowHandler
 				reinterpret_cast<uintptr_t>(glowRef) + MARGIN_OFFSET
 			);
 			g_AddNineGridAtlasSize(thisButton, margins, sizeOut);
+		}
+		else
+		{
+			// try to reserve enough space for bitmaps if not loaded yet
+			*sizeOut += 20000;
 		}
 	}
 
@@ -268,6 +300,13 @@ namespace OpenGlass::ButtonGlowHandler
 			if (firstImg)
 				Win11_SetGlowImage(firstImg, glowBitmap);
 
+			if (!glowBitmap)
+			{
+				void* secondImg = *button->GetSecondAtlasImage();
+				if (secondImg)
+					Win11_SetGlowImage(secondImg, nullptr);
+			}
+
 			if (glowBitmap && g_CVisual_MoveToFront)
 				g_CVisual_MoveToFront(thisButton, 0);
 		}
@@ -278,8 +317,9 @@ namespace OpenGlass::ButtonGlowHandler
 	// Hook: CTopLevelWindow::UpdateButtonVisuals — associate our stored glow bitmaps with buttons
 	HRESULT __fastcall CTopLevelWindow_UpdateButtonVisuals_Hook(void* thisWindow, const void* windowFrame)
 	{
-		auto* tlw = reinterpret_cast<uDWM::CTopLevelWindow*>(thisWindow);
+		HRESULT hr = g_CTopLevelWindow_UpdateButtonVisuals_Org(thisWindow, windowFrame);
 
+		auto* tlw = reinterpret_cast<uDWM::CTopLevelWindow*>(thisWindow);
 		auto* helpBtn = tlw->GetButton(0);
 		auto* minBtn = tlw->GetButton(1);
 		auto* maxBtn = tlw->GetButton(2);
@@ -290,7 +330,7 @@ namespace OpenGlass::ButtonGlowHandler
 		if (maxBtn)   g_buttonGlowMap[maxBtn] = ButtonGlowType::MinMax;
 		if (closeBtn) g_buttonGlowMap[closeBtn] = ButtonGlowType::Close;
 
-		return g_CTopLevelWindow_UpdateButtonVisuals_Org(thisWindow, windowFrame);
+		return hr;
 	}
 
 	void Win11_ClearMaps()
@@ -300,6 +340,7 @@ namespace OpenGlass::ButtonGlowHandler
 		g_glowMinMax = nullptr;
 		g_glowClose = nullptr;
 		g_glowToolClose = nullptr;
+		g_glowThemeHandle = nullptr;
 	}
 
 	void Update([[maybe_unused]] GlassEngine::UpdateType type)
