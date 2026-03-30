@@ -306,9 +306,6 @@ namespace OpenGlass::ButtonGlowHandler
 				if (secondImg)
 					Win11_SetGlowImage(secondImg, nullptr);
 			}
-
-			if (glowBitmap && g_CVisual_MoveToFront)
-				g_CVisual_MoveToFront(thisButton, 0);
 		}
 
 		return hr;
