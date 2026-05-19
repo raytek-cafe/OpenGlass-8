@@ -583,6 +583,7 @@ void OpenGlass::Startup()
 			os::build_w10_1809,
 			os::build_w10_1903,
 			os::build_w10_2004,
+			os::build_server_2022,
 			os::build_w11_21h2,
 			os::build_w11_22h2,
 			os::build_w11_24h2,
@@ -651,7 +652,7 @@ void OpenGlass::Startup()
 
 #if defined(_DEBUG)
 	winrt::com_ptr<IDCompositionDeviceDebug> debugDevice{ nullptr };
-	uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(
+	uDWM::CDesktopManager::GetInstance()->GetInteropCompositorDCompDevicePartner()->QueryInterface(
 		debugDevice.put()
 	);
 	debugDevice->EnableDebugCounters();
@@ -692,7 +693,7 @@ void OpenGlass::Shutdown()
 
 #if defined(_DEBUG)
 		winrt::com_ptr<IDCompositionDeviceDebug> debugDevice{ nullptr };
-		uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(
+		uDWM::CDesktopManager::GetInstance()->GetInteropCompositorDCompDevicePartner()->QueryInterface(
 			debugDevice.put()
 		);
 		debugDevice->DisableDebugCounters();

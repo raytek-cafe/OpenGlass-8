@@ -4,6 +4,7 @@
 #include "ProjectionHelper.hpp"
 #include "DWM.hpp"
 #include "uDwmProjection.Offsets.hpp"
+#include "DCompPrivates.hpp"
 
 namespace OpenGlass::uDWM
 {
@@ -628,10 +629,6 @@ namespace OpenGlass::uDWM
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetHwnd_Offsets, Util::OffsetBy<const HWND*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DECLSPEC_PROJECTION IDwmWindow* GetWindowContext() const
-		{
-			return *Util::PointerExecuteUnsafe<CWindowData_GetWindowContext_Offsets, Util::OffsetBy<IDwmWindow* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
-		}
 		DECLSPEC_PROJECTION CTopLevelWindow* GetWindow() const
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetWindow_Index_Offsets, Util::OffsetBy<CTopLevelWindow* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
@@ -647,24 +644,15 @@ namespace OpenGlass::uDWM
 			return *Util::PointerExecuteUnsafe<CWindowData_GetSystemBackdropType_Index_Offsets, Util::OffsetBy<DWM_SYSTEMBACKDROP_TYPE*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
-		DECLSPEC_PROJECTION DWORD& GetCaptionColorOverride()
-		{
-			return *Util::PointerExecuteUnsafe<CWindowData_ColorOverride_Index_Offsets, Util::OffsetBy<DWORD*>>(this, g_versionInfo.build, g_versionInfo.revision);
-		}
-		DECLSPEC_PROJECTION DWORD& GetBorderColorOverride()
-		{
-			return *Util::PointerExecuteUnsafe<CWindowData_BorderColorOverride_Index_Offsets, Util::OffsetBy<DWORD*>>(this, g_versionInfo.build, g_versionInfo.revision);
-		}
-		DECLSPEC_PROJECTION DWORD& GetTextColorOverride()
-		{
-			return *Util::PointerExecuteUnsafe<CWindowData_TextColorOverride_Index_Offsets, Util::OffsetBy<DWORD*>>(this, g_versionInfo.build, g_versionInfo.revision);
-		}
-
 		DECLSPEC_PROJECTION UINT GetWindowDPI() const
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetWindowDPI_Offsets, Util::OffsetBy<UINT const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 
+		DECLSPEC_PROJECTION DWORD GetFrameThickness()
+		{
+			return *Util::PointerExecuteUnsafe<CWindowData_GetFrameThickness_Offsets, Util::OffsetBy<DWORD const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
 		DECLSPEC_PROJECTION BYTE& GetNonClientAttributeReference()
 		{
 			return *Util::PointerExecuteUnsafe<CWindowData_GetNonClientAttribute_Offsets, Util::OffsetBy<BYTE*>>(this, g_versionInfo.build, g_versionInfo.revision);
@@ -925,14 +913,6 @@ namespace OpenGlass::uDWM
 			return (button && *button) ? *button : nullptr;
 		}
 		
-		DECLSPEC_PROJECTION DWORD GetFrameThickness(CWindowData* data = nullptr)
-		{
-			if (!data) 
-			{ 
-				data = GetData();
-			}
-			return *Util::PointerExecuteUnsafe<CTopLevelWindow_GetFrameThickness_Offsets, Util::OffsetBy<DWORD const*>>(data, g_versionInfo.build, g_versionInfo.revision);
-		}
 		DECLSPEC_PROJECTION MARGINS& GetFrameOutsideMargins(bool zoomed)
 		{
 			if (zoomed)
@@ -1203,6 +1183,10 @@ namespace OpenGlass::uDWM
 			}
 			return *Util::PointerExecuteUnsafe<CCompositor_GetChannel_Index_Offsets, Util::OffsetBy<IDwmChannel* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
+		IDCompositionDesktopDevicePartner* GetInteropCompositorDCompDevicePartner() const
+		{
+			return *Util::PointerExecuteUnsafe<CCompositor_GetInteropCompositorDCompDevicePartner_Offsets, Util::OffsetBy<IDCompositionDesktopDevicePartner* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
 	};
 	struct CDesktopManager
 	{
@@ -1221,14 +1205,6 @@ namespace OpenGlass::uDWM
 		{
 			return *Util::PointerExecuteUnsafe<CDesktopManager_GetCompositor_Index_Offsets, Util::OffsetBy<CCompositor* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
-		DECLSPEC_PROJECTION HMIL_CONNECTION GetConnection() const
-		{
-			if (g_versionInfo.build < os::build_w11_21h2)
-			{
-				return *Util::PointerExecuteUnsafe<CDesktopManager_GetConnection_Index_Offsets, Util::OffsetBy<HMIL_CONNECTION const*>>(this, g_versionInfo.build, g_versionInfo.revision);
-			}
-			return nullptr;
-		}
 		DECLSPEC_PROJECTION CWindowList* GetWindowList() const
 		{
 			return *Util::PointerExecuteUnsafe<CDesktopManager_GetWindowList_Index_Offsets, Util::OffsetBy<CWindowList* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
@@ -1239,21 +1215,20 @@ namespace OpenGlass::uDWM
 		}
 		DECLSPEC_PROJECTION ID2D1Device* GetD2DDevice() const
 		{
-			if (g_versionInfo.build < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_server_2022)
 			{
 				return *Util::PointerExecuteUnsafe<CDesktopManager_GetD2DDevice_OnThis_Index_Offsets, Util::OffsetBy<ID2D1Device* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
 			auto graphicsManager = *Util::PointerExecuteUnsafe<CDesktopManager_GetGraphicsManager_Index_Offsets, Util::OffsetBy<void* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			return graphicsManager ? *Util::PointerExecuteUnsafe<CGraphicsManager_GetD2DDevice_Index_Offsets, Util::OffsetBy<ID2D1Device**>>(graphicsManager, g_versionInfo.build, g_versionInfo.revision) : nullptr;
 		}
-		DECLSPEC_PROJECTION IDCompositionDesktopDevice* GetDCompDevice() const
+		DECLSPEC_PROJECTION IDCompositionDesktopDevicePartner* GetInteropCompositorDCompDevicePartner() const
 		{
-			if (g_versionInfo.build < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_server_2022)
 			{
-				return *Util::PointerExecuteUnsafe<CDesktopManager_GetDCompDevice_OnThis_Index_Offsets, Util::OffsetBy<IDCompositionDesktopDevice* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
+				return *Util::PointerExecuteUnsafe<CDesktopManager_GetDCompDevice_OnThis_Index_Offsets, Util::OffsetBy<IDCompositionDesktopDevicePartner* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
 			}
-			const auto interopManager = *Util::PointerExecuteUnsafe<CDesktopManager_GetInteropManager_Index_Offsets, Util::OffsetBy<void* const*>>(this, g_versionInfo.build, g_versionInfo.revision);
-			return interopManager ? *Util::PointerExecuteUnsafe<CInteropManager_GetDCompDevice_Index_Offsets, Util::OffsetBy<IDCompositionDesktopDevice**>>(interopManager, g_versionInfo.build, g_versionInfo.revision) : nullptr;
+			return GetCompositor()->GetInteropCompositorDCompDevicePartner();
 		}
 		DECLSPEC_PROJECTION bool& GetIsHighContrastMode()
 		{
@@ -1436,8 +1411,8 @@ namespace OpenGlass::uDWM
 		MAKE_VARIABLE_PROJECTION_TUPLE(CDesktopManager::s_pDesktopManagerInstance, 0, 0),
 		MAKE_VARIABLE_PROJECTION_TUPLE(CDesktopManager::s_csDwmInstance, 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CDesktopManager::IsHighContrastMode", os::build_w11_21h2, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CDesktopManager::ReleaseDXGIAdapter", 0, os::build_w11_21h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CGraphicsDeviceManager::ReleaseGraphicsDevice", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CDesktopManager::ReleaseDXGIAdapter", 0, os::build_server_2022),
+		MAKE_EMPTY_PROJECTION_TUPLE("CGraphicsDeviceManager::ReleaseGraphicsDevice", os::build_server_2022, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateSolidColorLegacyMilBrushProxy, "CCompositor::CreateProxy<CSolidColorLegacyMilBrushProxy>", os::build_w10_1903, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CCompositor::CreateImageLegacyMilBrushProxy, "CCompositor::CreateProxy<CImageLegacyMilBrushProxy>", os::build_w10_1903, 0),

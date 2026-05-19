@@ -123,6 +123,7 @@ HRESULT AccentOverrider::MyCAccent__UpdateSolidFill(
 	auto effectBrush = GlassEffectBrush::GetOrCreate(window);
 	const auto maximized = window->TreatAsMaximized(data);
 
+	if (!visual->GetInstructions().views().empty())
 	{
 		winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
 		{

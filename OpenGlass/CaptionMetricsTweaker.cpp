@@ -97,7 +97,7 @@ HRESULT CaptionMetricsTweaker::MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes(u
 	auto& visibleMargins = This->GetFrameOutsideMargins(maximized);
 	auto& borderMargins = This->GetBorderMargins();
 
-	int cxLeft = borderMargins.cxLeftWidth ? borderMargins.cxLeftWidth : This->GetFrameThickness();
+	int cxLeft = borderMargins.cxLeftWidth ? borderMargins.cxLeftWidth : data->GetFrameThickness();
 
 	auto UpdateButton = [&](int buttonType, int offsetRight, int offsetTop, SIZE buttonSize)
 	{
@@ -116,7 +116,7 @@ HRESULT CaptionMetricsTweaker::MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes(u
 
 	int cySize = GetSystemMetricsForDpi(SM_CYSIZE, data->GetWindowDPI());
 
-	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : This->GetFrameThickness() - 2);
+	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : data->GetFrameThickness() - 2);
 	int offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
 
 	auto closeButtonSize = loneButton ? CalculateButtonSize(cySize, 0) : CalculateButtonSize(cySize, 3);
