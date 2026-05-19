@@ -210,7 +210,7 @@ namespace OpenGlass::dwmcore
 		{
 			bool antiOccluderExisted{ false };
 			int antiOccluderDepth{};
-			if (g_versionInfo.build < os::build_w11_21h2)
+			if (g_versionInfo.build < os::build_server_2022)
 			{
 				for (const auto& zorderedRect : GetAntiOccluderArray()->views())
 				{
@@ -637,27 +637,10 @@ namespace OpenGlass::dwmcore
 				this
 			);
 		}
-		DECLSPEC_PROJECTION bool IsHardwareProtected() const
-		{
-			return std::invoke(
-				Util::PointerExecuteUnsafe<IRenderTarget_IsHardwareProtected_Offsets, Util::DereferenceAt<decltype(&IRenderTarget::IsHardwareProtected)>>(HookHelper::get_vftable_from(this), g_versionInfo.build, g_versionInfo.revision),
-				this
-			);
-		}
 		DECLSPEC_PROJECTION float GetSDRBoost() const
 		{
 			return std::invoke(
 				Util::PointerExecuteUnsafe<IRenderTarget_GetSDRBoost_Offsets, Util::DereferenceAt<decltype(&IRenderTarget::GetSDRBoost)>>(HookHelper::get_vftable_from(this), g_versionInfo.build, g_versionInfo.revision),
-				this
-			);
-		}
-	};
-	struct IDeviceResource
-	{
-		DECLSPEC_PROJECTION bool IsHardwareProtected() const
-		{
-			return std::invoke(
-				Util::PointerExecuteUnsafe<IDeviceResource_IsHardwareProtected_Offsets, Util::DereferenceAt<decltype(&IDeviceResource::IsHardwareProtected)>>(HookHelper::get_vftable_from(this), g_versionInfo.build, g_versionInfo.revision),
 				this
 			);
 		}
@@ -674,10 +657,6 @@ namespace OpenGlass::dwmcore
 		DECLSPEC_PROJECTION IDeviceTexture* GetDeviceTexture() const
 		{
 			return Util::PointerExecuteUnsafe<IDeviceTarget_GetDeviceTexture_Offsets, Util::OffsetBy<IDeviceTexture*>>(this, g_versionInfo.build, g_versionInfo.revision);
-		}
-		DECLSPEC_PROJECTION IDeviceResource* GetDeviceResource() const
-		{
-			return Util::PointerExecuteUnsafe<IDeviceTarget_GetDeviceResource_Offsets, Util::OffsetBy<IDeviceResource*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
 	};
 	struct CComposeTop;
@@ -955,8 +934,8 @@ namespace OpenGlass::dwmcore
 		MAKE_EMPTY_PROJECTION_TUPLE("CHwndRenderTarget::RenderDirtyRegion", os::build_w10_1903, os::build_w10_2004),
 
 		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetUnOccludedDirtyRegion", 0, os::build_w10_2004),
-		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetUnOccludedDirtyRect", os::build_w10_2004, os::build_w11_21h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetOptimizedRect", os::build_w11_21h2, os::build_w11_24h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetUnOccludedDirtyRect", os::build_w10_2004, os::build_server_2022),
+		MAKE_EMPTY_PROJECTION_TUPLE("CDirtyRegion::GetOptimizedRect", os::build_server_2022, os::build_w11_24h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTreeDirty::GetOptimizedRect", os::build_w11_24h2, 0),
 		
 #ifdef _DEBUG

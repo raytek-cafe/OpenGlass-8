@@ -82,12 +82,24 @@ namespace OpenGlass::Util
 		}
 	}
 
+	// Offset lookup by build/revision intervals.
+	// Each OffsetInfo .build is a RIGHT boundary: the offset applies to builds
+	// BEFORE that threshold. Entries must be sorted in ascending build order.
+	//
+	//  { .offset = A, .build = B1 }   valid for [earliest, B1)
+	//  { .offset = B, .build = B2 }   valid for [B1, B2)
+	//  { .offset = C, .build = 0  }   valid for [B2, ...) terminal entry
+	//
+	// build == 0 is the TERMINAL sentinel: it matches the last supported system
+	// AND any future build. If the running system is newer than what the table
+	// knows about, this value is our best guess (assuming layout didn't change).
+	// Without a terminal entry, unknown builds throw E_UNEXPECTED
+	// (the running system was never supposed to reference this offset).
 	template <typename StorageT, size_t i = 0>
 	FORCEINLINE constexpr LONGLONG FindOffsetRecursive(ULONG build, ULONG revision)
 	{
 		constexpr auto offsetInfo = StorageT{}()[i];
 		static_assert((offsetInfo.build == 0 && offsetInfo.revision == 0) || offsetInfo.build != 0, "The offset array is malformed.");
-		//static_assert(!(i + 1 == std::size(StorageT{}()) && (offsetInfo.build != 0 || (offsetInfo.build == 0 && offsetInfo.revision != 0))), "The offset array should ends with build of zero.");
 
 		if constexpr (offsetInfo.build == 0)
 		{
@@ -108,7 +120,7 @@ namespace OpenGlass::Util
 			}
 			else
 			{
-				THROW_HR(E_NOTIMPL);
+				THROW_HR(E_UNEXPECTED);
 			}
 		}
 	}
