@@ -553,6 +553,18 @@ namespace OpenGlass::uDWM
 		{
 			return Util::PointerExecuteUnsafe<CButton_GetButtonState_Offsets, Util::OffsetBy<BYTE*>>(this, g_versionInfo.build, g_versionInfo.revision);
 		}
+		DECLSPEC_PROJECTION DWORD* GetVisualState()
+		{
+			return Util::PointerExecuteUnsafe<CButton_GetVisualState_Offsets, Util::OffsetBy<DWORD*>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		DECLSPEC_PROJECTION void** GetFirstAtlasImage()
+		{
+			return Util::PointerExecuteUnsafe<CButton_GetFirstAtlasImage_Offsets, Util::OffsetBy<void**>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
+		DECLSPEC_PROJECTION void** GetSecondAtlasImage()
+		{
+			return Util::PointerExecuteUnsafe<CButton_GetSecondAtlasImage_Offsets, Util::OffsetBy<void**>>(this, g_versionInfo.build, g_versionInfo.revision);
+		}
 		DECLSPEC_PROJECTION CTimeline* GetTimeline()
 		{
 			return *Util::PointerExecuteUnsafe<CButton_GetTimeline_Offsets, Util::OffsetBy<CTimeline**>>(this, g_versionInfo.build, g_versionInfo.revision);
@@ -1357,7 +1369,22 @@ namespace OpenGlass::uDWM
 		MAKE_FUNCTION_PROJECTION_TUPLE(CButton::Create, os::build_w10_2004 , os::build_w11_22h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CButton::SetVisualStates_Win10, "CButton::SetVisualStates", 0, os::build_w11_21h2),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CButton::SetVisualStates_Win11, "CButton::SetVisualStates", os::build_w11_21h2, os::build_w11_22h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CButton::UpdateCrossfade", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::UpdateCrossfade", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::DrawStateW", os::build_w11_21h2, 0),
+
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasButton::AppendAtlas", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasButton::AddApproximateAtlasSize", os::build_w11_21h2, 0),
+
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedImage::AppendAtlasNineGrid", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedImage::AddNineGridAtlasSize", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedImage::SetDirtyFlags", os::build_w11_21h2, 0),
+
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateButtonVisuals", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CVisual::MoveToFront", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CButton::RedrawVisual", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::RemoveAtlasImage", os::build_w11_21h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::AddAtlasImage", os::build_w11_24h2, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CAtlasedRectsVisual::InsertAtlasImageAtIndex", os::build_w11_21h2, 0),
 
 		MAKE_FUNCTION_PROJECTION_TUPLE(CDrawGeometryInstruction::Create, 0, 0),
 		MAKE_FUNCTION_PROJECTION_TUPLE_BY_ALIAS(CRenderDataVisual::Create_Pre_W10_1903, "CRenderDataVisual::Create", 0, os::build_w10_1903),
@@ -1389,8 +1416,8 @@ namespace OpenGlass::uDWM
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::UpdateWindowVisuals", os::build_w11_21h2, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::~CTopLevelWindow", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::IsShadowNCAreaPart", os::build_w11_24h2, 0),
-		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateBitmapFromAtlas", 0, os::build_w11_21h2),
-		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateGlyphsFromAtlas", 0, os::build_w11_21h2),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateBitmapFromAtlas", 0, 0),
+		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::CreateGlyphsFromAtlas", 0, 0),
 		MAKE_EMPTY_PROJECTION_TUPLE("CTopLevelWindow::EnsureImages", 0, os::build_w11_24h2),
 		MAKE_EMPTY_PROJECTION_TUPLE("SetMargin", os::build_w11_21h2, 0),
 

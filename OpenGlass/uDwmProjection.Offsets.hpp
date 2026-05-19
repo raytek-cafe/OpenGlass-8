@@ -331,6 +331,43 @@ namespace OpenGlass::uDWM
 			};
 		}
 	};
+	// CButton glow — see PR #287
+	// CButton::DrawStateW — visual state flags for hover/press detection
+	struct CButton_GetVisualState_Offsets
+	{
+		consteval static auto operator()()
+		{
+			return std::array{
+				Util::OffsetInfo{ .offset = 376, .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 328, .build = 0, .revision = 0 }
+			};
+		}
+	};
+	// CButton glow — see PR #287
+	// CButton::AppendAtlas — first atlas image (glow nine-grid)
+	struct CButton_GetFirstAtlasImage_Offsets
+	{
+		consteval static auto operator()()
+		{
+			return std::array{
+				Util::OffsetInfo{ .offset = 296, .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 248, .build = 0, .revision = 0 }
+			};
+		}
+	};
+	// CButton glow — see PR #287
+	// CButton::AppendAtlas — second atlas image
+	struct CButton_GetSecondAtlasImage_Offsets
+	{
+		consteval static auto operator()()
+		{
+			return std::array{
+				Util::OffsetInfo{ .offset = 304, .build = os::build_w11_24h2, .revision = 0 },
+				Util::OffsetInfo{ .offset = 256, .build = 0, .revision = 0 }
+			};
+		}
+	};
+
 	// CAccent::UpdateAccentPolicy
 	struct CAccent_GetAccentPolicy_Offsets
 	{
