@@ -1,5 +1,5 @@
 #define MyAppName "OpenGlass"
-#define MyAppVersion "2.6.0.2871"
+#define MyAppVersion "2.6.1.2875"
 #define MyAppPublisher "ALTaleX"
 #define MyAppURL "https://github.com/ALTaleX531/OpenGlass"
 #define MyAppExeName "OpenGlassGUI.exe"

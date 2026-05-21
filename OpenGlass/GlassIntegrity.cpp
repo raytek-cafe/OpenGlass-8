@@ -215,9 +215,10 @@ namespace OpenGlass::GlassIntegrity
 	enum class GlassSafetyZoneMode : UCHAR
 	{
 		Disabled,
-		ExpandOnlyIfNecessary
+		Visible,
+		Always
 	};
-	GlassSafetyZoneMode g_glassSafetyZoneMode{ GlassSafetyZoneMode::ExpandOnlyIfNecessary };
+	GlassSafetyZoneMode g_glassSafetyZoneMode{ GlassSafetyZoneMode::Visible };
 
 	struct UnoccludedDirtyRegionCalculationContext
 	{
@@ -1165,9 +1166,12 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		const auto glassCoverageSet = CArrayBasedGlassCoverageSet::GetOrCreate(coverageSet);
 
 		if (
-			!glassCoverageSet ||
-			glassCoverageSet->IsEmpty() ||
-			!glassCoverageSet->IsVisible(transformedRect, coverageSet)
+			g_glassSafetyZoneMode != GlassSafetyZoneMode::Always &&
+			(
+				!glassCoverageSet ||
+				glassCoverageSet->IsEmpty() ||
+				!glassCoverageSet->IsVisible(transformedRect, coverageSet)
+			)
 		)
 		{
 			break;
@@ -1181,9 +1185,9 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 
 		const auto d2dContext = This->GetD3DDevice()->GetD2DContext();
 		const auto context = d2dContext->GetDeviceContext();
+		d2dContext->EnsureBeginDraw();
 		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
 		LOG_IF_FAILED(This->FlushD2D());
-		d2dContext->EnsureBeginDraw();
 
 		if (dwmcore::g_versionInfo.build < os::build_w10_2004)
 		{
@@ -1228,9 +1232,9 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 
 		hr = callback(extendedPixelRectangle);
 
+		d2dContext->EnsureBeginDraw();
 		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
 		LOG_IF_FAILED(This->FlushD2D());
-		d2dContext->EnsureBeginDraw();
 
 		safetyZoneLayer.Pop();
 
@@ -1355,7 +1359,7 @@ void GlassIntegrity::Update([[maybe_unused]] GlassEngine::UpdateType type)
 {
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
-		g_glassSafetyZoneMode = static_cast<GlassSafetyZoneMode>(std::clamp(GlassEngine::GetDwordFromRegistry(L"GlassSafetyZoneMode", 1), 0ul, 1ul));
+		g_glassSafetyZoneMode = static_cast<GlassSafetyZoneMode>(std::clamp(GlassEngine::GetDwordFromRegistry(L"GlassSafetyZoneMode", 1), 0ul, 2ul));
 	}
 }
 
