@@ -16,7 +16,7 @@ This utility returns the full glass effect to the window frame like [glass8](htt
 > **OpenGlass is not supported on Windows 11 26H1 or any versions with build 28000 and above.** Microsoft has removed the legacy MIL infrastructure in these builds, which makes it impossible for OpenGlass to continue supporting them. See [#260](https://github.com/ALTaleX531/OpenGlass/issues/260) for details.
 
 > [!NOTE]
-> OpenGlass only supports Windows builds from the General Availability channel. Builds from other channels (such as Cannary, Dev, Release Preview and Beta) and Windows Server versions other than 2022 are **NOT supported**. Running on unsupported builds can crash DWM.
+> OpenGlass only supports Windows builds from the General Availability channel. Builds from other channels (such as Canary, Dev, Release Preview and Beta) and Windows Server versions other than 2022 are **NOT supported**. Running on unsupported builds can crash DWM.
 
 ## Who should use OpenGlass?
 
