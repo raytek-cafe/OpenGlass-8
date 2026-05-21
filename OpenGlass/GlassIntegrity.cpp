@@ -85,7 +85,7 @@ namespace OpenGlass::GlassIntegrity
 		unsigned int i,
 		const D2D1_RECT_F& bounds
 	);
-	HRESULT MyCDirtyRegion_GetUnOccludedDirtyRect(
+	D2D1_RECT_F* MyCDirtyRegion_GetUnOccludedDirtyRect(
 		dwmcore::CDirtyRegion* This,
 		D2D1_RECT_F* dirtyRect,
 		int i,
@@ -94,7 +94,19 @@ namespace OpenGlass::GlassIntegrity
 		const DWM::span<dwmcore::CVisual>& visuals,
 		dwmcore::COcclusionContext* occlusionContext
 	);
-	HRESULT MyCDirtyRegion_GetOptimizedRect(
+	D2D1_RECT_F* MyCDirtyRegion_GetOptimizedRect_WS2022(
+		dwmcore::CDirtyRegion* This,
+		D2D1_RECT_F* dirtyRect,
+		int i,
+		const D2D1_RECT_F& bounds,
+		const D2D1_SIZE_U& size,
+		bool transform,
+		const dwmcore::CMILMatrix* matrix,
+		const DWM::span<dwmcore::CVisual>& visuals,
+		const dwmcore::CRegion* region,
+		dwmcore::COcclusionContext* occlusionContext
+	);
+	D2D1_RECT_F* MyCDirtyRegion_GetOptimizedRect(
 		dwmcore::CDirtyRegion* This,
 		D2D1_RECT_F* dirtyRect,
 		int i,
@@ -105,7 +117,7 @@ namespace OpenGlass::GlassIntegrity
 		const DWM::span<dwmcore::CVisual>& visuals,
 		dwmcore::COcclusionContext* occlusionContext
 	);
-	HRESULT MyCTreeDirty_GetOptimizedRect(
+	D2D1_RECT_F* MyCTreeDirty_GetOptimizedRect(
 		dwmcore::CTreeDirty* This,
 		D2D1_RECT_F* dirtyRect,
 		UINT i,
@@ -177,10 +189,16 @@ namespace OpenGlass::GlassIntegrity
 	decltype(&MyCOcclusionContext_IsOccluded) g_COcclusionContext_IsOccluded_Org{ nullptr };
 	decltype(&MyCOcclusionContext_PageInPixelsRectToDeviceRect) g_COcclusionContext_PageInPixelsRectToDeviceRect_Org{ nullptr };
 	decltype(&MyCHwndRenderTarget_RenderDirtyRegion) g_CHwndRenderTarget_RenderDirtyRegion_Org{ nullptr };
+
 	decltype(&MyCDirtyRegion_GetUnOccludedDirtyRegion) g_CDirtyRegion_GetUnOccludedDirtyRegion_Org{ nullptr };
 	decltype(&MyCDirtyRegion_GetUnOccludedDirtyRect) g_CDirtyRegion_GetUnOccludedDirtyRect_Org{ nullptr };
-	decltype(&MyCDirtyRegion_GetOptimizedRect) g_CDirtyRegion_GetOptimizedRect_Org{ nullptr };
+	static union
+	{
+		decltype(&MyCDirtyRegion_GetOptimizedRect_WS2022) g_CDirtyRegion_GetOptimizedRect_WS2022_Org;
+		decltype(&MyCDirtyRegion_GetOptimizedRect) g_CDirtyRegion_GetOptimizedRect_Org{ nullptr };
+	};
 	decltype(&MyCTreeDirty_GetOptimizedRect) g_CTreeDirty_GetOptimizedRect_Org{ nullptr };
+
 	static union
 	{
 		PVOID g_CDrawingContext_DrawVisualTree_Org{ nullptr };
@@ -197,9 +215,10 @@ namespace OpenGlass::GlassIntegrity
 	enum class GlassSafetyZoneMode : UCHAR
 	{
 		Disabled,
-		ExpandOnlyIfNecessary
+		Visible,
+		Always
 	};
-	GlassSafetyZoneMode g_glassSafetyZoneMode{ GlassSafetyZoneMode::ExpandOnlyIfNecessary };
+	GlassSafetyZoneMode g_glassSafetyZoneMode{ GlassSafetyZoneMode::Visible };
 
 	struct UnoccludedDirtyRegionCalculationContext
 	{
@@ -993,7 +1012,7 @@ D2D1_RECT_F* GlassIntegrity::MyCDirtyRegion_GetUnOccludedDirtyRegion(
 		bounds
 	);
 }
-HRESULT GlassIntegrity::MyCDirtyRegion_GetUnOccludedDirtyRect(
+D2D1_RECT_F* GlassIntegrity::MyCDirtyRegion_GetUnOccludedDirtyRect(
 	dwmcore::CDirtyRegion* This,
 	D2D1_RECT_F* dirtyRect,
 	int i,
@@ -1018,7 +1037,38 @@ HRESULT GlassIntegrity::MyCDirtyRegion_GetUnOccludedDirtyRect(
 		occlusionContext
 	);
 }
-HRESULT GlassIntegrity::MyCDirtyRegion_GetOptimizedRect(
+D2D1_RECT_F* GlassIntegrity::MyCDirtyRegion_GetOptimizedRect_WS2022(
+	dwmcore::CDirtyRegion* This,
+	D2D1_RECT_F* dirtyRect,
+	int i,
+	const D2D1_RECT_F& bounds,
+	const D2D1_SIZE_U& size,
+	bool transform,
+	const dwmcore::CMILMatrix* matrix,
+	const DWM::span<dwmcore::CVisual>& visuals,
+	const dwmcore::CRegion* region,
+	dwmcore::COcclusionContext* occlusionContext
+)
+{
+	const auto context = occlusionContext ? occlusionContext : This->GetOcclusionContext();
+	const auto calculationScope = EnterUnoccludedDirtyRegionCalculationContext(
+		&g_calculationContext,
+		context->GetFrameId() == dwmcore::GetCurrentFrameId() ? context : nullptr
+	);
+	return g_CDirtyRegion_GetOptimizedRect_WS2022_Org(
+		This,
+		dirtyRect,
+		i,
+		bounds,
+		size,
+		transform,
+		matrix,
+		visuals,
+		region,
+		occlusionContext
+	);
+}
+D2D1_RECT_F* GlassIntegrity::MyCDirtyRegion_GetOptimizedRect(
 	dwmcore::CDirtyRegion* This,
 	D2D1_RECT_F* dirtyRect,
 	int i,
@@ -1047,7 +1097,7 @@ HRESULT GlassIntegrity::MyCDirtyRegion_GetOptimizedRect(
 		occlusionContext
 	);
 }
-HRESULT GlassIntegrity::MyCTreeDirty_GetOptimizedRect(
+D2D1_RECT_F* GlassIntegrity::MyCTreeDirty_GetOptimizedRect(
 	dwmcore::CTreeDirty* This,
 	D2D1_RECT_F* dirtyRect,
 	UINT i,
@@ -1116,9 +1166,12 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		const auto glassCoverageSet = CArrayBasedGlassCoverageSet::GetOrCreate(coverageSet);
 
 		if (
-			!glassCoverageSet ||
-			glassCoverageSet->IsEmpty() ||
-			!glassCoverageSet->IsVisible(transformedRect, coverageSet)
+			g_glassSafetyZoneMode != GlassSafetyZoneMode::Always &&
+			(
+				!glassCoverageSet ||
+				glassCoverageSet->IsEmpty() ||
+				!glassCoverageSet->IsVisible(transformedRect, coverageSet)
+			)
 		)
 		{
 			break;
@@ -1132,9 +1185,9 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 
 		const auto d2dContext = This->GetD3DDevice()->GetD2DContext();
 		const auto context = d2dContext->GetDeviceContext();
+		d2dContext->EnsureBeginDraw();
 		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
 		LOG_IF_FAILED(This->FlushD2D());
-		d2dContext->EnsureBeginDraw();
 
 		if (dwmcore::g_versionInfo.build < os::build_w10_2004)
 		{
@@ -1179,9 +1232,9 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 
 		hr = callback(extendedPixelRectangle);
 
+		d2dContext->EnsureBeginDraw();
 		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
 		LOG_IF_FAILED(This->FlushD2D());
-		d2dContext->EnsureBeginDraw();
 
 		safetyZoneLayer.Pop();
 
@@ -1306,7 +1359,7 @@ void GlassIntegrity::Update([[maybe_unused]] GlassEngine::UpdateType type)
 {
 	if (type & GlassEngine::UpdateType::Backdrop)
 	{
-		g_glassSafetyZoneMode = static_cast<GlassSafetyZoneMode>(std::clamp(GlassEngine::GetDwordFromRegistry(L"GlassSafetyZoneMode", 1), 0ul, 1ul));
+		g_glassSafetyZoneMode = static_cast<GlassSafetyZoneMode>(std::clamp(GlassEngine::GetDwordFromRegistry(L"GlassSafetyZoneMode", 1), 0ul, 2ul));
 	}
 }
 
@@ -1326,11 +1379,13 @@ void GlassIntegrity::Startup()
 	dwmcore::g_projectionArray.ApplyToVariable("CDirtyRegion::GetUnOccludedDirtyRegion", g_CDirtyRegion_GetUnOccludedDirtyRegion_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CDirtyRegion::GetUnOccludedDirtyRect", g_CDirtyRegion_GetUnOccludedDirtyRect_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CDirtyRegion::GetOptimizedRect", g_CDirtyRegion_GetOptimizedRect_Org);
+	dwmcore::g_projectionArray.ApplyToVariable("CDirtyRegion::GetOptimizedRect", g_CDirtyRegion_GetOptimizedRect_WS2022_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CTreeDirty::GetOptimizedRect", g_CTreeDirty_GetOptimizedRect_Org);
 
 	dwmcore::g_projectionArray.ApplyToVariable("CDrawingContext::DrawVisualTree", g_CDrawingContext_DrawVisualTree_Org);
 
 	const auto build_before_w11_24h2 = dwmcore::g_versionInfo.build < os::build_w11_24h2;
+	const auto build_before_server_2022 = dwmcore::g_versionInfo.build < os::build_server_2022;
 	const auto build_before_w11_21h2 = dwmcore::g_versionInfo.build < os::build_w11_21h2;
 	const auto build_before_w10_2004 = dwmcore::g_versionInfo.build < os::build_w10_2004;
 	const auto build_before_w10_1903 = dwmcore::g_versionInfo.build < os::build_w10_1903;
@@ -1365,7 +1420,8 @@ void GlassIntegrity::Startup()
 
 			{ &g_CHwndRenderTarget_RenderDirtyRegion_Org, &MyCHwndRenderTarget_RenderDirtyRegion, build_before_w10_2004 && !build_before_w10_1903 },
 			{ &g_CDirtyRegion_GetUnOccludedDirtyRegion_Org, &MyCDirtyRegion_GetUnOccludedDirtyRegion, build_before_w10_2004 },
-			{ &g_CDirtyRegion_GetUnOccludedDirtyRect_Org, &MyCDirtyRegion_GetUnOccludedDirtyRect, build_before_w11_21h2 && !build_before_w10_2004 },
+			{ &g_CDirtyRegion_GetUnOccludedDirtyRect_Org, &MyCDirtyRegion_GetUnOccludedDirtyRect, build_before_server_2022 && !build_before_w10_2004 },
+			{ &g_CDirtyRegion_GetOptimizedRect_WS2022_Org, &MyCDirtyRegion_GetOptimizedRect_WS2022, build_before_w11_21h2 && !build_before_server_2022 },
 			{ &g_CDirtyRegion_GetOptimizedRect_Org, &MyCDirtyRegion_GetOptimizedRect, build_before_w11_24h2 && !build_before_w11_21h2 },
 			{ &g_CTreeDirty_GetOptimizedRect_Org, &MyCTreeDirty_GetOptimizedRect, !build_before_w11_24h2 },
 
@@ -1374,8 +1430,8 @@ void GlassIntegrity::Startup()
 			{ &g_COcclusionContext_PageInPixelsRectToDeviceRect_Org, &MyCOcclusionContext_PageInPixelsRectToDeviceRect, g_CArrayBasedCoverageSet_IsCovered_Org != nullptr },
 
 			{ &g_CDrawingContext_DrawVisualTree_Pre_Win10_2004_Org, &MyCDrawingContext_DrawVisualTree_Pre_Win10_2004, build_before_w10_2004 },
-			{ &g_CDrawingContext_DrawVisualTree_Win10_Org, &MyCDrawingContext_DrawVisualTree_Win10, !build_before_w10_2004 && build_before_w11_21h2 },
-			{ &g_CDrawingContext_DrawVisualTree_Win11_Org, &MyCDrawingContext_DrawVisualTree_Win11, !build_before_w11_21h2 }
+			{ &g_CDrawingContext_DrawVisualTree_Win10_Org, &MyCDrawingContext_DrawVisualTree_Win10, !build_before_w10_2004 && build_before_server_2022 },
+			{ &g_CDrawingContext_DrawVisualTree_Win11_Org, &MyCDrawingContext_DrawVisualTree_Win11, !build_before_server_2022 }
 		},
 		true
 	);
@@ -1395,6 +1451,7 @@ void GlassIntegrity::Shutdown()
 	}
 
 	const auto build_before_w11_24h2 = dwmcore::g_versionInfo.build < os::build_w11_24h2;
+	const auto build_before_server_2022 = dwmcore::g_versionInfo.build < os::build_server_2022;
 	const auto build_before_w11_21h2 = dwmcore::g_versionInfo.build < os::build_w11_21h2;
 	const auto build_before_w10_2004 = dwmcore::g_versionInfo.build < os::build_w10_2004;
 	const auto build_before_w10_1903 = dwmcore::g_versionInfo.build < os::build_w10_1903;
@@ -1412,7 +1469,8 @@ void GlassIntegrity::Shutdown()
 
 			{ &g_CHwndRenderTarget_RenderDirtyRegion_Org, &MyCHwndRenderTarget_RenderDirtyRegion, build_before_w10_2004 && !build_before_w10_1903 },
 			{ &g_CDirtyRegion_GetUnOccludedDirtyRegion_Org, &MyCDirtyRegion_GetUnOccludedDirtyRegion, build_before_w10_2004 },
-			{ &g_CDirtyRegion_GetUnOccludedDirtyRect_Org, &MyCDirtyRegion_GetUnOccludedDirtyRect, build_before_w11_21h2 && !build_before_w10_2004 },
+			{ &g_CDirtyRegion_GetUnOccludedDirtyRect_Org, &MyCDirtyRegion_GetUnOccludedDirtyRect, build_before_server_2022 && !build_before_w10_2004 },
+			{ &g_CDirtyRegion_GetOptimizedRect_WS2022_Org, &MyCDirtyRegion_GetOptimizedRect_WS2022, build_before_w11_21h2 && !build_before_server_2022 },
 			{ &g_CDirtyRegion_GetOptimizedRect_Org, &MyCDirtyRegion_GetOptimizedRect, build_before_w11_24h2 && !build_before_w11_21h2 },
 			{ &g_CTreeDirty_GetOptimizedRect_Org, &MyCTreeDirty_GetOptimizedRect, !build_before_w11_24h2 },
 
@@ -1421,8 +1479,8 @@ void GlassIntegrity::Shutdown()
 			{ &g_COcclusionContext_PageInPixelsRectToDeviceRect_Org, &MyCOcclusionContext_PageInPixelsRectToDeviceRect, g_CArrayBasedCoverageSet_IsCovered_Org != nullptr },
 
 			{ &g_CDrawingContext_DrawVisualTree_Pre_Win10_2004_Org, &MyCDrawingContext_DrawVisualTree_Pre_Win10_2004, build_before_w10_2004 },
-			{ &g_CDrawingContext_DrawVisualTree_Win10_Org, &MyCDrawingContext_DrawVisualTree_Win10, !build_before_w10_2004 && build_before_w11_21h2 },
-			{ &g_CDrawingContext_DrawVisualTree_Win11_Org, &MyCDrawingContext_DrawVisualTree_Win11, !build_before_w11_21h2 }
+			{ &g_CDrawingContext_DrawVisualTree_Win10_Org, &MyCDrawingContext_DrawVisualTree_Win10, !build_before_w10_2004 && build_before_server_2022 },
+			{ &g_CDrawingContext_DrawVisualTree_Win11_Org, &MyCDrawingContext_DrawVisualTree_Win11, !build_before_server_2022 }
 		},
 		false
 	);

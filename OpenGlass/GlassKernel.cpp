@@ -147,7 +147,15 @@ HRGN WINAPI GlassKernel::MyCreateRoundRectRgn(int x1, int y1, int x2, int y2, in
 	if (uDWM::g_versionInfo.build >= os::build_w11_24h2)
 	{
 		g_diameter = g_window && g_window->IsToolWindow() ? 0 : Shared::g_roundRectRadius * 2;
-		return g_CreateRoundRectRgn_Org(x1, y1, x2, y2, g_diameter, g_diameter);
+		// windows 11 25h2 gdi bug mitigation
+		if (g_diameter)
+		{
+			return g_CreateRoundRectRgn_Org(x1, y1, x2, y2, g_diameter, g_diameter);
+		}
+		else
+		{
+			return g_CreateRectRgn_Org(x1, y1, x2, y2);
+		}
 	}
 	return g_CreateRoundRectRgn_Org(x1, y1, x2, y2, w, h);
 }
@@ -860,14 +868,16 @@ void GlassKernel::Update(GlassEngine::UpdateType type)
 
 void GlassKernel::Startup()
 {
-	g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address = reinterpret_cast<decltype(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address)>(&(HookHelper::get_vftable_from(uDWM::CDesktopManager::GetInstance()->GetDCompDevice())[4]));
+	winrt::com_ptr<IDCompositionDesktopDevice> dcompDevice{ nullptr };
+	THROW_IF_FAILED(uDWM::CDesktopManager::GetInstance()->GetInteropCompositorDCompDevicePartner()->QueryInterface(dcompDevice.put()));
+	g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address = reinterpret_cast<decltype(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address)>(&(HookHelper::get_vftable_from(dcompDevice.get())[4]));
 	HookHelper::PatchPointerT(g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org_Address, MyIDCompositionDesktopDevice_WaitForCommitCompletion, &g_IDCompositionDesktopDevice_WaitForCommitCompletion_Org);
 
 	dwmcore::g_projectionArray.ApplyToVariable("CCachedVisualImage::RenderTargetBitmapInfo::Update", g_CCachedVisualImage_RenderTargetBitmapInfo_Update_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CCachedVisualImage::CCachedTarget::Update", g_CCachedVisualImage_CCachedTarget_Update_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CDrawingContext::PreSubgraph", g_CDrawingContext_PreSubgraph_Org);
 	dwmcore::g_projectionArray.ApplyToVariable("CD2DContext::DestroyDeviceResources", g_CD2DContext_DestroyDeviceResources_Org);
-	if (uDWM::g_versionInfo.build < os::build_w11_21h2)
+	if (uDWM::g_versionInfo.build < os::build_server_2022)
 	{
 		uDWM::g_projectionArray.ApplyToVariable("CDesktopManager::ReleaseDXGIAdapter", g_CXXX_ReleaseXXX_Org);
 	}

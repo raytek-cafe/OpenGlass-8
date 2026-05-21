@@ -25,12 +25,16 @@ namespace OpenGlass::os
 		build_w10_1803 = 17134,
 		build_w10_1809 = 17763,
 		build_w10_1903 = 18362,
+		build_w10_19h1 = 18362,
 		build_w10_1909 = 18363,
+		build_w10_19h2 = 18363,
 		build_w10_2004 = 19041,
+		build_w10_20h1 = 19041,
 		build_w10_20h2 = 19042,
 		build_w10_21h1 = 19043,
 		build_w10_21h2 = 19044,
 		build_w10_22h2 = 19045,
+		build_server_2022 = 20348,
 		build_w11_21h2 = 22000,
 		build_w11_22h2 = 22621,
 		build_w11_23h2 = 22631,
@@ -43,6 +47,9 @@ namespace OpenGlass::os
 		revision_21h2_post_rtm_0 = 282,
 		revision_24h2_rtm_1 = 2454,
 		revision_24h2_with_25h2_code_staged = 4484,
+		revision_24h2_kb5067036 = 7019,
+		revision_25h2_kb5068861 = 7019,
+		revision_kb5083631 = 8328,
 	};
 }
 

@@ -68,6 +68,11 @@ HRESULT AccentOverrider::MyCAccent_UpdateAccentPolicy(
 	auto accentPolicy = *policy;
 	accentPolicy.AccentState = 1;
 	accentPolicy.dwGradientColor = 0;
+	if (const auto it = g_accentClipRegions.find(This); it != g_accentClipRegions.end() && it->second.clipRegion)
+	{
+		// remove accent border atlas
+		accentPolicy.AccentFlags &= ~((1 << 5) | (1 << 6) | (1 << 7) | (1 << 8));
+	}
 
 	return g_CAccent_UpdateAccentPolicy_Org(This, rect, &accentPolicy, geometry);
 }
@@ -123,6 +128,7 @@ HRESULT AccentOverrider::MyCAccent__UpdateSolidFill(
 	auto effectBrush = GlassEffectBrush::GetOrCreate(window);
 	const auto maximized = window->TreatAsMaximized(data);
 
+	if (!visual->GetInstructions().views().empty())
 	{
 		winrt::com_ptr<uDWM::CDrawGeometryInstruction> instruction{ nullptr };
 		{

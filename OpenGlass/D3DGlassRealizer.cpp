@@ -838,5 +838,5 @@ HRESULT CD3DGlassRealizer::Render(
 float CD3DGlassRealizer::GetBlurRadius(float blurAmount)
 {
 	blurAmount = 3.f;
-	return std::ceil(blurAmount * 2.3f);
+	return std::ceil(blurAmount * 2.3f + 0.5f);
 }

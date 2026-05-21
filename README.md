@@ -10,12 +10,13 @@ This utility returns the full glass effect to the window frame like [glass8](htt
 
 - Windows 10 1809-22H2
 - Windows 11 21H2-26H2
+- Windows Server 2022
 
 > [!IMPORTANT]
 > **OpenGlass is not supported on Windows 11 26H1 or any versions with build 28000 and above.** Microsoft has removed the legacy MIL infrastructure in these builds, which makes it impossible for OpenGlass to continue supporting them. See [#260](https://github.com/ALTaleX531/OpenGlass/issues/260) for details.
 
 > [!NOTE]
-> OpenGlass only supports Windows builds from the General Availability channel. Builds from other channels (such as Cannary, Dev, Release Preview and Beta) and Windows Server are **NOT supported**. Running on unsupported builds can crash DWM.
+> OpenGlass only supports Windows builds from the General Availability channel. Builds from other channels (such as Canary, Dev, Release Preview and Beta) and Windows Server versions other than 2022 are **NOT supported**. Running on unsupported builds can crash DWM.
 
 ## Who should use OpenGlass?
 
@@ -141,6 +142,44 @@ OpenGlass borrowed its symbol download feature.
 A lightweight utility that makes the Windows taskbar translucent/transparent.
 
 OpenGlass borrowed its C++ project structure.
+
+## Development build
+
+### Prerequisites
+
+- **Visual Studio 2026** with C++ desktop development workload
+- **vcpkg**: main C++ dependencies (wxwidgets, wil, knsoft-slimdetours) are pulled via vcpkg. Auxiliary packages (VC-LTL, SourceLink) come from NuGet.
+
+### Building
+
+1. Run `vcpkg integrate install` so dependencies are picked up automatically by MSBuild.
+2. Open `OpenGlass.slnx` in Visual Studio.
+3. Select the `Release` configuration and press `F5`.
+
+> [!TIP]
+> **InnoSetup is not required.** You may see errors related to the installer project during build. These do not block compilation and DLLs/executables are still produced.
+
+### ReleaseSigned configuration
+
+Official releases use the `ReleaseSigned` configuration. This configuration uses macros to prevent digital signature from being abused. **Do not mix `ReleaseSigned` binaries with plain `Release` binaries**. Signed and unsigned components are not compatible. If you compile with the plain `Release` configuration, some features may behave differently when loaded alongside official signed DLLs.
+
+## Maintaining offset tables
+
+OpenGlass reads internal `dwmcore.dll` and `uDWM.dll` struct members via hardcoded byte offsets that change between Windows builds. When a new build arrives, these offsets must be updated.
+
+### Automated update (LLM-driven)
+
+Two 7-phase skills methodically extract all offsets from IDA Pro. Each offset struct in the `.Offsets.hpp` files has inline comments documenting the verification function and pseudocode pattern.
+
+**Setup**: Install the [ida-pro-mcp](https://github.com/mrexodia/ida-pro-mcp) MCP server to connect Claude Code to IDA Pro.
+
+1. Open the new DLL in IDA Pro, wait for auto-analysis, then select **Edit** > **Plugins** > **MCP** to activate the plugin
+2. Run `/extract-dwmcore-offsets` or `/extract-udwm-offsets` in Claude Code
+3. Review the Phase 7 report: verify changed/removed/not-verified offsets against the binary, then either let Claude Code apply the edits or manually update [dwmcoreProjection.Offsets.hpp](OpenGlass/dwmcoreProjection.Offsets.hpp) / [uDwmProjection.Offsets.hpp](OpenGlass/uDwmProjection.Offsets.hpp)
+
+### Manual update
+
+If IDA Pro is not available, locate the accessor functions named in each offset struct's comment (see `.Offsets.hpp` files) using a disassembler, find the member-accessing instructions, and read the displacement bytes.
 
 ## Support
 

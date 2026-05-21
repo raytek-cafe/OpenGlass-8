@@ -1196,7 +1196,7 @@ void CaptionTextHandler::Startup()
 		);
 
 		winrt::com_ptr<IDCompositionDesktopDevicePartner> dcompDevicePartner{ nullptr };
-		THROW_IF_FAILED(uDWM::CDesktopManager::GetInstance()->GetDCompDevice()->QueryInterface(dcompDevicePartner.put()));
+		THROW_IF_FAILED(uDWM::CDesktopManager::GetInstance()->GetInteropCompositorDCompDevicePartner()->QueryInterface(dcompDevicePartner.put()));
 		winrt::com_ptr<abi::ICompositionGraphicsDevice> graphicsDevice{ nullptr };
 
 		winrt::com_ptr<abi::ICompositor> compositor{};
