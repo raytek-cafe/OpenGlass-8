@@ -820,6 +820,97 @@ namespace OpenGlass::Util
 		}
 	};
 
+	// Object pool with key-based reuse and TTL eviction.
+	// Released objects are kept for reuse instead of being freed immediately,
+	// avoiding repeated allocation of expensive resources (e.g. D3D11 textures).
+	// Stale entries are evicted when Cleanup is called (typically at EndDraw).
+	// Caller must ensure single-threaded access.
+	// Released objects are heap-allocated; only unique_ptr moves, never the object.
+	// Acquire transfers ownership to caller; Release transfers it back to the pool.
+	template <typename Key, typename T>
+	class ObjectPool
+	{
+		using Clock = std::chrono::steady_clock;
+		using TimePoint = Clock::time_point;
+
+		struct Entry
+		{
+			std::unique_ptr<T> m_object;
+			TimePoint m_timestamp;
+		};
+
+		std::unordered_multimap<Key, Entry> m_released;
+
+	public:
+		~ObjectPool() = default;
+
+		ObjectPool() = default;
+		ObjectPool(const ObjectPool&) = delete;
+		ObjectPool& operator=(const ObjectPool&) = delete;
+		ObjectPool(ObjectPool&&) = delete;
+		ObjectPool& operator=(ObjectPool&&) = delete;
+
+		FORCEINLINE std::unique_ptr<T> Acquire(const Key& key)
+		{
+			const auto it = m_released.find(key);
+			if (it != m_released.end())
+			{
+				auto result = std::move(it->second.m_object);
+				m_released.erase(it);
+				return result;
+			}
+			return std::make_unique<T>();
+		}
+
+		FORCEINLINE void Release(const Key& key, std::unique_ptr<T> object)
+		{
+			if (!object)
+			{
+				return;
+			}
+			m_released.emplace(
+				std::piecewise_construct,
+				std::forward_as_tuple(key),
+				std::forward_as_tuple(std::move(object), Clock::now())
+			);
+		}
+
+		template <typename Duration = std::chrono::seconds>
+		FORCEINLINE void Cleanup(Duration ttl, std::optional<Key> key = std::nullopt)
+		{
+			const auto now = Clock::now();
+			if (key)
+			{
+				const auto [begin, end] = m_released.equal_range(*key);
+				for (auto it = begin; it != end; )
+				{
+					if (now - it->second.m_timestamp > ttl)
+					{
+						it = m_released.erase(it);
+					}
+					else
+					{
+						++it;
+					}
+				}
+			}
+			else
+			{
+				for (auto it = m_released.begin(); it != m_released.end(); )
+				{
+					if (now - it->second.m_timestamp > ttl)
+					{
+						it = m_released.erase(it);
+					}
+					else
+					{
+						++it;
+					}
+				}
+			}
+		}
+	};
+
 	template <typename T>
 	struct ScopedAvgTimer
 	{
