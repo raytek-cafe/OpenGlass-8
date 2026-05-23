@@ -207,7 +207,7 @@ namespace OpenGlass::GlassIntegrity
 		decltype(&MyCDrawingContext_DrawVisualTree_Win11) g_CDrawingContext_DrawVisualTree_Win11_Org;
 	};
 
-	std::unordered_map<dwmcore::CD2DContext*, CGlassSafetyZoneLayer> g_safetyZoneLayerMap{};
+	Util::ObjectPool<dwmcore::CD2DContext*, CGlassSafetyZoneLayer> g_safetyZonePool{};
 
 	std::unordered_map<dwmcore::COcclusionContext*, ULONGLONG> g_shrunkCoverageSetMap{};
 	void ShrinkOccludersAboveGlass(dwmcore::COcclusionContext* occlusionContext);
@@ -1185,9 +1185,6 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 
 		const auto d2dContext = This->GetD3DDevice()->GetD2DContext();
 		const auto context = d2dContext->GetDeviceContext();
-		d2dContext->EnsureBeginDraw();
-		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
-		LOG_IF_FAILED(This->FlushD2D());
 
 		if (dwmcore::g_versionInfo.build < os::build_w10_2004)
 		{
@@ -1208,15 +1205,14 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 			break;
 		}
 
-		auto& safetyZoneLayer = g_safetyZoneLayerMap.try_emplace(d2dContext).first->second;
-		if (safetyZoneLayer.GetOwner()) [[unlikely]]
-		{
-			break;
-		}
+		LOG_IF_FAILED(This->ApplyRenderStateInternal(false)); // apply clip and other states
+		LOG_IF_FAILED(This->FlushD2D()); // flush previous draw calls
+		d2dContext->EnsureBeginDraw(); // refresh d2d selected target
 
+		auto safetyZoneLayer = g_safetyZonePool.Acquire(d2dContext);
 		D2D1_RECT_F extendedPixelRectangle{};
 		if (
-			hr = safetyZoneLayer.Push(
+			hr = safetyZoneLayer->Push(
 				context,
 				This->GetDeviceTransform()->GetD2DMatrix(),
 				rectangle,
@@ -1232,11 +1228,12 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 
 		hr = callback(extendedPixelRectangle);
 
-		d2dContext->EnsureBeginDraw();
-		LOG_IF_FAILED(This->ApplyRenderStateInternal(false));
-		LOG_IF_FAILED(This->FlushD2D());
+		LOG_IF_FAILED(This->ApplyRenderStateInternal(false)); // apply clip and other states
+		LOG_IF_FAILED(This->FlushD2D()); // flush previous draw calls
 
-		safetyZoneLayer.Pop();
+		safetyZoneLayer->Pop();
+		g_safetyZonePool.Release(d2dContext, std::move(safetyZoneLayer));
+		g_safetyZonePool.Cleanup(std::chrono::seconds{ 30 });
 
 #ifdef _DEBUG
 		if (GetAsyncKeyState(VK_SHIFT))
@@ -1352,7 +1349,7 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree_Win11(
 
 void GlassIntegrity::DestroyDeviceResources(dwmcore::CD2DContext* d2dContext)
 {
-	g_safetyZoneLayerMap.erase(d2dContext);
+	g_safetyZonePool.Cleanup(std::chrono::seconds{ 0 }, d2dContext);
 }
 
 void GlassIntegrity::Update([[maybe_unused]] GlassEngine::UpdateType type)
@@ -1497,6 +1494,6 @@ void GlassIntegrity::Shutdown()
 
 	CArrayBasedGlassCoverageSet::RemoveAll();
 	g_shrunkCoverageSetMap.clear();
-	g_safetyZoneLayerMap.clear();
+	g_safetyZonePool.Cleanup(std::chrono::seconds{ 0 });
 	g_coverageSetCheckpointMap.clear();
 }

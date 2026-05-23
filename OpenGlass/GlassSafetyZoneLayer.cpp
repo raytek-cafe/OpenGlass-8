@@ -189,6 +189,7 @@ HRESULT CGlassSafetyZoneLayer::Push(
 		);
 	}
 
+	d3dContext->Flush();
 	pushCleanupScope.release();
 	return S_OK;
 }
@@ -197,7 +198,6 @@ void CGlassSafetyZoneLayer::Pop()
 {
 	if (!m_renderTargetTexture)
 	{
-		m_renderTargetTexture = nullptr;
 		ZeroMemory(m_safetyZoneBounds, sizeof(m_safetyZoneBounds));
 		return;
 	}
@@ -280,6 +280,7 @@ void CGlassSafetyZoneLayer::Pop()
 		);
 	}
 
+	d3dContext->Flush();
 	m_renderTargetTexture = nullptr;
 	d3dContext = nullptr;
 	ZeroMemory(m_safetyZoneBounds, sizeof(m_safetyZoneBounds));
