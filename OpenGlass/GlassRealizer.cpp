@@ -175,6 +175,8 @@ HRESULT CGlassRealizer::Render(
 				copyRegionRect.top
 			);
 		}
+
+		d3dContext->Flush();
 	}
 
 	const auto cleanupCustomEffect = wil::scope_exit([this]

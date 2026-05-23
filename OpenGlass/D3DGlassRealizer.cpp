@@ -831,6 +831,7 @@ HRESULT CD3DGlassRealizer::Render(
 	context->RSSetScissorRects(1, &clipRect);
 	context->DrawIndexed(static_cast<UINT>(indicesCompose.size()), 0, 0);
 	{ ID3D11ShaderResourceView* nullSRV[1] = { nullptr }; context->PSSetShaderResources(0, 1, nullSRV); }
+	context->Flush();
 
 	return S_OK;
 }
