@@ -96,6 +96,7 @@ namespace OpenGlass::CaptionTextHandler
 	};
 	uDWM::CTopLevelWindow* g_window{ nullptr };
 
+	bool g_isTrimmed{ false };
 	// original sizes, no glow included
 	static union
 	{
@@ -130,7 +131,7 @@ namespace OpenGlass::CaptionTextHandler
 			static_cast<int>((visualWidth - textWidth) / 2.0),
 			0
 		);
-		if (g_centerCaption <= 0)
+		if (g_centerCaption <= 0 || g_isTrimmed)
 			return 0;
 
 		if (g_centerCaption == 1)
@@ -165,7 +166,16 @@ int WINAPI CaptionTextHandler::MyDrawTextW(
 
 	if ((format & DT_CALCRECT))
 	{
-		return g_DrawTextW_Org(hdc, lpchText, cchText, lprc, format);
+		result = g_DrawTextW_Org(hdc, lpchText, cchText, lprc, format);
+
+		if ((format & DT_END_ELLIPSIS) != 0)
+		{
+			RECT rawTextRect{};
+			g_DrawTextW_Org(hdc, lpchText, cchText, &rawTextRect, DT_CALCRECT | DT_NOPREFIX | DT_SINGLELINE);
+			g_isTrimmed = wil::rect_width(*lprc) < wil::rect_width(rawTextRect);
+		}
+
+		return result;
 	}
 	// clear the background, so the text can be shown transparent
 	// with this hack, we don't need to hook FillRect any more
@@ -702,6 +712,17 @@ void CaptionTextHandler::MyID2D1DeviceContext_DrawTextLayout(
 			textBoundingBox.right + static_cast<float>(g_contentMargins.cxRightWidth),
 			textBoundingBox.bottom + static_cast<float>(g_contentMargins.cyBottomHeight)
 		};
+
+		DWRITE_LINE_METRICS lineMetrics{};
+		UINT32 lineCount{};
+		THROW_IF_FAILED(
+			textLayout->GetLineMetrics(
+				&lineMetrics,
+				1,
+				&lineCount
+			)
+		);
+		g_isTrimmed = lineMetrics.isTrimmed;
 
 		const auto calcGlowClipRect = [&windowState](const D2D1_RECT_F& textRect, D2D1_RECT_F& glowClipRect, bool mirrored)
 		{
