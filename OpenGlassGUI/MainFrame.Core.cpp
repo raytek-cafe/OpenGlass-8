@@ -1215,15 +1215,16 @@ namespace OpenGlass
 				updateDword(L"CaptionButtons", sel);
 			}
 		});
-		m_chkCenterCaption->Bind(wxEVT_CHECKBOX, [this, updateDword, deleteValue]([[maybe_unused]] wxCommandEvent& e) {
-			if (!e.IsChecked())
+		m_chCenterCaption->Bind(wxEVT_CHOICE, [this, updateDword, deleteValue]([[maybe_unused]] wxCommandEvent& e) {
+			int sel = e.GetSelection();
+			if (sel == 0)
 			{
 				deleteValue(L"CenterCaption");
 				NotifySettingsChange(ChangeType::Theme);
 			}
 			else
 			{
-				updateDword(L"CenterCaption", 1, ChangeType::Theme);
+				updateDword(L"CenterCaption", sel, ChangeType::Theme);
 			}
 		});
 		m_chkDisableModernBorders->Bind(wxEVT_CHECKBOX, [this, updateDword, deleteValue]([[maybe_unused]] wxCommandEvent& e) {
