@@ -764,9 +764,9 @@ namespace OpenGlass::dwmcore
 		{
 			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::FlushD2D, this);
 		}
-		DECLSPEC_PROJECTION HRESULT ApplyRenderStateInternal(bool unknown)
+		DECLSPEC_PROJECTION HRESULT ApplyRenderStateInternal(bool skipFlushingDeferredClipping)
 		{
-			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::ApplyRenderStateInternal, this, unknown);
+			return HANDLE_PROJECTION_FUNCTION(CDrawingContext::ApplyRenderStateInternal, this, skipFlushingDeferredClipping);
 		}
 		DECLSPEC_PROJECTION CVisual* GetCurrentVisual() const
 		{
