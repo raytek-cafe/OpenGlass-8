@@ -89,7 +89,7 @@ If you encounter crashes or technical bugs:
 | Key Name | Type | Description |
 | -------- | ---- | ----------- |
 | CaptionButtons | DWORD | Changes caption buttons sizes, icon left margin and the opacity of the button glyphs.<br><br><ul><li>0x0 = Vanilla style (default)</li><li>0x1 = Windows Vista style</li><li>0x2 = Windows 7 style</li><li>0x3 = Windows 8 style</li></ul> |
-| CenterCaption | DWORD | Controls how title bar text is aligned.<br><br><ul><li>0x0 = Keeps it on the left (default)</li><li>0x1 = Centers it between the titlebar icon and the titlebar buttons</li></ul> |
+| CenterCaption | DWORD | Controls how title bar text is aligned.<br><br><ul><li>0x0 = Keeps it on the left (default)</li><li>0x1 = Regular centering</li><li>0x2 = Windows 8 style centering</li></ul> |
 | TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <br><br><ul><li>0x0 = No glow effect</li><li>0x1 = Glow effect loaded from atlas (default)</li><li>0x2 = Glow effect loaded from atlas and theme opacity is respected</li><li>0x3 = Composited glow effect using your theme settings HIWORD of the value specifies glow size (0 = theme default)</li></ul> |
 | CustomThemeAtlas | String | Path to PNG file with theme resource (bitmap must have exactly the same layout as msstyle theme you are using!). <br><br>💡 OpenGlass also looks for a `.layout` file with the same name (e.g., `theme.png.layout`) to determine the layout of the atlas. |
 | DisableModernBorders | DWORD | Disable modern rounded window borders. <br><br><ul><li>0x0 = Enable modern borders (default)</li><li>0x1 = Disable modern borders</li></ul><br>ℹ️ Only effective in Win11 |
