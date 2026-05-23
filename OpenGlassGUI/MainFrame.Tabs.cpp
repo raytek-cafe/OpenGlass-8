@@ -274,8 +274,15 @@ namespace OpenGlass
 		// Center Caption
 		{
 			wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
-			m_chkCenterCaption = new wxCheckBox(panel, wxID_ANY, L"Align text to the center");
-			row->Add(m_chkCenterCaption, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+			wxStaticText* label = new wxStaticText(panel, wxID_ANY, L"Caption centering:", wxDefaultPosition, wxSize(300, -1));
+			row->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+
+			wxArrayString modes;
+			modes.Add(L"Disabled");
+			modes.Add(L"Regular");
+			modes.Add(L"Windows 8 style");
+			m_chCenterCaption = new wxChoice(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, modes);
+			row->Add(m_chCenterCaption, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 			AddOptionStatus(panel, row, L"CenterCaption");
 			textGroup->Add(row, 0, wxEXPAND | wxALL, 2);
 		}

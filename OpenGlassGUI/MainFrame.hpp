@@ -109,7 +109,7 @@ namespace OpenGlass
 		wxSpinCtrl* m_scTextGlowSize{ nullptr }; // Added
 		
 		wxChoice* m_chCaptionButtons{ nullptr };
-		wxCheckBox* m_chkCenterCaption{ nullptr };
+		wxChoice* m_chCenterCaption{ nullptr };
 		wxCheckBox* m_chkDisableModernBorders{ nullptr };
 		wxButton* m_btnExportAtlas{ nullptr };
 
