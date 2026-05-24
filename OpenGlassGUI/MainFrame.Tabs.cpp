@@ -1,9 +1,76 @@
 #include "pch.h"
 #include "MainFrame.hpp"
+#include "Symbols.hpp"
 #include "UiControls.hpp"
 
 namespace OpenGlass
 {
+	namespace
+	{
+		void WrapStaticTextToParentWidth(wxStaticText* label, const wxString& sourceText, int rightPadding = 8)
+		{
+			if (!label)
+			{
+				return;
+			}
+
+			wxWindow* parent = label->GetParent();
+			if (!parent)
+			{
+				return;
+			}
+
+			const int availableWidth = std::max(1, parent->GetClientSize().GetWidth() - label->GetPosition().x - rightPadding);
+			label->SetLabel(sourceText);
+			label->Wrap(availableWidth);
+		}
+
+		void AddAdminRequiredTip(wxPanel* panel, wxBoxSizer* sizer, const wxString& message)
+		{
+			if (!panel || !sizer)
+			{
+				return;
+			}
+
+			auto* tipPanel = new wxPanel(panel);
+			tipPanel->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_INFOBK));
+
+			auto* tipSizer = new wxBoxSizer(wxHORIZONTAL);
+			auto* icon = new wxStaticBitmap(
+				tipPanel,
+				wxID_ANY,
+				wxArtProvider::GetBitmap(wxART_WARNING, wxART_MESSAGE_BOX, wxSize(16, 16))
+			);
+			tipSizer->Add(icon, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+
+			auto* label = new wxStaticText(tipPanel, wxID_ANY, message);
+			label->SetForegroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_INFOTEXT));
+			tipSizer->Add(label, 1, wxEXPAND);
+
+			tipPanel->SetSizer(tipSizer);
+			tipPanel->Bind(wxEVT_SIZE, [label, message](wxSizeEvent& event)
+			{
+				WrapStaticTextToParentWidth(label, message);
+				event.Skip();
+			});
+			tipPanel->CallAfter([tipPanel, label, message]
+			{
+				tipPanel->Layout();
+				WrapStaticTextToParentWidth(label, message);
+			});
+			sizer->Insert(0, tipPanel, 0, wxEXPAND | wxALL, 8);
+
+			for (wxWindowList::compatibility_iterator node = panel->GetChildren().GetFirst(); node; node = node->GetNext())
+			{
+				wxWindow* child = node->GetData();
+				if (child != tipPanel)
+				{
+					child->Enable(false);
+				}
+			}
+		}
+	}
+
 	void MainFrame::CreateSystemTab()
 	{
 		wxPanel* panel = new wxPanel(m_notebook);
@@ -30,7 +97,7 @@ namespace OpenGlass
 		// Disabled Hooks
 		{
 			wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
-			row->Add(new wxStaticText(panel, wxID_ANY, L"Disabled hooks (advanced):"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+			row->Add(new wxStaticText(panel, wxID_ANY, L"Disabled hooks (advanced): *"), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 			AddOptionStatus(panel, row, L"DisabledHooks");
 			globalGroup->Add(row, 0, wxLEFT | wxTOP, 2);
 		}
@@ -47,12 +114,132 @@ namespace OpenGlass
 		sizer->Add(globalGroup, 0, wxEXPAND | wxALL, 2);
 		if (!m_isAdmin)
 		{
-			panel->Enable(false);
+			AddAdminRequiredTip(panel, sizer, L"Requires Administrator privileges to edit system-wide settings.");
 		}
 
 		panel->SetSizer(sizer);
 		panel->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW)); 
 		m_notebook->AddPage(panel, L"System");
+	}
+
+	void MainFrame::CreateSymbolsTab()
+	{
+		wxPanel* panel = new wxPanel(m_notebook);
+		wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+
+		wxStaticBoxSizer* downloadGroup = new wxStaticBoxSizer(wxVERTICAL, panel, L"Settings");
+		const wxString descriptionText = L"Download the public PDB files required for the current Windows build. Files are saved to the local symbols cache used by OpenGlass.";
+		wxStaticText* description = new wxStaticText(
+			panel,
+			wxID_ANY,
+			descriptionText
+		);
+		downloadGroup->Add(description, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 8);
+
+		wxFlexGridSizer* infoGrid = new wxFlexGridSizer(2, 8, 12);
+		infoGrid->AddGrowableCol(1, 1);
+		auto addInfoRow = [&](const wxString& label, wxWindow* value)
+		{
+			wxStaticText* key = new wxStaticText(panel, wxID_ANY, label);
+			wxFont keyFont = key->GetFont();
+			keyFont.SetWeight(wxFONTWEIGHT_BOLD);
+			key->SetFont(keyFont);
+			infoGrid->Add(key, 0, wxALIGN_TOP);
+			infoGrid->Add(value, 1, wxEXPAND);
+		};
+
+		wxStaticText* modulesValue = new wxStaticText(panel, wxID_ANY, L"uDWM.dll, dwmcore.dll");
+		addInfoRow(L"Modules", modulesValue);
+
+		wxTextCtrl* cachePathValue = new wxTextCtrl(
+			panel,
+			wxID_ANY,
+			GetSymbolCacheDirectory(),
+			wxDefaultPosition,
+			wxDefaultSize,
+			wxTE_READONLY
+		);
+		addInfoRow(L"Cache path", cachePathValue);
+
+		wxStaticText* timeoutValue = new wxStaticText(
+			panel,
+			wxID_ANY,
+			wxString::Format(L"%d seconds per request", SymbolDownloadTimeoutSeconds)
+		);
+		addInfoRow(L"Network timeout", timeoutValue);
+		downloadGroup->Add(infoGrid, 0, wxEXPAND | wxALL, 8);
+
+		wxBoxSizer* buttonRow = new wxBoxSizer(wxHORIZONTAL);
+		buttonRow->AddStretchSpacer();
+		m_btnDownloadSymbols = new wxButton(
+			panel,
+			wxID_ANY,
+			L"Download symbols"
+		);
+		buttonRow->Add(m_btnDownloadSymbols, 0, wxRIGHT, 6);
+
+		m_btnCancelSymbolDownload = new wxButton(panel, wxID_ANY, L"Cancel");
+		m_btnCancelSymbolDownload->Enable(false);
+		buttonRow->Add(m_btnCancelSymbolDownload, 0);
+		downloadGroup->Add(buttonRow, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
+
+		wxStaticBoxSizer* statusGroup = new wxStaticBoxSizer(wxVERTICAL, panel, L"Status");
+		m_gaugeSymbolDownload = new wxGauge(panel, wxID_ANY, 100);
+		statusGroup->Add(m_gaugeSymbolDownload, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 8);
+
+		m_lblSymbolDownloadPhase = new wxStaticText(panel, wxID_ANY, L"Idle");
+		wxFont phaseFont = m_lblSymbolDownloadPhase->GetFont();
+		phaseFont.SetWeight(wxFONTWEIGHT_BOLD);
+		m_lblSymbolDownloadPhase->SetFont(phaseFont);
+		statusGroup->Add(m_lblSymbolDownloadPhase, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 8);
+
+		m_symbolDownloadDetailText = L"Ready to download uDWM.dll and dwmcore.dll.";
+		m_lblSymbolDownloadDetail = new wxStaticText(panel, wxID_ANY, m_symbolDownloadDetailText);
+		statusGroup->Add(m_lblSymbolDownloadDetail, 0, wxEXPAND | wxALL, 8);
+
+		m_pnlSymbolDownloadResult = new wxPanel(panel);
+		wxBoxSizer* resultRow = new wxBoxSizer(wxHORIZONTAL);
+		m_bmpSymbolDownloadResult = new wxStaticBitmap(
+			m_pnlSymbolDownloadResult,
+			wxID_ANY,
+			wxArtProvider::GetBitmap(wxART_INFORMATION, wxART_MESSAGE_BOX, wxSize(16, 16))
+		);
+		m_bmpSymbolDownloadResult->SetMinSize(wxSize(16, 16));
+		resultRow->Add(m_bmpSymbolDownloadResult, 0, wxALIGN_TOP | wxRIGHT, 8);
+
+		m_lblSymbolDownloadResult = new wxStaticText(m_pnlSymbolDownloadResult, wxID_ANY, wxEmptyString);
+		resultRow->Add(m_lblSymbolDownloadResult, 1, wxEXPAND);
+
+		m_pnlSymbolDownloadResult->SetSizer(resultRow);
+		m_pnlSymbolDownloadResult->Hide();
+		statusGroup->Add(m_pnlSymbolDownloadResult, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
+
+		sizer->Add(downloadGroup, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 8);
+		sizer->Add(statusGroup, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 8);
+		sizer->AddStretchSpacer();
+		if (!m_isAdmin)
+		{
+			AddAdminRequiredTip(panel, sizer, L"Requires Administrator privileges to download symbols.");
+		}
+
+		panel->SetSizer(sizer);
+		panel->Bind(wxEVT_SIZE, [this, panel, description, descriptionText](wxSizeEvent& event)
+		{
+			WrapStaticTextToParentWidth(description, descriptionText);
+			WrapStaticTextToParentWidth(m_lblSymbolDownloadDetail, m_symbolDownloadDetailText);
+			WrapStaticTextToParentWidth(m_lblSymbolDownloadResult, m_symbolDownloadResultText);
+			event.Skip();
+		});
+		panel->CallAfter([this, panel, description, descriptionText]
+		{
+			panel->Layout();
+			WrapStaticTextToParentWidth(description, descriptionText);
+			WrapStaticTextToParentWidth(m_lblSymbolDownloadDetail, m_symbolDownloadDetailText);
+			WrapStaticTextToParentWidth(m_lblSymbolDownloadResult, m_symbolDownloadResultText);
+			panel->Layout();
+		});
+		panel->SetBackgroundColour(wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW));
+		m_notebook->AddPage(panel, L"Symbols");
 	}
 
 	void MainFrame::CreateThemeTab()
@@ -274,11 +461,11 @@ namespace OpenGlass
 		// Center Caption
 		{
 			wxBoxSizer* row = new wxBoxSizer(wxHORIZONTAL);
-			wxStaticText* label = new wxStaticText(panel, wxID_ANY, L"Caption centering:", wxDefaultPosition, wxSize(300, -1));
+			wxStaticText* label = new wxStaticText(panel, wxID_ANY, L"Text centering:", wxDefaultPosition, wxSize(300, -1));
 			row->Add(label, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
 			wxArrayString modes;
-			modes.Add(L"Disabled");
+			modes.Add(L"Disabled (vanilla)");
 			modes.Add(L"Regular");
 			modes.Add(L"Windows 8 style");
 			m_chCenterCaption = new wxChoice(panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, modes);

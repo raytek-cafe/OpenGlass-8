@@ -8,6 +8,7 @@
 #include <wx/filepicker.h>
 #include <wx/spinctrl.h>
 #include <wx/slider.h>
+#include <wx/gauge.h>
 #include <wx/commandlinkbutton.h>
 #include <wx/artprov.h>
 #include <wx/simplebook.h>
@@ -24,6 +25,7 @@
 #include <functional>
 #include <format>
 #include <map>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>

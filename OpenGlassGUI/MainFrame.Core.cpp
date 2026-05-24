@@ -1,8 +1,30 @@
 #include "pch.h"
 #include "MainFrame.hpp"
+#include "Symbols.hpp"
 
 namespace OpenGlass
 {
+	namespace
+	{
+		void WrapStaticTextToParentWidth(wxStaticText* label, const wxString& sourceText, int rightPadding = 8)
+		{
+			if (!label)
+			{
+				return;
+			}
+
+			wxWindow* parent = label->GetParent();
+			if (!parent)
+			{
+				return;
+			}
+
+			const int availableWidth = std::max(1, parent->GetClientSize().GetWidth() - label->GetPosition().x - rightPadding);
+			label->SetLabel(sourceText);
+			label->Wrap(availableWidth);
+		}
+	}
+
 	class SelectionDialog : public wxDialog
 	{
 	public:
@@ -120,6 +142,7 @@ namespace OpenGlass
 		CreateThemeTab();
 		CreateAppearanceTab();
 		CreateGlassColorsTab();
+		CreateSymbolsTab();
 
 		m_notebook->SetSelection(2);
 
@@ -205,6 +228,186 @@ namespace OpenGlass
 			return;
 		}
 		SetStatusText(m_scopeLabel);
+	}
+
+	void MainFrame::StartSymbolDownload()
+	{
+		if (m_symbolDownloadRunning || !m_isAdmin)
+		{
+			return;
+		}
+
+		m_closeWhenSymbolDownloadStops = false;
+		m_symbolDownloadRunning = true;
+		m_btnDownloadSymbols->Enable(false);
+		m_btnCancelSymbolDownload->Enable(true);
+		UpdateSymbolDownloadResult(wxART_INFORMATION, wxEmptyString, wxEmptyString);
+		UpdateSymbolDownloadProgress(SymbolDownloadProgress{
+			0,
+			true,
+			L"Connecting to Microsoft Symbol Server...",
+			L"Preparing symbol download."
+		});
+
+		m_symbolDownloadThread = std::jthread([this](std::stop_token stopToken)
+		{
+			const auto progressCallback = [this](const SymbolDownloadProgress& progress)
+			{
+				CallAfter([this, progress]
+				{
+					UpdateSymbolDownloadProgress(progress);
+				});
+			};
+
+			const SymbolDownloadOutcome outcome = DownloadSymbols(stopToken, progressCallback);
+			CallAfter([this, outcome]
+			{
+				FinishSymbolDownload(outcome);
+			});
+		});
+	}
+
+	void MainFrame::RefreshSymbolDownloadLayout()
+	{
+		WrapStaticTextToParentWidth(m_lblSymbolDownloadDetail, m_symbolDownloadDetailText);
+		WrapStaticTextToParentWidth(m_lblSymbolDownloadResult, m_symbolDownloadResultText);
+
+		wxWindow* parent = nullptr;
+		if (m_pnlSymbolDownloadResult)
+		{
+			parent = m_pnlSymbolDownloadResult->GetParent();
+		}
+		else if (m_lblSymbolDownloadDetail)
+		{
+			parent = m_lblSymbolDownloadDetail->GetParent();
+		}
+
+		if (parent)
+		{
+			parent->Layout();
+			if (wxScrolledWindow* scrolled = wxDynamicCast(parent, wxScrolledWindow))
+			{
+				scrolled->FitInside();
+			}
+		}
+
+		Layout();
+		Refresh();
+		Update();
+	}
+
+	void MainFrame::UpdateSymbolDownloadProgress(const SymbolDownloadProgress& progress)
+	{
+		if (m_gaugeSymbolDownload)
+		{
+			if (progress.indeterminate)
+			{
+				m_gaugeSymbolDownload->Pulse();
+			}
+			else
+			{
+				m_gaugeSymbolDownload->SetValue(std::clamp(progress.percent, 0, 100));
+			}
+		}
+
+		if (m_lblSymbolDownloadPhase)
+		{
+			if (m_lblSymbolDownloadPhase->GetLabelText() != progress.phase)
+			{
+				m_lblSymbolDownloadPhase->SetLabel(progress.phase);
+			}
+		}
+		if (m_lblSymbolDownloadDetail)
+		{
+			if (m_symbolDownloadDetailText != progress.detail)
+			{
+				m_symbolDownloadDetailText = progress.detail;
+				WrapStaticTextToParentWidth(m_lblSymbolDownloadDetail, m_symbolDownloadDetailText);
+			}
+		}
+	}
+
+	void MainFrame::UpdateSymbolDownloadResult(wxArtID iconId, const wxString& summary, const wxString& details)
+	{
+		if (!m_pnlSymbolDownloadResult || !m_bmpSymbolDownloadResult || !m_lblSymbolDownloadResult)
+		{
+			return;
+		}
+
+		if (summary.empty() && details.empty())
+		{
+			m_symbolDownloadResultText.clear();
+			m_lblSymbolDownloadResult->SetLabel(wxEmptyString);
+			m_pnlSymbolDownloadResult->Hide();
+			RefreshSymbolDownloadLayout();
+			return;
+		}
+
+		m_bmpSymbolDownloadResult->SetBitmap(
+			wxArtProvider::GetBitmap(iconId, wxART_MESSAGE_BOX, wxSize(16, 16))
+		);
+
+		wxString message = summary;
+		if (!details.empty())
+		{
+			if (!message.empty())
+			{
+				message += L"\n\n";
+			}
+			message += details;
+		}
+
+		m_symbolDownloadResultText = message;
+		WrapStaticTextToParentWidth(m_lblSymbolDownloadResult, m_symbolDownloadResultText);
+		m_pnlSymbolDownloadResult->Show();
+		RefreshSymbolDownloadLayout();
+	}
+
+	void MainFrame::FinishSymbolDownload(const SymbolDownloadOutcome& outcome)
+	{
+		m_symbolDownloadRunning = false;
+		m_btnDownloadSymbols->Enable(m_isAdmin);
+		m_btnCancelSymbolDownload->Enable(false);
+
+		switch (outcome.result)
+		{
+		case SymbolDownloadResult::Success:
+			UpdateSymbolDownloadProgress(SymbolDownloadProgress{
+				100,
+				false,
+				L"Symbols downloaded successfully.",
+				L"The local symbol cache has been updated."
+			});
+			UpdateSymbolDownloadResult(wxART_INFORMATION, wxEmptyString, wxEmptyString);
+			break;
+		case SymbolDownloadResult::Cancelled:
+			UpdateSymbolDownloadProgress(SymbolDownloadProgress{
+				m_gaugeSymbolDownload ? m_gaugeSymbolDownload->GetValue() : 0,
+				false,
+				L"Symbol download cancelled.",
+				L"No further network requests will be started."
+			});
+			UpdateSymbolDownloadResult(wxART_WARNING, wxEmptyString, outcome.details);
+			break;
+		case SymbolDownloadResult::Failed:
+		default:
+			UpdateSymbolDownloadProgress(SymbolDownloadProgress{
+				m_gaugeSymbolDownload ? m_gaugeSymbolDownload->GetValue() : 0,
+				false,
+				L"Symbol download failed.",
+				outcome.summary
+			});
+			UpdateSymbolDownloadResult(wxART_ERROR, wxEmptyString, outcome.details);
+			break;
+		}
+
+		const bool closePending = m_closeWhenSymbolDownloadStops;
+		m_closeWhenSymbolDownloadStops = false;
+		if (closePending)
+		{
+			Close(true);
+			return;
+		}
 	}
 
 	bool MainFrame::IsSystemSettingKey(const std::wstring& key) const
@@ -1593,6 +1796,26 @@ namespace OpenGlass
 			//wxMessageBox(L"System theme atlas exported successfully!\nA layout file was also generated.", L"Success", wxICON_INFORMATION);
 		});
 
+		m_btnDownloadSymbols->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+			StartSymbolDownload();
+		});
+
+		m_btnCancelSymbolDownload->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+			if (!m_symbolDownloadRunning)
+			{
+				return;
+			}
+
+			m_symbolDownloadThread.request_stop();
+			m_btnCancelSymbolDownload->Enable(false);
+			UpdateSymbolDownloadProgress(SymbolDownloadProgress{
+				m_gaugeSymbolDownload ? m_gaugeSymbolDownload->GetValue() : 0,
+				true,
+				L"Cancelling symbol download...",
+				L"Waiting for the current network operation to stop."
+			});
+		});
+
 		m_btnSave->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
 			SaveSettings();
 		});
@@ -1607,6 +1830,23 @@ namespace OpenGlass
 		if (m_initCanceled || !m_config)
 		{
 			event.Skip();
+			return;
+		}
+		if (m_symbolDownloadRunning)
+		{
+			m_closeWhenSymbolDownloadStops = true;
+			m_symbolDownloadThread.request_stop();
+			if (m_btnCancelSymbolDownload)
+			{
+				m_btnCancelSymbolDownload->Enable(false);
+			}
+			UpdateSymbolDownloadProgress(SymbolDownloadProgress{
+				m_gaugeSymbolDownload ? m_gaugeSymbolDownload->GetValue() : 0,
+				true,
+				L"Cancelling symbol download before closing...",
+				L"The window will close after the current network request finishes or times out."
+			});
+			event.Veto();
 			return;
 		}
 		RevertSettings();

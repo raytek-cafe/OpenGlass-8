@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 #include "RegistryConfig.hpp"
+#include "Symbols.hpp"
 
 namespace OpenGlass
 {
@@ -22,6 +23,7 @@ namespace OpenGlass
 	private:
 		void CreateControls();
 		void CreateSystemTab();
+		void CreateSymbolsTab();
 		void CreateThemeTab();
 		void CreateAppearanceTab(); // Text and Caption settings
 		void CreateGlassColorsTab();
@@ -51,6 +53,11 @@ namespace OpenGlass
 		void ApplyChoiceColorEx(wxChoice* ch, wxColourPickerCtrl* cp, DWORD value, DWORD themeSentinel, DWORD autoSentinel, DWORD systemSentinel) const;
 		void ApplyChoiceSlider(wxChoice* ch, wxSlider* sl, DWORD value, DWORD themeSentinel, DWORD autoSentinel, int disabledValue) const;
 		void TrackSettingChange(const std::wstring& name);
+		void StartSymbolDownload();
+		void RefreshSymbolDownloadLayout();
+		void UpdateSymbolDownloadProgress(const SymbolDownloadProgress& progress);
+		void UpdateSymbolDownloadResult(wxArtID iconId, const wxString& summary, const wxString& details = wxEmptyString);
+		void FinishSymbolDownload(const SymbolDownloadOutcome& outcome);
 		
 		// Map for Revert functionality
 		std::map<std::wstring, std::variant<std::monostate, DWORD, std::wstring>> m_backupSettings;
@@ -67,6 +74,16 @@ namespace OpenGlass
 		// System Tab
 		wxCheckBox* m_chkDisableGlassOnBattery{ nullptr };
 		wxCheckListBox* m_clDisabledHooks{ nullptr };
+		wxGauge* m_gaugeSymbolDownload{ nullptr };
+		wxStaticText* m_lblSymbolDownloadPhase{ nullptr };
+		wxStaticText* m_lblSymbolDownloadDetail{ nullptr };
+		wxString m_symbolDownloadDetailText;
+		wxPanel* m_pnlSymbolDownloadResult{ nullptr };
+		wxStaticBitmap* m_bmpSymbolDownloadResult{ nullptr };
+		wxStaticText* m_lblSymbolDownloadResult{ nullptr };
+		wxString m_symbolDownloadResultText;
+		wxButton* m_btnDownloadSymbols{ nullptr };
+		wxButton* m_btnCancelSymbolDownload{ nullptr };
 
 		// Theme Tab
 		wxCheckBox* m_chkCustomThemeAtlas{ nullptr };
@@ -215,5 +232,8 @@ namespace OpenGlass
 		wxString m_scopeLabel;
 		HWND m_dwmWindow{ nullptr };
 		bool m_initCanceled{ false };
+		bool m_symbolDownloadRunning{ false };
+		bool m_closeWhenSymbolDownloadStops{ false };
+		std::jthread m_symbolDownloadThread{};
 	};
 }
