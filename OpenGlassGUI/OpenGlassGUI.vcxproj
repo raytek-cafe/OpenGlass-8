@@ -47,6 +47,7 @@
     <ClInclude Include="OpenGlassGUI.hpp" />
     <ClInclude Include="MainFrame.hpp" />
     <ClInclude Include="RegistryConfig.hpp" />
+    <ClInclude Include="Symbols.hpp" />
     <ClInclude Include="UiControls.hpp" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="resource.h" />
@@ -57,6 +58,7 @@
     <ClCompile Include="MainFrame.State.cpp" />
     <ClCompile Include="MainFrame.Tabs.cpp" />
     <ClCompile Include="RegistryConfig.cpp" />
+    <ClCompile Include="Symbols.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
