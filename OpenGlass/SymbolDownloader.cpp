@@ -242,6 +242,7 @@ winrt::Windows::Foundation::IAsyncOperation<int> OpenGlass::DownloadSymbolForMod
 	if (contextReceiver)
 	{
 		context.pdbFileName = pdbFileName.get();
+		context.url = url;
 		*contextReceiver = &context;
 	}
 	HRESULT hr = co_await downloader.DownloadAsync(url, pdbFilePath, progressCallback);
