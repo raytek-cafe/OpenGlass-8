@@ -1136,6 +1136,11 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 {
 	HRESULT hr{ S_OK };
 
+	const auto safetyZonePoolCleanup = wil::scope_exit([]
+	{
+		g_safetyZonePool.Cleanup(std::chrono::seconds{ 30 });
+	});
+
 	do
 	{
 		if (g_glassSafetyZoneMode == GlassSafetyZoneMode::Disabled)
@@ -1210,6 +1215,11 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		d2dContext->EnsureBeginDraw(); // refresh d2d selected target
 
 		auto safetyZoneLayer = g_safetyZonePool.Acquire(d2dContext);
+		const auto safetyZoneLayerScope = wil::scope_exit([&]
+		{
+			g_safetyZonePool.Release(d2dContext, std::move(safetyZoneLayer));
+		});
+
 		D2D1_RECT_F extendedPixelRectangle{};
 		if (
 			hr = safetyZoneLayer->Push(
@@ -1232,8 +1242,6 @@ HRESULT GlassIntegrity::MyCDrawingContext_DrawVisualTree(
 		LOG_IF_FAILED(This->FlushD2D()); // flush previous draw calls
 
 		safetyZoneLayer->Pop();
-		g_safetyZonePool.Release(d2dContext, std::move(safetyZoneLayer));
-		g_safetyZonePool.Cleanup(std::chrono::seconds{ 30 });
 
 #ifdef _DEBUG
 		if (GetAsyncKeyState(VK_SHIFT))
