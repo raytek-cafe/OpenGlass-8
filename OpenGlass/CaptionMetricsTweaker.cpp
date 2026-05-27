@@ -18,8 +18,34 @@ namespace OpenGlass::CaptionMetricsTweaker
 		Disabled = 0,
 		WindowsVista,
 		Windows7,
-		Windows8
+		Windows8,
+		Custom
 	} g_captionButtons{ 0 };
+
+	struct CustomCaptionButtonsMetrics
+	{
+		int titlebarHeight{ 21 };
+		int height{ 20 };
+		int loneWidth{ 47 };
+		int closeWidth{ 47 };
+		int maxWidth{ 26 };
+		int minWidth{ 28 };
+		int groupOffsetX{ 0 };
+		int groupOffsetY{ 0 };
+		int buttonSpacing{ 0 };
+		int closeOffsetX{ 0 };
+		int closeOffsetY{ 0 };
+		int maxOffsetX{ 0 };
+		int maxOffsetY{ 0 };
+		int minOffsetX{ 0 };
+		int minOffsetY{ 0 };
+		int toolWidth{ 0 };
+		int toolHeight{ 0 };
+		int toolOffsetX{ 0 };
+		int toolOffsetY{ 0 };
+		bool topInsert{ false };
+	} g_customCaptionButtonsMetrics{};
+
 	SIZE CalculateButtonSize(int cySize, int buttonType);
 }
 
@@ -50,6 +76,40 @@ SIZE CaptionMetricsTweaker::CalculateButtonSize(int cySize, int buttonType)
 		std::tie(heightRatio, loneWidthRatio, closeWidthRatio, maxWidthRatio, minWidthRatio) =
 			std::make_tuple(0.95454544f, 1.6363636f, 2.2272727f, 1.2272727f, 1.3181819f);
 		break;
+	case CaptionButtons::Custom:
+	{
+		const auto clampRatio = [](float value, float minimum, float maximum)
+		{
+			return std::clamp(value, minimum, maximum);
+		};
+
+		heightRatio = clampRatio(
+			static_cast<float>(g_customCaptionButtonsMetrics.height) / static_cast<float>(g_customCaptionButtonsMetrics.titlebarHeight),
+			0.5f,
+			2.0f
+		);
+		loneWidthRatio = clampRatio(
+			static_cast<float>(g_customCaptionButtonsMetrics.loneWidth) / static_cast<float>(g_customCaptionButtonsMetrics.height),
+			0.5f,
+			3.0f
+		);
+		closeWidthRatio = clampRatio(
+			static_cast<float>(g_customCaptionButtonsMetrics.closeWidth) / static_cast<float>(g_customCaptionButtonsMetrics.height),
+			0.5f,
+			3.0f
+		);
+		maxWidthRatio = clampRatio(
+			static_cast<float>(g_customCaptionButtonsMetrics.maxWidth) / static_cast<float>(g_customCaptionButtonsMetrics.height),
+			0.5f,
+			2.0f
+		);
+		minWidthRatio = clampRatio(
+			static_cast<float>(g_customCaptionButtonsMetrics.minWidth) / static_cast<float>(g_customCaptionButtonsMetrics.height),
+			0.5f,
+			2.0f
+		);
+		break;
+	}
 	}
 
 	SIZE buttonSize = { 0, static_cast<LONG>(std::round(static_cast<float>(cySize) * heightRatio)) };
@@ -117,25 +177,50 @@ HRESULT CaptionMetricsTweaker::MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes(u
 	int cySize = GetSystemMetricsForDpi(SM_CYSIZE, data->GetWindowDPI());
 
 	int offsetRight = maximized ? borderMargins.cxRightWidth + 2 : (borderMargins.cxRightWidth ? borderMargins.cxRightWidth - 2 : data->GetFrameThickness() - 2);
-	int offsetTop = maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1;
+	int offsetTop =
+		g_customCaptionButtonsMetrics.topInsert && g_captionButtons == CaptionButtons::Custom ?
+		(maximized ? visibleMargins.cyTopHeight : visibleMargins.cyTopHeight + 1) :
+		(maximized ? visibleMargins.cyTopHeight - 1 : visibleMargins.cyTopHeight + 1);
 
 	auto closeButtonSize = loneButton ? CalculateButtonSize(cySize, 0) : CalculateButtonSize(cySize, 3);
 	auto maxButtonSize = CalculateButtonSize(cySize, 2);
 	auto minButtonSize = CalculateButtonSize(cySize, 1);
-
-	if (UpdateButton(3, offsetRight, offsetTop, closeButtonSize) && !toolWindow)
+	if (g_captionButtons == CaptionButtons::Custom)
 	{
-		offsetRight = closeButtonSize.cx + offsetRight;
+		offsetRight += g_customCaptionButtonsMetrics.groupOffsetX;
+		offsetTop += g_customCaptionButtonsMetrics.groupOffsetY;
+
+		if (UpdateButton(3, offsetRight + g_customCaptionButtonsMetrics.closeOffsetX, offsetTop + g_customCaptionButtonsMetrics.closeOffsetY, closeButtonSize) && !toolWindow)
+		{
+			offsetRight += closeButtonSize.cx + g_customCaptionButtonsMetrics.buttonSpacing;
+		}
+
+		if (UpdateButton(2, offsetRight + g_customCaptionButtonsMetrics.maxOffsetX, offsetTop + g_customCaptionButtonsMetrics.maxOffsetY, maxButtonSize))
+		{
+			offsetRight += maxButtonSize.cx + g_customCaptionButtonsMetrics.buttonSpacing;
+		}
+
+		if (UpdateButton(1, offsetRight + g_customCaptionButtonsMetrics.minOffsetX, offsetTop + g_customCaptionButtonsMetrics.minOffsetY, minButtonSize))
+		{
+			offsetRight += minButtonSize.cx + g_customCaptionButtonsMetrics.buttonSpacing;
+		}
 	}
-
-	if (UpdateButton(2, offsetRight, offsetTop, maxButtonSize))
+	else
 	{
-		offsetRight += maxButtonSize.cx;
-	}
+		if (UpdateButton(3, offsetRight, offsetTop, closeButtonSize) && !toolWindow)
+		{
+			offsetRight = closeButtonSize.cx + offsetRight;
+		}
 
-	if (UpdateButton(1, offsetRight, offsetTop, minButtonSize))
-	{
-		offsetRight += minButtonSize.cx;
+		if (UpdateButton(2, offsetRight, offsetTop, maxButtonSize))
+		{
+			offsetRight += maxButtonSize.cx;
+		}
+
+		if (UpdateButton(1, offsetRight, offsetTop, minButtonSize))
+		{
+			offsetRight += minButtonSize.cx;
+		}
 	}
 
 	UpdateButton(0, offsetRight, offsetTop, minButtonSize);
@@ -143,10 +228,26 @@ HRESULT CaptionMetricsTweaker::MyCTopLevelWindow_UpdateNCAreaPositionsAndSizes(u
 	if (toolWindow)
 	{
 		int cySmSize = GetSystemMetricsForDpi(SM_CYSMSIZE, data->GetWindowDPI());
-		SIZE toolButtonSize = { cySmSize , cySmSize };
+		SIZE toolButtonSize =
+			g_captionButtons == CaptionButtons::Custom ?
+			SIZE
+			{
+				std::max(1, cySmSize + g_customCaptionButtonsMetrics.toolWidth),
+				std::max(1, cySmSize + g_customCaptionButtonsMetrics.toolHeight)
+			} :
+			SIZE
+			{
+				cySmSize,
+				cySmSize
+			};
 
 		offsetTop = (borderMargins.cyTopHeight - toolButtonSize.cy - 4 > offsetTop) ? borderMargins.cyTopHeight - toolButtonSize.cy - 4 : offsetTop;
-		UpdateButton(3, offsetRight, offsetTop, toolButtonSize);
+		UpdateButton(
+			3,
+			offsetRight + (g_captionButtons == CaptionButtons::Custom ? g_customCaptionButtonsMetrics.toolOffsetX : 0),
+			offsetTop + (g_captionButtons == CaptionButtons::Custom ? g_customCaptionButtonsMetrics.toolOffsetY : 0),
+			toolButtonSize
+		);
 		offsetRight = toolButtonSize.cx + offsetRight;
 	}
 
@@ -187,7 +288,36 @@ void CaptionMetricsTweaker::Update(GlassEngine::UpdateType type)
 {
 	if (type & GlassEngine::UpdateType::Theme)
 	{
-		g_captionButtons = static_cast<CaptionButtons>(GlassEngine::GetDwordFromRegistry(L"CaptionButtons", 0));
+		const auto readInt = [](PCWSTR name, DWORD defaultValue)
+		{
+			return static_cast<int>(static_cast<LONG>(GlassEngine::GetDwordFromRegistry(name, defaultValue)));
+		};
+		const auto readClampedInt = [readInt](PCWSTR name, DWORD defaultValue, int minimum, int maximum)
+		{
+			return std::clamp(readInt(name, defaultValue), minimum, maximum);
+		};
+
+		g_captionButtons = static_cast<CaptionButtons>(std::clamp(GlassEngine::GetDwordFromRegistry(L"CaptionButtons", 0), 0ul, 4ul));
+		g_customCaptionButtonsMetrics.titlebarHeight = readClampedInt(L"CustomTitlebarHeight", 21, 1, 100);
+		g_customCaptionButtonsMetrics.height = readClampedInt(L"CustomHeight", 20, 1, 100);
+		g_customCaptionButtonsMetrics.loneWidth = readClampedInt(L"CustomLoneWidth", 47, 1, 200);
+		g_customCaptionButtonsMetrics.closeWidth = readClampedInt(L"CustomCloseWidth", 47, 1, 200);
+		g_customCaptionButtonsMetrics.maxWidth = readClampedInt(L"CustomMaxWidth", 26, 1, 200);
+		g_customCaptionButtonsMetrics.minWidth = readClampedInt(L"CustomMinWidth", 28, 1, 200);
+		g_customCaptionButtonsMetrics.groupOffsetX = readClampedInt(L"ButtonGroupOffsetX", 0, 0, 200);
+		g_customCaptionButtonsMetrics.groupOffsetY = readClampedInt(L"ButtonGroupOffsetY", 0, 0, 5);
+		g_customCaptionButtonsMetrics.buttonSpacing = readClampedInt(L"ButtonSpacing", 0, 0, 200);
+		g_customCaptionButtonsMetrics.closeOffsetX = readClampedInt(L"CloseOffsetX", 0, 0, 200);
+		g_customCaptionButtonsMetrics.closeOffsetY = readClampedInt(L"CloseOffsetY", 0, -5, 5);
+		g_customCaptionButtonsMetrics.maxOffsetX = readClampedInt(L"MaxOffsetX", 0, 0, 200);
+		g_customCaptionButtonsMetrics.maxOffsetY = readClampedInt(L"MaxOffsetY", 0, -5, 5);
+		g_customCaptionButtonsMetrics.minOffsetX = readClampedInt(L"MinOffsetX", 0, 0, 200);
+		g_customCaptionButtonsMetrics.minOffsetY = readClampedInt(L"MinOffsetY", 0, -5, 5);
+		g_customCaptionButtonsMetrics.toolWidth = readClampedInt(L"CustomToolWidth", 0, 1, 100);
+		g_customCaptionButtonsMetrics.toolHeight = readClampedInt(L"CustomToolHeight", 0, -10, 100);
+		g_customCaptionButtonsMetrics.toolOffsetX = readClampedInt(L"ToolOffsetX", 0, -20, 200);
+		g_customCaptionButtonsMetrics.toolOffsetY = readClampedInt(L"ToolOffsetY", 0, -5, 5);
+		g_customCaptionButtonsMetrics.topInsert = GlassEngine::GetDwordFromRegistry(L"TopInsert", 0) != 0;
 	}
 }
 
