@@ -88,11 +88,39 @@ If you encounter crashes or technical bugs:
 
 | Key Name | Type | Description |
 | -------- | ---- | ----------- |
-| CaptionButtons | DWORD | Changes caption buttons sizes, icon left margin and the opacity of the button glyphs.<br><br><ul><li>0x0 = Vanilla style (default)</li><li>0x1 = Windows Vista style</li><li>0x2 = Windows 7 style</li><li>0x3 = Windows 8 style</li></ul> |
+| CaptionButtons | DWORD | Changes caption buttons sizes, icon left margin and the opacity of the button glyphs.<br><br><ul><li>0x0 = Vanilla style (default)</li><li>0x1 = Windows Vista style</li><li>0x2 = Windows 7 style</li><li>0x3 = Windows 8 style</li><li>0x4 = Custom</li></ul> |
 | CenterCaption | DWORD | Controls how title bar text is aligned.<br><br><ul><li>0x0 = Keeps it on the left (default)</li><li>0x1 = Regular centering</li><li>0x2 = Windows 8 style centering</li></ul> |
 | TextGlowMode | DWORD | Specifies how window caption glow effect will be rendered <br><br><ul><li>0x0 = No glow effect</li><li>0x1 = Glow effect loaded from atlas (default)</li><li>0x2 = Glow effect loaded from atlas and theme opacity is respected</li><li>0x3 = Composited glow effect using your theme settings HIWORD of the value specifies glow size (0 = theme default)</li></ul> |
 | CustomThemeAtlas | String | Path to PNG file with theme resource (bitmap must have exactly the same layout as msstyle theme you are using!). <br><br>💡 OpenGlass also looks for a `.layout` file with the same name (e.g., `theme.png.layout`) to determine the layout of the atlas. |
 | DisableModernBorders | DWORD | Disable modern rounded window borders. <br><br><ul><li>0x0 = Enable modern borders (default)</li><li>0x1 = Disable modern borders</li></ul><br>ℹ️ Only effective in Win11 |
+
+<details>
+  <summary>CaptionButtons "Custom" settings</summary>
+  
+| Key Name | Type | Description |
+| -------- | ---- | ----------- |
+| CustomTitlebarHeight | DWORD | Title bar height used as the reference for custom caption button scaling. |
+| CustomHeight | DWORD | Custom caption button height.️ |
+| CustomLoneWidth | DWORD | Custom width for the lone caption button layout. |
+| CustomCloseWidth | DWORD | Custom close button width. |
+| CustomMaxWidth | DWORD | Custom maximize button width. |
+| CustomMinWidth | DWORD | Custom minimize button width. |
+| TopInsert | DWORD | Adjusts the custom caption button top inset for maximized windows.<br><br><ul><li>0x0 = Default positioning</li><li>0x1 = Add 1px to the maximized title bar button inset so the full button is visible and the glyph sits slightly lower</li></ul> |
+| ButtonGroupOffsetX | DWORD | Horizontal offset applied to the custom caption button group. |
+| ButtonGroupOffsetY | DWORD | Vertical offset applied to the custom caption button group. |
+| ButtonSpacing | DWORD | Extra spacing inserted between custom caption buttons. |
+| CloseOffsetX | DWORD | Horizontal offset applied to the custom close button. |
+| CloseOffsetY | DWORD | Vertical offset applied to the custom close button. |
+| MaxOffsetX | DWORD | Horizontal offset applied to the custom maximize button. |
+| MaxOffsetY | DWORD | Vertical offset applied to the custom maximize button. |
+| MinOffsetX | DWORD | Horizontal offset applied to the custom minimize button. |
+| MinOffsetY | DWORD | Vertical offset applied to the custom minimize button. |
+| CustomToolWidth | DWORD | Width delta applied to the tool window close button. |
+| CustomToolHeight | DWORD | Height delta applied to the tool window close button. |
+| ToolOffsetX | DWORD | Horizontal offset applied to the tool window close button. |
+| ToolOffsetY | DWORD | Vertical offset applied to the tool window close button. |
+
+</details>
 
 ### Advanced settings
 
